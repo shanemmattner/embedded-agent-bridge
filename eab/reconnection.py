@@ -2,10 +2,12 @@
 Reconnection Manager for Serial Daemon.
 
 Handles automatic reconnection with exponential backoff when
-serial port connections are lost.
+serial port connections are lost. Includes proactive USB
+disconnect detection by monitoring port availability.
 """
 
-from typing import Optional, Callable
+import os
+from typing import Optional, Callable, List
 from .interfaces import SerialPortInterface, ClockInterface, LoggerInterface, ConnectionState
 
 
@@ -113,17 +115,44 @@ class ReconnectionManager:
                     self._max_delay
                 )
 
+    def port_exists(self) -> bool:
+        """Check if the port device file exists on the filesystem."""
+        return os.path.exists(self._port_name)
+
     def check_and_reconnect(self) -> bool:
         """
         Check if connection is alive, reconnect if needed.
 
         Call this periodically from the main loop.
         Returns True if connected (or reconnected), False if not connected.
+
+        Now includes proactive USB disconnect detection by checking
+        if the port device file still exists.
         """
+        # First check if the port device file exists (USB disconnect detection)
+        if not self.port_exists():
+            if self._state == ConnectionState.CONNECTED:
+                self._state = ConnectionState.RECONNECTING
+                self._logger.warning(f"Port {self._port_name} disappeared (USB disconnected?)")
+
+                # Close the serial port if it thinks it's still open
+                if self._serial.is_open():
+                    try:
+                        self._serial.close()
+                    except Exception:
+                        pass
+
+                if self._on_disconnect:
+                    self._on_disconnect()
+
+            # Can't reconnect if device doesn't exist
+            return False
+
+        # Normal serial connection check
         if self._serial.is_open():
             return True
 
-        # Connection lost
+        # Connection lost but port exists
         if self._state == ConnectionState.CONNECTED:
             self._state = ConnectionState.RECONNECTING
             self._logger.warning(f"Connection lost to {self._port_name}")

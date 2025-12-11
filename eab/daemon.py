@@ -190,6 +190,7 @@ class SerialDaemon:
     def _on_disconnect(self) -> None:
         """Called when disconnect detected."""
         self._status_manager.set_connection_state(ConnectionState.RECONNECTING)
+        self._status_manager.record_usb_disconnect()
         self._logger.warning("Connection lost")
 
     def _on_flash_start(self) -> None:
@@ -495,7 +496,9 @@ class SerialDaemon:
         # Log the line
         self._session_logger.log_line(line)
         self._status_manager.record_line()
-        self._status_manager.record_bytes(len(line))
+        byte_count = len(line)
+        self._status_manager.record_bytes(byte_count)
+        self._status_manager.record_activity(byte_count)
 
         # Feed to chip recovery for state monitoring
         self._chip_recovery.process_line(line)

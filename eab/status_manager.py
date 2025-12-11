@@ -2,11 +2,14 @@
 Status Manager for Serial Daemon.
 
 Writes connection state and statistics to status.json for agent consumption.
+Uses atomic file writes to prevent race conditions with agent reads.
 """
 
 from typing import Dict, Optional
 from datetime import datetime
 import json
+import os
+import tempfile
 
 from .interfaces import FileSystemInterface, ClockInterface, ConnectionState
 
@@ -20,6 +23,9 @@ class StatusManager:
     - Connection state
     - Performance counters
     - Pattern match statistics
+    - Health indicators for agent monitoring
+
+    Uses atomic file writes (temp file + rename) to prevent partial reads.
     """
 
     def __init__(
@@ -43,6 +49,13 @@ class StatusManager:
         self._commands_sent = 0
         self._alerts_triggered = 0
         self._pattern_counts: Dict[str, int] = {}
+
+        # Health tracking
+        self._last_activity_time: Optional[datetime] = None
+        self._bytes_last_minute: int = 0
+        self._bytes_minute_start: Optional[datetime] = None
+        self._read_errors: int = 0
+        self._usb_disconnects: int = 0
 
     def start_session(self, session_id: str, port: str, baud: int) -> None:
         """Start tracking a new session."""
@@ -86,10 +99,42 @@ class StatusManager:
         self._alerts_triggered += 1
         self._pattern_counts[pattern] = self._pattern_counts.get(pattern, 0) + 1
 
+    def record_activity(self, byte_count: int = 0) -> None:
+        """Record serial activity for health monitoring."""
+        now = self._clock.now()
+        self._last_activity_time = now
+
+        # Track bytes per minute for throughput monitoring
+        if self._bytes_minute_start is None:
+            self._bytes_minute_start = now
+            self._bytes_last_minute = byte_count
+        elif (now - self._bytes_minute_start).total_seconds() >= 60:
+            # Reset minute counter
+            self._bytes_minute_start = now
+            self._bytes_last_minute = byte_count
+        else:
+            self._bytes_last_minute += byte_count
+
+    def record_read_error(self) -> None:
+        """Record a serial read error."""
+        self._read_errors += 1
+        self.update()
+
+    def record_usb_disconnect(self) -> None:
+        """Record a USB disconnect event."""
+        self._usb_disconnects += 1
+        self.update()
+
     def update(self) -> None:
-        """Write current status to file."""
+        """Write current status to file using atomic write."""
         now = self._clock.now()
         uptime = (now - self._started).total_seconds() if self._started else 0
+
+        # Calculate seconds since last activity
+        if self._last_activity_time:
+            idle_seconds = (now - self._last_activity_time).total_seconds()
+        else:
+            idle_seconds = uptime  # No activity yet means idle since start
 
         status = {
             "session": {
@@ -109,8 +154,53 @@ class StatusManager:
                 "commands_sent": self._commands_sent,
                 "alerts_triggered": self._alerts_triggered,
             },
+            "health": {
+                "last_activity": self._last_activity_time.isoformat() if self._last_activity_time else None,
+                "idle_seconds": int(idle_seconds),
+                "bytes_last_minute": self._bytes_last_minute,
+                "read_errors": self._read_errors,
+                "usb_disconnects": self._usb_disconnects,
+                "status": self._compute_health_status(idle_seconds),
+            },
             "patterns": self._pattern_counts,
             "last_updated": now.isoformat(),
         }
 
-        self._fs.write_file(self._status_path, json.dumps(status, indent=2))
+        self._atomic_write(json.dumps(status, indent=2))
+
+    def _compute_health_status(self, idle_seconds: float) -> str:
+        """Compute overall health status for agents."""
+        if self._state == ConnectionState.DISCONNECTED:
+            return "disconnected"
+        if idle_seconds > 30:
+            return "stuck"  # No activity for 30+ seconds
+        if idle_seconds > 10:
+            return "idle"   # No activity for 10+ seconds
+        if self._read_errors > 10:
+            return "degraded"  # Many read errors
+        return "healthy"
+
+    def _atomic_write(self, content: str) -> None:
+        """Write content atomically using temp file + rename."""
+        # Get the directory of the status file
+        status_dir = os.path.dirname(self._status_path)
+        if not status_dir:
+            status_dir = "."
+
+        # Write to temp file in same directory (ensures same filesystem)
+        try:
+            fd, temp_path = tempfile.mkstemp(
+                suffix=".tmp",
+                prefix="status_",
+                dir=status_dir
+            )
+            try:
+                os.write(fd, content.encode("utf-8"))
+            finally:
+                os.close(fd)
+
+            # Atomic rename
+            os.replace(temp_path, self._status_path)
+        except Exception:
+            # Fallback to non-atomic write if atomic fails
+            self._fs.write_file(self._status_path, content)

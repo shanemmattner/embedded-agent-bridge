@@ -118,6 +118,347 @@ case "$1" in
         cd "$EAB_DIR" && python3 -m eab --wait-for "$2" --wait-timeout "$TIMEOUT"
         ;;
 
+    flash)
+        # Flash ESP-IDF project or single binary
+        # Usage: eab-control flash <project_dir_or_bin> [chip]
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control flash <project_dir_or_bin> [chip]"
+            echo ""
+            echo "Examples:"
+            echo "  eab-control flash ./my_project           # Flash ESP-IDF project"
+            echo "  eab-control flash ./my_project esp32s3   # Specify chip type"
+            echo "  eab-control flash ./firmware.bin         # Flash single binary"
+            echo ""
+            echo "For ESP-IDF projects, looks for build/ directory with:"
+            echo "  - bootloader/bootloader.bin"
+            echo "  - partition_table/partition-table.bin"
+            echo "  - <project_name>.bin"
+            exit 1
+        fi
+
+        TARGET="$2"
+        CHIP="${3:-auto}"
+
+        # Get port from daemon status
+        PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+        if [ -z "$PORT" ]; then
+            echo "ERROR: Could not get port from daemon. Is daemon running?"
+            exit 1
+        fi
+
+        echo "=== EAB Flash Tool ==="
+        echo "Port: $PORT"
+        echo "Target: $TARGET"
+
+        # Pause daemon to release port
+        echo ""
+        echo "Pausing daemon..."
+        cd "$EAB_DIR" && python3 -m eab --pause 120
+        sleep 1
+
+        # Determine if this is a project directory or single binary
+        if [ -d "$TARGET" ]; then
+            # ESP-IDF project directory
+            BUILD_DIR="$TARGET/build"
+            if [ ! -d "$BUILD_DIR" ]; then
+                echo "ERROR: No build/ directory found in $TARGET"
+                echo "Run 'idf.py build' first."
+                rm -f /tmp/eab-session/pause.txt
+                exit 1
+            fi
+
+            # Find the app binary (usually named after project)
+            APP_BIN=$(ls "$BUILD_DIR"/*.bin 2>/dev/null | grep -v bootloader | grep -v partition | head -1)
+            BOOTLOADER="$BUILD_DIR/bootloader/bootloader.bin"
+            PARTITION="$BUILD_DIR/partition_table/partition-table.bin"
+
+            if [ ! -f "$APP_BIN" ]; then
+                echo "ERROR: No app binary found in $BUILD_DIR"
+                rm -f /tmp/eab-session/pause.txt
+                exit 1
+            fi
+
+            echo "Bootloader: $BOOTLOADER"
+            echo "Partition:  $PARTITION"
+            echo "App:        $APP_BIN"
+            echo ""
+
+            # Auto-detect chip from build if not specified
+            if [ "$CHIP" = "auto" ]; then
+                if [ -f "$BUILD_DIR/config/sdkconfig.h" ]; then
+                    if grep -q "CONFIG_IDF_TARGET_ESP32S3" "$BUILD_DIR/config/sdkconfig.h"; then
+                        CHIP="esp32s3"
+                    elif grep -q "CONFIG_IDF_TARGET_ESP32S2" "$BUILD_DIR/config/sdkconfig.h"; then
+                        CHIP="esp32s2"
+                    elif grep -q "CONFIG_IDF_TARGET_ESP32C3" "$BUILD_DIR/config/sdkconfig.h"; then
+                        CHIP="esp32c3"
+                    else
+                        CHIP="esp32"
+                    fi
+                fi
+            fi
+
+            echo "Chip: $CHIP"
+            echo ""
+            echo "Flashing..."
+
+            esptool --chip "$CHIP" --port "$PORT" --baud 921600 \
+                --before default-reset --after hard-reset \
+                write-flash --flash-mode dio --flash-size detect --flash-freq 80m \
+                0x0 "$BOOTLOADER" \
+                0x8000 "$PARTITION" \
+                0x10000 "$APP_BIN"
+            RESULT=$?
+        else
+            # Single binary file
+            if [ ! -f "$TARGET" ]; then
+                echo "ERROR: File not found: $TARGET"
+                rm -f /tmp/eab-session/pause.txt
+                exit 1
+            fi
+
+            echo "Flashing single binary..."
+            esptool --chip "$CHIP" --port "$PORT" --baud 921600 \
+                write-flash 0x0 "$TARGET"
+            RESULT=$?
+        fi
+
+        # Resume daemon
+        echo ""
+        echo "Resuming daemon..."
+        rm -f /tmp/eab-session/pause.txt
+        sleep 2
+
+        if [ $RESULT -eq 0 ]; then
+            echo ""
+            echo "=== Flash successful! ==="
+            # Show output after reset
+            sleep 2
+            $0 tail 20
+        else
+            echo ""
+            echo "=== Flash FAILED ==="
+            exit 1
+        fi
+        ;;
+
+    erase)
+        # Erase entire flash
+        PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+        if [ -z "$PORT" ]; then
+            echo "ERROR: Could not get port from daemon. Is daemon running?"
+            exit 1
+        fi
+
+        echo "Pausing daemon..."
+        cd "$EAB_DIR" && python3 -m eab --pause 120
+        sleep 1
+
+        echo "Erasing flash on $PORT..."
+        esptool --port "$PORT" erase-flash
+        RESULT=$?
+
+        echo "Resuming daemon..."
+        rm -f /tmp/eab-session/pause.txt
+
+        if [ $RESULT -eq 0 ]; then
+            echo "Flash erased successfully"
+        else
+            echo "Erase FAILED"
+            exit 1
+        fi
+        ;;
+
+    chip-info)
+        # Get chip info
+        PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+        if [ -z "$PORT" ]; then
+            echo "ERROR: Could not get port from daemon. Is daemon running?"
+            exit 1
+        fi
+
+        echo "Pausing daemon..."
+        cd "$EAB_DIR" && python3 -m eab --pause 30
+        sleep 1
+
+        echo "Getting chip info from $PORT..."
+        esptool --port "$PORT" chip-id
+        esptool --port "$PORT" flash-id
+
+        echo "Resuming daemon..."
+        rm -f /tmp/eab-session/pause.txt
+        ;;
+
+    backup)
+        # Backup flash to file
+        OUTFILE="${2:-esp32_backup_$(date +%Y%m%d_%H%M%S).bin}"
+        SIZE="${3:-0x400000}"  # Default 4MB
+
+        PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+        if [ -z "$PORT" ]; then
+            echo "ERROR: Could not get port from daemon. Is daemon running?"
+            exit 1
+        fi
+
+        echo "=== Backup Flash ==="
+        echo "Port: $PORT"
+        echo "Output: $OUTFILE"
+        echo "Size: $SIZE"
+        echo ""
+
+        echo "Pausing daemon..."
+        cd "$EAB_DIR" && python3 -m eab --pause 300
+        sleep 1
+
+        echo "Reading flash..."
+        esptool --port "$PORT" read-flash 0x0 "$SIZE" "$OUTFILE"
+        RESULT=$?
+
+        echo "Resuming daemon..."
+        rm -f /tmp/eab-session/pause.txt
+
+        if [ $RESULT -eq 0 ]; then
+            echo ""
+            echo "=== Backup complete: $OUTFILE ==="
+            ls -lh "$OUTFILE"
+        else
+            echo "=== Backup FAILED ==="
+            exit 1
+        fi
+        ;;
+
+    restore)
+        # Restore flash from backup file
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control restore <backup.bin>"
+            echo ""
+            echo "Restores a full flash backup created with 'eab-control backup'"
+            exit 1
+        fi
+
+        INFILE="$2"
+        if [ ! -f "$INFILE" ]; then
+            echo "ERROR: File not found: $INFILE"
+            exit 1
+        fi
+
+        PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+        if [ -z "$PORT" ]; then
+            echo "ERROR: Could not get port from daemon. Is daemon running?"
+            exit 1
+        fi
+
+        echo "=== Restore Flash ==="
+        echo "Port: $PORT"
+        echo "Input: $INFILE"
+        echo ""
+        echo "WARNING: This will overwrite ALL flash contents!"
+        echo ""
+
+        echo "Pausing daemon..."
+        cd "$EAB_DIR" && python3 -m eab --pause 300
+        sleep 1
+
+        echo "Writing flash..."
+        esptool --port "$PORT" --baud 921600 write-flash 0x0 "$INFILE"
+        RESULT=$?
+
+        echo "Resuming daemon..."
+        rm -f /tmp/eab-session/pause.txt
+        sleep 2
+
+        if [ $RESULT -eq 0 ]; then
+            echo ""
+            echo "=== Restore complete ==="
+            $0 tail 20
+        else
+            echo "=== Restore FAILED ==="
+            exit 1
+        fi
+        ;;
+
+    read-mac)
+        # Read MAC address
+        PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+        if [ -z "$PORT" ]; then
+            echo "ERROR: Could not get port from daemon. Is daemon running?"
+            exit 1
+        fi
+
+        echo "Pausing daemon..."
+        cd "$EAB_DIR" && python3 -m eab --pause 30
+        sleep 1
+
+        esptool --port "$PORT" read-mac
+
+        echo "Resuming daemon..."
+        rm -f /tmp/eab-session/pause.txt
+        ;;
+
+    build-flash)
+        # Build and flash ESP-IDF project
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control build-flash <project_dir>"
+            echo ""
+            echo "Builds the ESP-IDF project and flashes it"
+            exit 1
+        fi
+
+        TARGET="$2"
+        if [ ! -d "$TARGET" ]; then
+            echo "ERROR: Directory not found: $TARGET"
+            exit 1
+        fi
+
+        echo "=== Build and Flash ==="
+        echo "Project: $TARGET"
+        echo ""
+
+        # Check for CMakeLists.txt (ESP-IDF project)
+        if [ ! -f "$TARGET/CMakeLists.txt" ]; then
+            echo "ERROR: No CMakeLists.txt found. Is this an ESP-IDF project?"
+            exit 1
+        fi
+
+        echo "Building..."
+        cd "$TARGET" && idf.py build
+        RESULT=$?
+
+        if [ $RESULT -ne 0 ]; then
+            echo "=== Build FAILED ==="
+            exit 1
+        fi
+
+        echo ""
+        echo "Build successful, now flashing..."
+        $0 flash "$TARGET"
+        ;;
+
+    monitor)
+        # Interactive monitor (just show tail continuously)
+        echo "=== Live Serial Monitor ==="
+        echo "Press Ctrl+C to exit"
+        echo ""
+        tail -f /tmp/eab-session/latest.log
+        ;;
+
+    send)
+        # Send text to device (through daemon)
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control send <text>"
+            echo ""
+            echo "Sends text to the ESP32 serial port"
+            echo "Example: eab-control send 'r'  # Send 'r' to start recording"
+            exit 1
+        fi
+
+        TEXT="$2"
+        echo "Sending: $TEXT"
+        cd "$EAB_DIR" && python3 -m eab --cmd "$TEXT"
+        sleep 1
+        $0 tail 10
+        ;;
+
     *)
         echo "EAB Daemon Control"
         echo ""
@@ -139,6 +480,22 @@ case "$1" in
         echo "Device Control:"
         echo "  reset      - Reset the ESP32 device"
         echo "  cmd <cmd>  - Send command (e.g., '!CHIP_INFO', '!BOOTLOADER')"
+        echo ""
+        echo "Flashing (handles pause/resume automatically):"
+        echo "  flash <dir>     - Flash ESP-IDF project (auto-detects chip, finds binaries)"
+        echo "  flash <file>    - Flash single binary file"
+        echo "  build-flash <dir> - Build ESP-IDF project and flash"
+        echo "  erase           - Erase entire flash"
+        echo "  chip-info       - Get chip ID and flash info"
+        echo "  read-mac        - Read MAC address"
+        echo ""
+        echo "Backup/Restore:"
+        echo "  backup [file] [size] - Backup flash to file (default 4MB)"
+        echo "  restore <file>  - Restore flash from backup"
+        echo ""
+        echo "Serial Communication:"
+        echo "  send <text>     - Send text to device (e.g., 'r' to record)"
+        echo "  monitor         - Live serial output (Ctrl+C to exit)"
         echo ""
         echo "Log Viewing:"
         echo "  tail [N]   - Show last N lines from serial log (default 50)"

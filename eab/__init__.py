@@ -18,6 +18,10 @@ from .interfaces import (
     SessionStats,
 )
 
+from .device_control import DeviceController, strip_ansi
+from .port_lock import PortLock, find_port_users, list_all_locks
+from .chip_recovery import ChipRecovery, ChipState, ChipHealth
+
 __all__ = [
     "ConnectionState",
     "PortInfo",
@@ -30,4 +34,12 @@ __all__ = [
     "StatsCollectorInterface",
     "AlertMatch",
     "SessionStats",
+    "DeviceController",
+    "strip_ansi",
+    "PortLock",
+    "find_port_users",
+    "list_all_locks",
+    "ChipRecovery",
+    "ChipState",
+    "ChipHealth",
 ]

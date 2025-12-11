@@ -22,6 +22,9 @@ from .session_logger import SessionLogger
 from .pattern_matcher import PatternMatcher, AlertLogger
 from .status_manager import StatusManager
 from .interfaces import ConnectionState
+from .device_control import DeviceController, strip_ansi
+from .port_lock import PortLock, find_port_users, list_all_locks
+from .chip_recovery import ChipRecovery, ChipState
 
 
 class SerialDaemon:
@@ -96,6 +99,34 @@ class SerialDaemon:
         self._cmd_path = os.path.join(base_dir, "cmd.txt")
         self._cmd_mtime = 0.0
 
+        # Device controller for special commands (!RESET, !FLASH, etc.)
+        self._device_controller = DeviceController(
+            serial_port=self._serial,
+            port_name=self._resolve_port(),
+            baud=baud,
+            logger=self._logger,
+            on_flash_start=self._on_flash_start,
+            on_flash_end=self._on_flash_end,
+        )
+
+        # Port lock to prevent contention
+        self._port_lock: Optional[PortLock] = None
+
+        # Chip recovery for automatic crash handling
+        self._chip_recovery = ChipRecovery(
+            reset_callback=self._device_controller.reset,
+            logger=self._logger,
+            boot_loop_threshold=5,
+            stuck_timeout=120.0,  # 2 minutes without output = stuck
+            crash_recovery_delay=2.0,
+            max_recovery_attempts=3,
+        )
+        self._chip_recovery.set_callbacks(
+            on_state_change=self._on_chip_state_change,
+            on_crash_detected=self._on_crash_detected,
+        )
+        self._auto_recovery = True  # Enable automatic recovery
+
     def _resolve_port(self) -> str:
         """Resolve 'auto' to actual port."""
         if self._port.lower() == "auto" and self._auto_detect:
@@ -151,15 +182,71 @@ class SerialDaemon:
         self._status_manager.set_connection_state(ConnectionState.RECONNECTING)
         self._logger.warning("Connection lost")
 
+    def _on_flash_start(self) -> None:
+        """Called when flash operation starts (need to release port)."""
+        self._status_manager.set_connection_state(ConnectionState.DISCONNECTED)
+        self._logger.info("Flash starting, releasing port...")
+
+    def _on_flash_end(self, success: bool) -> None:
+        """Called when flash operation ends."""
+        if success:
+            self._status_manager.set_connection_state(ConnectionState.CONNECTED)
+            self._logger.info("Flash complete, port reacquired")
+        else:
+            self._logger.error("Flash failed")
+
+    def _on_chip_state_change(self, old_state: ChipState, new_state: ChipState) -> None:
+        """Called when chip state changes."""
+        self._logger.info(f"Chip state: {old_state.value} -> {new_state.value}")
+        # Log to session
+        self._session_logger.log_line(f"[EAB] Chip state: {new_state.value}")
+
+    def _on_crash_detected(self, line: str) -> None:
+        """Called when a crash is detected."""
+        self._logger.error(f"Crash detected!")
+        # Log to alerts
+        self._session_logger.log_line(f"[EAB] CRASH DETECTED: {line[:100]}")
+
     def start(self) -> bool:
         """Start the daemon. Returns True if started successfully."""
         self._logger.info(f"Starting Embedded Agent Bridge Serial Daemon")
         self._logger.info(f"Port: {self._reconnection._port_name}, Baud: {self._baud}")
         self._logger.info(f"Base directory: {self._base_dir}")
 
+        port_name = self._reconnection._port_name
+
+        # Check for port contention BEFORE connecting
+        self._logger.info(f"Checking for port contention...")
+        existing_users = find_port_users(port_name)
+        if existing_users:
+            self._logger.warning(f"Port {port_name} may be in use by other processes:")
+            for user in existing_users:
+                self._logger.warning(f"  PID {user['pid']}: {user['name']}")
+
+        # Check existing EAB locks
+        existing_locks = list_all_locks()
+        for lock in existing_locks:
+            if lock.port == port_name:
+                self._logger.warning(
+                    f"Port {port_name} locked by EAB PID {lock.pid} "
+                    f"({lock.process_name}) since {lock.started}"
+                )
+
+        # Try to acquire our own lock
+        self._port_lock = PortLock(port_name, logger=self._logger)
+        if not self._port_lock.acquire(timeout=0, force=True):
+            self._logger.error(f"Could not acquire lock for {port_name}")
+            owner = self._port_lock.get_owner()
+            if owner:
+                self._logger.error(
+                    f"Port locked by PID {owner.pid} ({owner.process_name})"
+                )
+            return False
+
         # Connect to serial port
         if not self._reconnection.connect():
             self._logger.error("Failed to connect to serial port")
+            self._port_lock.release()
             return False
 
         # Generate session ID
@@ -218,6 +305,11 @@ class SerialDaemon:
                     self._status_manager.update()
                     last_status_update = now
 
+                    # Check if chip needs recovery (automatic recovery)
+                    if self._auto_recovery and self._chip_recovery.needs_recovery():
+                        self._logger.warning("Chip needs recovery, performing automatic recovery...")
+                        self._chip_recovery.perform_recovery()
+
                 # Small sleep to prevent CPU spinning
                 if not self._serial.bytes_available():
                     self._clock.sleep(0.001)
@@ -233,14 +325,17 @@ class SerialDaemon:
         self._status_manager.record_line()
         self._status_manager.record_bytes(len(line))
 
+        # Feed to chip recovery for state monitoring
+        self._chip_recovery.process_line(line)
+
         # Check for patterns
         matches = self._pattern_matcher.check_line(line)
         for match in matches:
             self._alert_logger.log_alert(match)
             self._status_manager.record_alert(match.pattern)
 
-        # Print to console
-        print(line)
+        # Print to console (strip ANSI for cleaner output)
+        print(strip_ansi(line))
 
     def _check_commands(self) -> None:
         """Check for commands in the command file."""
@@ -271,18 +366,33 @@ class SerialDaemon:
             self._logger.error(f"Error checking commands: {e}")
 
     def _send_command(self, cmd: str) -> None:
-        """Send a command to the device."""
+        """Send a command to the device (or handle special ! commands)."""
         self._logger.info(f"Sending command: {cmd}")
         self._session_logger.log_command(cmd)
         self._status_manager.record_command()
 
+        # Check for special commands (!RESET, !FLASH, etc.)
+        if self._device_controller.is_special_command(cmd):
+            result = self._device_controller.handle_command(cmd)
+            self._logger.info(f"Special command result: {result}")
+            # Log result to session
+            self._session_logger.log_line(f"[EAB] {result}")
+            return
+
+        # Regular command - send to device
         data = (cmd + "\n").encode()
         self._serial.write(data)
 
     def stop(self) -> None:
-        """Stop the daemon gracefully."""
+        """Stop the daemon gracefully, leaving chip in good state."""
         self._logger.info("Stopping daemon...")
         self._running = False
+
+        # Perform clean shutdown to ensure chip is in good state
+        try:
+            self._chip_recovery.clean_shutdown()
+        except Exception as e:
+            self._logger.error(f"Error during chip cleanup: {e}")
 
         # End session
         self._session_logger.end_session()
@@ -291,6 +401,10 @@ class SerialDaemon:
 
         # Disconnect
         self._reconnection.disconnect()
+
+        # Release port lock
+        if self._port_lock:
+            self._port_lock.release()
 
         self._logger.info("Daemon stopped")
 

@@ -21,6 +21,7 @@ from .interfaces import (
 from .device_control import DeviceController, strip_ansi
 from .port_lock import PortLock, find_port_users, list_all_locks
 from .chip_recovery import ChipRecovery, ChipState, ChipHealth
+from .singleton import SingletonDaemon, check_singleton, kill_existing_daemon
 
 __all__ = [
     "ConnectionState",
@@ -42,4 +43,7 @@ __all__ = [
     "ChipRecovery",
     "ChipState",
     "ChipHealth",
+    "SingletonDaemon",
+    "check_singleton",
+    "kill_existing_daemon",
 ]

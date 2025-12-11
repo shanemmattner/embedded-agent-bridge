@@ -1,0 +1,45 @@
+#!/bin/bash
+# EAB Launcher for launchd
+# Keeps trying to connect to ESP32, waits if no device
+
+EAB_DIR="$HOME/tools/embedded-agent-bridge"
+BASE_DIR="/tmp/eab-session"
+LOG_FILE="/tmp/eab-launcher.log"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+log "EAB Launcher starting..."
+
+# Ensure base directory exists
+mkdir -p "$BASE_DIR"
+
+while true; do
+    # Check if device is present
+    DEVICE=$(ls /dev/cu.usbmodem* /dev/cu.usbserial* 2>/dev/null | grep -v debug | head -1)
+
+    if [ -n "$DEVICE" ]; then
+        log "Found device: $DEVICE"
+
+        # Run EAB with force flag (takes over from any stuck daemon)
+        cd "$EAB_DIR"
+        /opt/homebrew/bin/python3 -m eab --port auto --base-dir "$BASE_DIR" --force >> "$LOG_FILE" 2>&1
+        EXIT_CODE=$?
+
+        log "EAB exited with code $EXIT_CODE"
+
+        # If it exited cleanly (device disconnected), wait before retry
+        if [ $EXIT_CODE -eq 0 ]; then
+            log "Clean exit, waiting 5s before retry..."
+            sleep 5
+        else
+            # Error exit, wait longer
+            log "Error exit, waiting 10s before retry..."
+            sleep 10
+        fi
+    else
+        # No device, wait and retry
+        sleep 10
+    fi
+done

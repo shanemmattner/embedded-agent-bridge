@@ -1,0 +1,91 @@
+#!/bin/bash
+# EAB Daemon Control Script
+# Usage: eab-control [start|stop|restart|status|logs|enable|disable]
+
+PLIST="$HOME/Library/LaunchAgents/com.eab.daemon.plist"
+EAB_DIR="$HOME/tools/embedded-agent-bridge"
+
+case "$1" in
+    start)
+        echo "Starting EAB daemon..."
+        launchctl load "$PLIST" 2>/dev/null || launchctl start com.eab.daemon
+        sleep 2
+        if launchctl list | grep -q com.eab.daemon; then
+            echo "EAB daemon started"
+            python3 -m eab --status
+        else
+            echo "Failed to start daemon. Check logs with: eab-control logs"
+        fi
+        ;;
+
+    stop)
+        echo "Stopping EAB daemon..."
+        launchctl stop com.eab.daemon 2>/dev/null
+        launchctl unload "$PLIST" 2>/dev/null
+        # Also kill any orphaned processes
+        pkill -f "python3 -m eab" 2>/dev/null
+        echo "EAB daemon stopped"
+        ;;
+
+    restart)
+        $0 stop
+        sleep 2
+        $0 start
+        ;;
+
+    status)
+        echo "=== LaunchAgent Status ==="
+        if launchctl list | grep -q com.eab.daemon; then
+            echo "Service: LOADED"
+            launchctl list com.eab.daemon
+        else
+            echo "Service: NOT LOADED"
+        fi
+        echo ""
+        echo "=== EAB Daemon Status ==="
+        cd "$EAB_DIR" && python3 -m eab --status
+        echo ""
+        echo "=== Session Files ==="
+        ls -la /tmp/eab-session/ 2>/dev/null || echo "No session directory"
+        ;;
+
+    logs)
+        echo "=== Daemon stdout ==="
+        tail -50 /tmp/eab-daemon.log 2>/dev/null || echo "No stdout log"
+        echo ""
+        echo "=== Daemon stderr ==="
+        tail -50 /tmp/eab-daemon.err 2>/dev/null || echo "No stderr log"
+        echo ""
+        echo "=== Session latest.log ==="
+        tail -30 /tmp/eab-session/latest.log 2>/dev/null || echo "No session log"
+        ;;
+
+    enable)
+        echo "Enabling EAB daemon to start at login..."
+        launchctl load "$PLIST"
+        echo "Done. EAB will start automatically when you log in."
+        ;;
+
+    disable)
+        echo "Disabling EAB daemon..."
+        launchctl unload "$PLIST" 2>/dev/null
+        echo "Done. EAB will not start automatically."
+        ;;
+
+    *)
+        echo "EAB Daemon Control"
+        echo ""
+        echo "Usage: eab-control [command]"
+        echo ""
+        echo "Commands:"
+        echo "  start    - Start the daemon now"
+        echo "  stop     - Stop the daemon"
+        echo "  restart  - Restart the daemon"
+        echo "  status   - Show daemon status"
+        echo "  logs     - Show daemon logs"
+        echo "  enable   - Enable auto-start at login"
+        echo "  disable  - Disable auto-start"
+        echo ""
+        echo "Session files are in /tmp/eab-session/"
+        ;;
+esac

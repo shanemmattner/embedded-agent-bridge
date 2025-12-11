@@ -25,6 +25,7 @@ from .interfaces import ConnectionState
 from .device_control import DeviceController, strip_ansi
 from .port_lock import PortLock, find_port_users, list_all_locks
 from .chip_recovery import ChipRecovery, ChipState
+from .singleton import SingletonDaemon, check_singleton
 
 
 class SerialDaemon:
@@ -111,6 +112,9 @@ class SerialDaemon:
 
         # Port lock to prevent contention
         self._port_lock: Optional[PortLock] = None
+
+        # Singleton enforcement (one daemon per machine)
+        self._singleton: Optional[SingletonDaemon] = None
 
         # Chip recovery for automatic crash handling
         self._chip_recovery = ChipRecovery(
@@ -207,13 +211,22 @@ class SerialDaemon:
         # Log to alerts
         self._session_logger.log_line(f"[EAB] CRASH DETECTED: {line[:100]}")
 
-    def start(self) -> bool:
-        """Start the daemon. Returns True if started successfully."""
+    def start(self, force: bool = False) -> bool:
+        """Start the daemon. Returns True if started successfully.
+
+        Args:
+            force: If True, kill any existing daemon first
+        """
         self._logger.info(f"Starting Embedded Agent Bridge Serial Daemon")
         self._logger.info(f"Port: {self._reconnection._port_name}, Baud: {self._baud}")
         self._logger.info(f"Base directory: {self._base_dir}")
 
         port_name = self._reconnection._port_name
+
+        # Singleton enforcement - only one daemon per machine
+        self._singleton = SingletonDaemon(logger=self._logger)
+        if not self._singleton.acquire(kill_existing=force, port=port_name, base_dir=self._base_dir):
+            return False
 
         # Check for port contention BEFORE connecting
         self._logger.info(f"Checking for port contention...")
@@ -406,6 +419,10 @@ class SerialDaemon:
         if self._port_lock:
             self._port_lock.release()
 
+        # Release singleton lock
+        if self._singleton:
+            self._singleton.release()
+
         self._logger.info("Daemon stopped")
 
 
@@ -442,6 +459,21 @@ Examples:
         action="store_true",
         help="List available serial ports and exit",
     )
+    parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Kill any existing daemon and take over",
+    )
+    parser.add_argument(
+        "--status", "-s",
+        action="store_true",
+        help="Show status of existing daemon and exit",
+    )
+    parser.add_argument(
+        "--stop",
+        action="store_true",
+        help="Stop any running daemon and exit",
+    )
 
     args = parser.parse_args()
 
@@ -452,6 +484,33 @@ Examples:
             print(f"    Description: {p.description}")
             print(f"    HWID: {p.hwid}")
             print()
+        return
+
+    if args.status:
+        existing = check_singleton()
+        if existing:
+            print(f"EAB Daemon Status:")
+            print(f"  Running: {existing.is_alive}")
+            print(f"  PID: {existing.pid}")
+            print(f"  Port: {existing.port}")
+            print(f"  Base dir: {existing.base_dir}")
+            print(f"  Started: {existing.started}")
+        else:
+            print("No EAB daemon is running")
+        return
+
+    if args.stop:
+        from .singleton import kill_existing_daemon
+        existing = check_singleton()
+        if existing and existing.is_alive:
+            print(f"Stopping EAB daemon (PID {existing.pid})...")
+            if kill_existing_daemon():
+                print("Daemon stopped")
+            else:
+                print("Failed to stop daemon")
+                sys.exit(1)
+        else:
+            print("No EAB daemon is running")
         return
 
     daemon = SerialDaemon(
@@ -468,7 +527,7 @@ Examples:
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    if daemon.start():
+    if daemon.start(force=args.force):
         daemon.run()
     else:
         sys.exit(1)

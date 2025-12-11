@@ -1,44 +1,171 @@
 # Embedded Agent Bridge (EAB) - Agent Guide
 
-A file-based interface for LLM agents to interact with ESP32 devices reliably.
+A daemon and command-line interface for LLM agents to interact with ESP32 devices reliably.
 
-## Quick Start
+## Quick Reference (TL;DR)
 
 ```bash
-# Start the daemon (auto-detects ESP32)
-cd /tmp/embedded-agent-bridge
-python3 -m eab --port auto --base-dir /tmp/eab-session
+# Check device status
+~/tools/embedded-agent-bridge/eab-control status
+
+# View serial output
+~/tools/embedded-agent-bridge/eab-control tail 50
+
+# Send command to device
+~/tools/embedded-agent-bridge/eab-control send "help"
+
+# Reset device
+~/tools/embedded-agent-bridge/eab-control reset
+
+# Flash firmware (auto-detects chip, handles everything)
+~/tools/embedded-agent-bridge/eab-control flash /path/to/project
+
+# Erase flash (for corrupted firmware)
+~/tools/embedded-agent-bridge/eab-control erase
 ```
 
-## File Interface
+## The eab-control Script
 
-All interaction happens through files in the base directory:
+The `eab-control` script is the primary interface. It handles serial port management, daemon control, and all ESP32 operations automatically.
 
-| File | Read/Write | Purpose |
-|------|------------|---------|
-| `latest.log` | Read | All serial output with timestamps |
-| `alerts.log` | Read | Filtered alerts (crashes, errors, boot events) |
-| `status.json` | Read | Connection state, counters, health |
-| `cmd.txt` | Write | Send commands to device |
+### All Available Commands
 
-## Reading Device Output
+```
+Daemon Commands:
+  start       Start the daemon now
+  stop        Stop the daemon
+  restart     Restart the daemon
+  status      Show daemon status
+  logs        Show daemon logs (stdout/stderr)
+  enable      Enable auto-start at login
+  disable     Disable auto-start
 
-### Check Recent Output
+Port Control:
+  pause [N]   Pause for N seconds (default 120) to release serial port
+  resume      Resume from pause early
+
+Device Control:
+  reset       Reset the ESP32 device
+  cmd <cmd>   Send special command (e.g., '!CHIP_INFO', '!BOOTLOADER')
+
+Flashing (handles pause/resume automatically):
+  flash <dir>      Flash ESP-IDF project (auto-detects chip, finds binaries)
+  flash <file>     Flash single binary file
+  build-flash <dir> Build ESP-IDF project and flash
+  erase            Erase entire flash
+  chip-info        Get chip ID and flash info
+  read-mac         Read MAC address
+
+Backup/Restore:
+  backup [file] [size]  Backup flash to file (default 4MB)
+  restore <file>        Restore flash from backup
+
+Serial Communication:
+  send <text>     Send text to device (e.g., 'r' to record)
+  monitor         Live serial output (Ctrl+C to exit)
+
+Log Viewing:
+  tail [N]    Show last N lines from serial log (default 50)
+  alerts [N]  Show last N alert lines (default 20)
+  wait <pat>  Wait for log line matching pattern
+```
+
+## Common Agent Workflows
+
+### 1. Check if Device is Working
+
 ```bash
-tail -50 /tmp/eab-session/latest.log
+# Get daemon and device status
+~/tools/embedded-agent-bridge/eab-control status
+
+# View recent serial output
+~/tools/embedded-agent-bridge/eab-control tail 30
 ```
 
-### Check for Errors/Crashes
+### 2. Send Commands to Device
+
 ```bash
-cat /tmp/eab-session/alerts.log
+# Send a single character command
+~/tools/embedded-agent-bridge/eab-control send "i"
+
+# Send longer text
+~/tools/embedded-agent-bridge/eab-control send "help"
+
+# Wait for specific output pattern
+~/tools/embedded-agent-bridge/eab-control wait "Ready" 30
 ```
 
-### Check Connection Status
+### 3. Fix Boot Loop / Corrupted Firmware
+
+If the device is stuck in a boot loop (showing watchdog resets, "invalid header", etc.):
+
+```bash
+# Option 1: Flash a known-good ESP-IDF project
+~/tools/embedded-agent-bridge/eab-control flash /path/to/working/project
+
+# Option 2: Erase and start fresh
+~/tools/embedded-agent-bridge/eab-control erase
+~/tools/embedded-agent-bridge/eab-control flash /path/to/project
+
+# Option 3: Restore from backup
+~/tools/embedded-agent-bridge/eab-control restore backup.bin
+```
+
+### 4. Flash New Firmware
+
+```bash
+# Flash an ESP-IDF project (auto-detects everything)
+~/tools/embedded-agent-bridge/eab-control flash /path/to/esp-idf-project
+
+# The command will:
+# 1. Auto-detect serial port from daemon
+# 2. Pause daemon to release port
+# 3. Find bootloader, partition table, and app binaries
+# 4. Auto-detect chip type (ESP32, ESP32-S3, etc.)
+# 5. Flash all components at correct addresses
+# 6. Resume daemon
+# 7. Show boot output
+```
+
+### 5. Build and Flash
+
+```bash
+# Build the project first, then flash
+~/tools/embedded-agent-bridge/eab-control build-flash /path/to/project
+```
+
+### 6. Backup Before Risky Operations
+
+```bash
+# Create backup of current flash
+~/tools/embedded-agent-bridge/eab-control backup my_backup.bin
+
+# Later, restore if needed
+~/tools/embedded-agent-bridge/eab-control restore my_backup.bin
+```
+
+### 7. Debug Connection Issues
+
+```bash
+# Check chip info
+~/tools/embedded-agent-bridge/eab-control chip-info
+
+# Read MAC address
+~/tools/embedded-agent-bridge/eab-control read-mac
+
+# Check alerts for crashes/errors
+~/tools/embedded-agent-bridge/eab-control alerts 20
+```
+
+## Understanding Device State
+
+### Status JSON
+
 ```bash
 cat /tmp/eab-session/status.json
 ```
 
-Example status.json:
+Example output:
 ```json
 {
   "session": {
@@ -54,189 +181,147 @@ Example status.json:
   },
   "counters": {
     "lines_logged": 500,
-    "bytes_received": 35000,
     "commands_sent": 5,
     "alerts_triggered": 3
   },
   "patterns": {
-    "MEMORY": 10,
-    "BOOT": 1
+    "WATCHDOG": 10,
+    "BOOT": 5
   }
 }
 ```
 
-## Sending Commands
+**Key fields:**
+- `connection.status`: "connected" or "disconnected"
+- `patterns.WATCHDOG`: High count indicates boot loop
+- `patterns.BOOT`: High count indicates repeated reboots
 
-### Regular Commands (sent to device)
-```bash
-# Send a command to the device's serial console
-printf 'help' > /tmp/eab-session/cmd.txt
+### Alert Patterns
 
-# Send multiple commands
-printf 'status\nmem' > /tmp/eab-session/cmd.txt
+The daemon automatically detects and logs these to `alerts.log`:
+
+| Pattern | Meaning |
+|---------|---------|
+| `ERROR` | ESP-IDF error log |
+| `CRASH` | Guru Meditation, Backtrace, panic |
+| `MEMORY` | Heap exhaustion, alloc failed |
+| `WATCHDOG` | Task/interrupt watchdog triggered |
+| `BOOT` | Reset reason, boot mode |
+| `WIFI` | WiFi disconnection/failures |
+| `BLE` | BLE errors |
+
+### Recognizing Boot Loops
+
+If you see these patterns, the firmware is likely corrupted:
+```
+invalid header: 0xffffffff
+rst:0x7 (TG0WDT_SYS_RST)
+rst:0x10 (RTCWDT_RTC_RST)
 ```
 
-### Special Commands (handled by EAB)
+Solution: `eab-control flash /path/to/working/project`
 
-Special commands start with `!` and are processed by EAB, not sent to device:
+## File Interface (Advanced)
+
+For direct file-based interaction:
+
+| File | Purpose |
+|------|---------|
+| `/tmp/eab-session/latest.log` | All serial output with timestamps |
+| `/tmp/eab-session/alerts.log` | Filtered alerts (crashes, errors) |
+| `/tmp/eab-session/status.json` | Connection state, counters |
+| `/tmp/eab-session/cmd.txt` | Write commands here (low-level) |
+
+### Special Commands (via cmd.txt)
 
 ```bash
-# Reset the ESP32 (via DTR/RTS)
+# Reset device
 printf '!RESET' > /tmp/eab-session/cmd.txt
 
-# Soft reset
-printf '!RESET:soft_reset' > /tmp/eab-session/cmd.txt
-
-# Enter bootloader mode
+# Enter bootloader
 printf '!BOOTLOADER' > /tmp/eab-session/cmd.txt
 
-# Get chip info via esptool
+# Get chip info
 printf '!CHIP_INFO' > /tmp/eab-session/cmd.txt
-
-# Flash firmware
-printf '!FLASH:/path/to/firmware.bin' > /tmp/eab-session/cmd.txt
 
 # Erase flash
 printf '!ERASE' > /tmp/eab-session/cmd.txt
 ```
 
-## Alert Patterns
+## Daemon Management
 
-EAB automatically detects and logs these patterns to `alerts.log`:
+### Start Daemon Manually
 
-| Pattern | Meaning |
-|---------|---------|
-| `ERROR` | ESP-IDF error log (E (timestamp)) |
-| `CRASH` | Guru Meditation, Backtrace, panic |
-| `MEMORY` | Heap info, out of memory, alloc failed |
-| `WATCHDOG` | Task watchdog, interrupt watchdog |
-| `BOOT` | Reset reason, boot mode |
-| `WIFI` | WiFi disconnection, failures |
-| `BLE` | BLE errors |
-
-## Automatic Recovery
-
-EAB monitors for crashes and can automatically recover:
-
-1. **Crash Detection**: Guru Meditation, panics, watchdog triggers
-2. **Boot Loop Detection**: Too many reboots in short time
-3. **Stuck Detection**: No output for 2+ minutes
-4. **Auto Recovery**: Resets chip to restore operation
-
-## Best Practices for Agents
-
-### 1. Always Check Status First
 ```bash
-# Before sending commands, verify connection
-cat /tmp/eab-session/status.json | grep '"status"'
+~/tools/embedded-agent-bridge/eab-control start
 ```
 
-### 2. Wait for Command Results
+### Auto-Start at Login
+
 ```bash
-# Send command
-printf 'mem' > /tmp/eab-session/cmd.txt
-# Wait a moment
-sleep 1
-# Check output
-tail -20 /tmp/eab-session/latest.log
+~/tools/embedded-agent-bridge/eab-control enable
 ```
 
-### 3. Monitor for Crashes
+### Check Daemon Status
+
 ```bash
-# Check if any crashes occurred
-grep -i "crash\|panic\|guru" /tmp/eab-session/alerts.log
+~/tools/embedded-agent-bridge/eab-control status
 ```
 
-### 4. Reset if Stuck
-```bash
-# If device seems unresponsive
-printf '!RESET' > /tmp/eab-session/cmd.txt
-sleep 3
-tail -30 /tmp/eab-session/latest.log
-```
+### View Daemon Logs
 
-### 5. Use grep for Specific Output
 ```bash
-# Find specific log entries
-grep "wifi" /tmp/eab-session/latest.log
-grep "heap" /tmp/eab-session/latest.log
+~/tools/embedded-agent-bridge/eab-control logs
 ```
 
 ## Troubleshooting
 
-### Device Not Found
+### "Could not get port from daemon"
+
+The daemon isn't running or isn't connected:
 ```bash
-# List available ports
-python3 -m eab --list
+~/tools/embedded-agent-bridge/eab-control start
+~/tools/embedded-agent-bridge/eab-control status
 ```
 
-### Port In Use
-EAB uses file locking. Check for other processes:
+### Device Not Responding
+
 ```bash
+# Reset the device
+~/tools/embedded-agent-bridge/eab-control reset
+
+# Check for output
+~/tools/embedded-agent-bridge/eab-control tail 30
+```
+
+### Flash Operation Failed
+
+```bash
+# Check if port is in use
 lsof /dev/cu.usbmodem*
+
+# Force daemon pause
+~/tools/embedded-agent-bridge/eab-control pause 120
+
+# Try flashing manually
+esptool --port /dev/cu.usbmodem* write-flash 0x0 firmware.bin
+
+# Resume daemon
+~/tools/embedded-agent-bridge/eab-control resume
 ```
 
-### Device Stuck in Bootloader
+### Boot Loop After Flash
+
+The flash may have been partial or wrong addresses:
 ```bash
-printf '!RESET' > /tmp/eab-session/cmd.txt
-```
-
-### No Output After Flash
-```bash
-# Reset after flashing
-printf '!RESET' > /tmp/eab-session/cmd.txt
-sleep 3
-tail -50 /tmp/eab-session/latest.log
-```
-
-## Command Line Options
-
-```bash
-python3 -m eab [options]
-
-Options:
-  --port, -p      Serial port (default: auto)
-  --baud, -b      Baud rate (default: 115200)
-  --base-dir, -d  Directory for log files (default: /var/run/eab/serial)
-  --list, -l      List available serial ports
-```
-
-## Example Agent Workflow
-
-```bash
-# 1. Start monitoring (in background or separate terminal)
-cd /tmp/embedded-agent-bridge
-python3 -m eab --port auto --base-dir /tmp/eab-session &
-
-# 2. Wait for connection
-sleep 3
-
-# 3. Verify connected
-cat /tmp/eab-session/status.json | grep status
-
-# 4. Send a command
-printf 'help' > /tmp/eab-session/cmd.txt
-sleep 1
-
-# 5. Read response
-tail -30 /tmp/eab-session/latest.log
-
-# 6. Check for any errors
-cat /tmp/eab-session/alerts.log
-
-# 7. If needed, reset device
-printf '!RESET' > /tmp/eab-session/cmd.txt
-
-# 8. Flash new firmware
-printf '!FLASH:/path/to/firmware.bin' > /tmp/eab-session/cmd.txt
-sleep 30
-tail -50 /tmp/eab-session/latest.log
+# Erase and reflash
+~/tools/embedded-agent-bridge/eab-control erase
+~/tools/embedded-agent-bridge/eab-control flash /path/to/project
 ```
 
 ## Log Format
 
-Logs use grep-friendly format with timestamps:
-
+All logs include timestamps:
 ```
 [HH:MM:SS.mmm] <original line from device>
 [HH:MM:SS.mmm] >>> CMD: <command sent>
@@ -245,9 +330,8 @@ Logs use grep-friendly format with timestamps:
 
 Example:
 ```
-[08:25:03.214] I (13329) audio_rec: VAD started
-[08:25:04.000] >>> CMD: help
-[08:25:04.100] Available commands:
+[08:25:03.214] I (13329) RECORDER: Initialized
+[08:25:04.000] >>> CMD: i
+[08:25:04.100] === Audio Recorder Info ===
 [08:25:25.661] [EAB] OK: Device reset
-[08:25:25.683] rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)
 ```

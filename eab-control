@@ -72,19 +72,33 @@ case "$1" in
         echo "Done. EAB will not start automatically."
         ;;
 
+    pause)
+        SECONDS="${2:-120}"
+        echo "Pausing EAB daemon for ${SECONDS}s to release serial port..."
+        cd "$EAB_DIR" && python3 -m eab --pause "$SECONDS"
+        ;;
+
+    resume)
+        echo "Resuming EAB daemon (removing pause file)..."
+        rm -f /tmp/eab-session/pause.txt
+        echo "Daemon will resume on next loop iteration."
+        ;;
+
     *)
         echo "EAB Daemon Control"
         echo ""
         echo "Usage: eab-control [command]"
         echo ""
         echo "Commands:"
-        echo "  start    - Start the daemon now"
-        echo "  stop     - Stop the daemon"
-        echo "  restart  - Restart the daemon"
-        echo "  status   - Show daemon status"
-        echo "  logs     - Show daemon logs"
-        echo "  enable   - Enable auto-start at login"
-        echo "  disable  - Disable auto-start"
+        echo "  start      - Start the daemon now"
+        echo "  stop       - Stop the daemon"
+        echo "  restart    - Restart the daemon"
+        echo "  status     - Show daemon status"
+        echo "  logs       - Show daemon logs"
+        echo "  enable     - Enable auto-start at login"
+        echo "  disable    - Disable auto-start"
+        echo "  pause [N]  - Pause for N seconds (default 120) to release serial port"
+        echo "  resume     - Resume from pause early"
         echo ""
         echo "Session files are in /tmp/eab-session/"
         ;;

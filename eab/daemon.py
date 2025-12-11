@@ -100,6 +100,10 @@ class SerialDaemon:
         self._cmd_path = os.path.join(base_dir, "cmd.txt")
         self._cmd_mtime = 0.0
 
+        # Pause file path - write seconds to this file to pause daemon
+        self._pause_path = os.path.join(base_dir, "pause.txt")
+        self._paused = False
+
         # Device controller for special commands (!RESET, !FLASH, etc.)
         self._device_controller = DeviceController(
             serial_port=self._serial,
@@ -294,6 +298,10 @@ class SerialDaemon:
 
         while self._running:
             try:
+                # Check for pause request
+                if self._check_pause():
+                    continue
+
                 # Check connection
                 if not self._reconnection.check_and_reconnect():
                     self._clock.sleep(0.1)
@@ -330,6 +338,86 @@ class SerialDaemon:
             except Exception as e:
                 self._logger.error(f"Error in main loop: {e}")
                 self._clock.sleep(0.1)
+
+    def _check_pause(self) -> bool:
+        """Check for pause request. Returns True if paused (caller should continue loop)."""
+        try:
+            if not self._fs.file_exists(self._pause_path):
+                if self._paused:
+                    # Pause file removed (early resume), resume now
+                    self._resume_from_pause()
+                return False
+
+            content = self._fs.read_file(self._pause_path).strip()
+            if not content:
+                if self._paused:
+                    self._resume_from_pause()
+                return False
+
+            # Parse pause duration
+            try:
+                pause_until = float(content)
+            except ValueError:
+                # Invalid content, remove file
+                self._fs.write_file(self._pause_path, "")
+                if self._paused:
+                    self._resume_from_pause()
+                return False
+
+            now = self._clock.timestamp()
+            if now >= pause_until:
+                # Pause expired, remove file and resume
+                self._fs.write_file(self._pause_path, "")
+                if self._paused:
+                    self._resume_from_pause()
+                return False
+
+            # We should be paused
+            if not self._paused:
+                remaining = int(pause_until - now)
+                self._logger.info(f"PAUSING for {remaining}s - releasing serial port for flashing...")
+                self._reconnection.disconnect()
+                if self._port_lock:
+                    self._port_lock.release()
+                    self._port_lock = None
+                self._status_manager.set_connection_state(ConnectionState.DISCONNECTED)
+                self._paused = True
+
+            # Sleep while paused
+            self._clock.sleep(0.5)
+            return True
+
+        except Exception as e:
+            self._logger.error(f"Error checking pause: {e}")
+            return False
+
+    def _resume_from_pause(self) -> None:
+        """Resume from paused state - re-acquire lock and reconnect."""
+        self._logger.info("Resuming from pause...")
+
+        # Re-acquire port lock
+        port_name = self._reconnection._port_name
+        self._port_lock = PortLock(port_name, logger=self._logger)
+
+        # Try to acquire lock with retries (port may still be in use briefly)
+        for attempt in range(5):
+            if self._port_lock.acquire(timeout=0, force=True):
+                break
+            self._logger.warning(f"Port lock retry {attempt + 1}/5...")
+            self._clock.sleep(1.0)
+        else:
+            self._logger.error("Failed to re-acquire port lock after pause")
+            # Continue anyway, reconnection may still work
+
+        # Reconnect to serial port
+        if self._reconnection.connect():
+            self._status_manager.set_connection_state(ConnectionState.CONNECTED)
+            self._logger.info("Resumed successfully - serial port reconnected")
+        else:
+            self._logger.warning("Resume: reconnection pending, will retry...")
+            self._status_manager.set_connection_state(ConnectionState.RECONNECTING)
+
+        self._paused = False
 
     def _process_line(self, line: str) -> None:
         """Process a received line."""
@@ -474,6 +562,12 @@ Examples:
         action="store_true",
         help="Stop any running daemon and exit",
     )
+    parser.add_argument(
+        "--pause",
+        type=int,
+        metavar="SECONDS",
+        help="Pause daemon for N seconds (releases serial port for flashing)",
+    )
 
     args = parser.parse_args()
 
@@ -511,6 +605,31 @@ Examples:
                 sys.exit(1)
         else:
             print("No EAB daemon is running")
+        return
+
+    if args.pause:
+        existing = check_singleton()
+        if not existing or not existing.is_alive:
+            print("No EAB daemon is running")
+            sys.exit(1)
+
+        import time
+        pause_seconds = args.pause
+        pause_until = time.time() + pause_seconds
+        pause_path = os.path.join(existing.base_dir, "pause.txt")
+
+        print(f"Pausing EAB daemon for {pause_seconds} seconds...")
+        print(f"Serial port will be released for flashing.")
+
+        # Write pause file
+        with open(pause_path, "w") as f:
+            f.write(str(pause_until))
+
+        # Wait a moment for daemon to release port
+        time.sleep(1.0)
+        print(f"Port released. You have {pause_seconds - 1} seconds to flash.")
+        print(f"Daemon will auto-resume when pause expires.")
+        print(f"To resume early: rm {pause_path}")
         return
 
     daemon = SerialDaemon(

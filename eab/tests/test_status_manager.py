@@ -13,8 +13,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from serial.mocks import MockFileSystem, MockClock
-from serial.interfaces import ConnectionState
+from eab.mocks import MockFileSystem, MockClock
+from eab.interfaces import ConnectionState
 
 
 class TestStatusManager:
@@ -22,7 +22,7 @@ class TestStatusManager:
 
     def test_creates_status_file(self):
         """Should create status.json file."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -39,7 +39,7 @@ class TestStatusManager:
 
     def test_status_json_structure(self):
         """Status JSON should have expected structure."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -63,7 +63,7 @@ class TestStatusManager:
 
     def test_session_info(self):
         """Session info should include id, started, uptime."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -85,7 +85,7 @@ class TestStatusManager:
 
     def test_uptime_updates(self):
         """Uptime should increase with time."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -108,7 +108,7 @@ class TestStatusManager:
 
     def test_connection_info(self):
         """Connection info should include port, baud, status."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -131,7 +131,7 @@ class TestStatusManager:
 
     def test_reconnect_count(self):
         """Should track reconnection count."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -153,7 +153,7 @@ class TestStatusManager:
 
     def test_counters(self):
         """Should track lines, bytes, commands, alerts."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -186,7 +186,7 @@ class TestStatusManager:
 
     def test_pattern_counts(self):
         """Should track per-pattern alert counts."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -212,7 +212,7 @@ class TestStatusManager:
 
     def test_last_updated_timestamp(self):
         """Should update last_updated on every write."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -235,7 +235,7 @@ class TestStatusManager:
 
     def test_valid_json(self):
         """Status file should always be valid JSON."""
-        from serial.status_manager import StatusManager
+        from eab.status_manager import StatusManager
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))

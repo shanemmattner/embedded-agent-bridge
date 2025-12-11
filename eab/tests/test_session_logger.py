@@ -11,7 +11,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from serial.mocks import MockFileSystem, MockClock
+from eab.mocks import MockFileSystem, MockClock
 
 
 class TestSessionLogger:
@@ -19,7 +19,7 @@ class TestSessionLogger:
 
     def test_creates_session_log_file(self):
         """Should create a new log file when session starts."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -36,7 +36,7 @@ class TestSessionLogger:
 
     def test_session_id_format(self):
         """Should generate session ID with correct timestamp format."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -53,7 +53,7 @@ class TestSessionLogger:
 
     def test_writes_session_header(self):
         """Should write formatted header at session start."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -74,7 +74,7 @@ class TestSessionLogger:
 
     def test_log_line_with_timestamp(self):
         """Should log lines with millisecond timestamps."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0, 123000))
@@ -94,7 +94,7 @@ class TestSessionLogger:
 
     def test_log_multiple_lines(self):
         """Should log multiple lines in order."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -126,7 +126,7 @@ class TestSessionLogger:
 
     def test_log_command_with_marker(self):
         """Should mark commands with >>> prefix."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -146,7 +146,7 @@ class TestSessionLogger:
 
     def test_end_session_writes_footer(self):
         """Should write summary footer when session ends."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -172,7 +172,7 @@ class TestSessionLogger:
 
     def test_grep_friendly_format(self):
         """Log format should be easily grep-able."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -195,7 +195,7 @@ class TestSessionLogger:
 
     def test_lines_logged_counter(self):
         """Should track number of lines logged."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -215,7 +215,7 @@ class TestSessionLogger:
 
     def test_commands_sent_counter(self):
         """Should track number of commands sent."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -236,7 +236,7 @@ class TestSessionLogger:
 
     def test_immediate_flush(self):
         """Should flush to disk immediately (no buffering loss)."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -260,7 +260,7 @@ class TestSessionArchiving:
 
     def test_previous_session_archived_on_start(self):
         """Should archive previous session log when starting new session."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 8, 45, 0))
@@ -285,7 +285,7 @@ class TestSessionArchiving:
 
     def test_get_recent_lines(self):
         """Should provide access to recent lines for context."""
-        from serial.session_logger import SessionLogger
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))

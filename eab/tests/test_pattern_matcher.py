@@ -11,7 +11,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from serial.mocks import MockFileSystem, MockClock
+from eab.mocks import MockFileSystem, MockClock
 
 
 class TestPatternMatcher:
@@ -19,7 +19,7 @@ class TestPatternMatcher:
 
     def test_add_string_pattern(self):
         """Should add a simple string pattern."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher()
         matcher.add_pattern("ERROR", "ERROR")
@@ -28,7 +28,7 @@ class TestPatternMatcher:
 
     def test_add_regex_pattern(self):
         """Should add a regex pattern."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher()
         matcher.add_pattern("timeout", r"timeout|timed?\s*out", is_regex=True)
@@ -39,7 +39,7 @@ class TestPatternMatcher:
 
     def test_case_insensitive_by_default(self):
         """Should match case-insensitively by default."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher()
         matcher.add_pattern("ERROR", "ERROR")
@@ -52,7 +52,7 @@ class TestPatternMatcher:
 
     def test_multiple_patterns_same_line(self):
         """Should detect multiple patterns in same line."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher()
         matcher.add_pattern("ERROR", "ERROR")
@@ -63,7 +63,7 @@ class TestPatternMatcher:
 
     def test_pattern_counts(self):
         """Should track count per pattern."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher()
         matcher.add_pattern("ERROR", "ERROR")
@@ -80,7 +80,7 @@ class TestPatternMatcher:
 
     def test_remove_pattern(self):
         """Should remove a pattern."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher()
         matcher.add_pattern("ERROR", "ERROR")
@@ -94,7 +94,7 @@ class TestPatternMatcher:
 
     def test_no_match_returns_empty(self):
         """Should return empty list when no patterns match."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher()
         matcher.add_pattern("ERROR", "ERROR")
@@ -104,7 +104,7 @@ class TestPatternMatcher:
 
     def test_match_includes_timestamp(self):
         """Match results should include timestamp."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
         matcher = PatternMatcher(clock=clock)
@@ -115,7 +115,7 @@ class TestPatternMatcher:
 
     def test_match_includes_line(self):
         """Match results should include the original line."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher()
         matcher.add_pattern("ERROR", "ERROR")
@@ -130,7 +130,7 @@ class TestBuiltInPatterns:
 
     def test_default_patterns_loaded(self):
         """Should load default patterns on creation."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher(load_defaults=True)
         patterns = matcher.get_patterns()
@@ -145,7 +145,7 @@ class TestBuiltInPatterns:
 
     def test_esp32_error_format(self):
         """Should detect ESP32 error format: E (timestamp) TAG: message."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher(load_defaults=True)
 
@@ -154,7 +154,7 @@ class TestBuiltInPatterns:
 
     def test_esp32_assert_failure(self):
         """Should detect ESP32 assert failures."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher(load_defaults=True)
 
@@ -163,7 +163,7 @@ class TestBuiltInPatterns:
 
     def test_esp32_panic(self):
         """Should detect ESP32 panic messages."""
-        from serial.pattern_matcher import PatternMatcher
+        from eab.pattern_matcher import PatternMatcher
 
         matcher = PatternMatcher(load_defaults=True)
 
@@ -176,7 +176,7 @@ class TestAlertLogger:
 
     def test_writes_alert_to_file(self):
         """Should write alert to alerts file."""
-        from serial.pattern_matcher import PatternMatcher, AlertLogger
+        from eab.pattern_matcher import PatternMatcher, AlertLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -198,7 +198,7 @@ class TestAlertLogger:
 
     def test_alert_format(self):
         """Alert format should be: [timestamp] [PATTERN] line."""
-        from serial.pattern_matcher import PatternMatcher, AlertLogger
+        from eab.pattern_matcher import PatternMatcher, AlertLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 45, 123000))
@@ -222,7 +222,7 @@ class TestAlertLogger:
 
     def test_multiple_alerts_appended(self):
         """Multiple alerts should be appended to file."""
-        from serial.pattern_matcher import PatternMatcher, AlertLogger
+        from eab.pattern_matcher import PatternMatcher, AlertLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))
@@ -251,7 +251,7 @@ class TestAlertLogger:
 
     def test_alert_count(self):
         """Should track total number of alerts."""
-        from serial.pattern_matcher import PatternMatcher, AlertLogger
+        from eab.pattern_matcher import PatternMatcher, AlertLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))

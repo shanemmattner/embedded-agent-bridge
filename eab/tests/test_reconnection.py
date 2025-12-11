@@ -13,8 +13,8 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from serial.mocks import MockSerialPort, MockClock, MockLogger, MockFileSystem
-from serial.interfaces import ConnectionState
+from eab.mocks import MockSerialPort, MockClock, MockLogger, MockFileSystem
+from eab.interfaces import ConnectionState
 
 
 class TestReconnectionManager:
@@ -22,7 +22,7 @@ class TestReconnectionManager:
 
     def test_initial_connection_success(self):
         """Should connect successfully on first attempt."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         clock = MockClock()
@@ -45,7 +45,7 @@ class TestReconnectionManager:
 
     def test_initial_connection_failure_retries(self):
         """Should retry on initial connection failure."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         port.set_fail_on_open(True)
@@ -72,7 +72,7 @@ class TestReconnectionManager:
 
     def test_reconnect_on_disconnect(self):
         """Should auto-reconnect when connection is lost."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         clock = MockClock()
@@ -102,7 +102,7 @@ class TestReconnectionManager:
 
     def test_exponential_backoff(self):
         """Should use exponential backoff on repeated failures."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         port.set_fail_on_open(True)
@@ -134,7 +134,7 @@ class TestReconnectionManager:
 
     def test_max_delay_cap(self):
         """Should cap retry delay at max_delay."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         port.set_fail_on_open(True)
@@ -162,7 +162,7 @@ class TestReconnectionManager:
 
     def test_successful_reconnect_resets_backoff(self):
         """Should reset backoff delay after successful reconnect."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         clock = MockClock()
@@ -193,7 +193,7 @@ class TestReconnectionManager:
 
     def test_state_transitions(self):
         """Should correctly transition through states."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         clock = MockClock()
@@ -223,7 +223,7 @@ class TestReconnectionManager:
 
     def test_callback_on_reconnect(self):
         """Should call callback when reconnection occurs."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         clock = MockClock()
@@ -251,7 +251,7 @@ class TestReconnectionManager:
 
     def test_callback_on_disconnect(self):
         """Should call callback when disconnect is detected."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         clock = MockClock()
@@ -279,7 +279,7 @@ class TestReconnectionManager:
 
     def test_port_not_found_waits_for_replug(self):
         """Should wait and retry when port not found (USB unplugged)."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         port.set_fail_on_open(True)  # Simulate port not found
@@ -314,7 +314,7 @@ class TestReconnectionIntegration:
 
     def test_main_loop_handles_disconnect(self):
         """Main loop should handle disconnect during operation."""
-        from serial.reconnection import ReconnectionManager
+        from eab.reconnection import ReconnectionManager
 
         port = MockSerialPort()
         clock = MockClock()

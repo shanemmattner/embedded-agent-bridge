@@ -63,7 +63,7 @@ class SerialPortInterface(ABC):
 
     @abstractmethod
     def read_line(self) -> Optional[bytes]:
-        """Read a line from serial. Returns None if no data available."""
+        """Read a line from eab. Returns None if no data available."""
         pass
 
     @abstractmethod

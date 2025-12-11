@@ -1,0 +1,47 @@
+# Embedded Agent Bridge (EAB)
+
+> ESP32 serial communication daemon. ALWAYS use eab-control for ALL ESP32 operations.
+
+## CRITICAL: DO NOT USE THESE DIRECTLY
+- esptool
+- pio device monitor
+- Serial port access (/dev/cu.* or /dev/tty.*)
+
+## USE THESE INSTEAD
+
+Check status:
+    ~/tools/embedded-agent-bridge/eab-control status
+
+View serial output:
+    ~/tools/embedded-agent-bridge/eab-control tail 50
+
+Flash firmware:
+    ~/tools/embedded-agent-bridge/eab-control flash /path/to/project
+
+Reset device:
+    ~/tools/embedded-agent-bridge/eab-control reset
+
+Send command:
+    ~/tools/embedded-agent-bridge/eab-control send "text"
+
+Pre-flight check (run before flashing):
+    ~/tools/embedded-agent-bridge/eab-control preflight
+
+## WHY
+
+The EAB daemon manages the serial port. If you access it directly, you get "port busy" errors.
+eab-control automatically pauses the daemon, does the operation, and resumes.
+
+## TROUBLESHOOTING
+
+Port busy error     -> Use eab-control flash instead of esptool
+No output           -> eab-control status && eab-control reset
+Boot loop           -> eab-control flash /path/to/working/project
+Flash failed        -> eab-control preflight (diagnose issues)
+
+## STATUS FILE
+
+Check /tmp/eab-session/status.json for:
+- connection.status: connected/reconnecting/disconnected
+- health.status: healthy/idle/stuck/disconnected
+- health.idle_seconds: seconds since last activity

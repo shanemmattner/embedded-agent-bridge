@@ -639,6 +639,46 @@ Examples:
         metavar="SECONDS",
         help="Pause daemon for N seconds (releases serial port for flashing)",
     )
+    parser.add_argument(
+        "--cmd",
+        type=str,
+        metavar="COMMAND",
+        help="Send a command to the device via cmd.txt (use ! prefix for special commands)",
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Reset the ESP32 device (sends !RESET command)",
+    )
+    parser.add_argument(
+        "--logs",
+        type=int,
+        nargs="?",
+        const=50,
+        metavar="LINES",
+        help="Show last N lines from session log (default: 50)",
+    )
+    parser.add_argument(
+        "--wait-for",
+        type=str,
+        metavar="PATTERN",
+        help="Wait for a line matching pattern in log (exits when found)",
+    )
+    parser.add_argument(
+        "--wait-timeout",
+        type=int,
+        default=30,
+        metavar="SECONDS",
+        help="Timeout for --wait-for (default: 30s)",
+    )
+    parser.add_argument(
+        "--alerts",
+        type=int,
+        nargs="?",
+        const=20,
+        metavar="LINES",
+        help="Show last N alert lines (default: 20)",
+    )
 
     args = parser.parse_args()
 
@@ -702,6 +742,99 @@ Examples:
         print(f"Daemon will auto-resume when pause expires.")
         print(f"To resume early: rm {pause_path}")
         return
+
+    # Helper to get daemon info for commands that need it
+    def get_daemon_info():
+        existing = check_singleton()
+        if not existing or not existing.is_alive:
+            print("No EAB daemon is running")
+            sys.exit(1)
+        return existing
+
+    if args.cmd:
+        existing = get_daemon_info()
+        cmd_path = os.path.join(existing.base_dir, "cmd.txt")
+        with open(cmd_path, "w") as f:
+            f.write(args.cmd + "\n")
+        print(f"Command sent: {args.cmd}")
+        return
+
+    if args.reset:
+        existing = get_daemon_info()
+        cmd_path = os.path.join(existing.base_dir, "cmd.txt")
+        with open(cmd_path, "w") as f:
+            f.write("!RESET\n")
+        print("Reset command sent")
+        return
+
+    if args.logs is not None:
+        existing = get_daemon_info()
+        log_path = os.path.join(existing.base_dir, "latest.log")
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["tail", f"-{args.logs}", log_path],
+                capture_output=True,
+                text=True
+            )
+            print(result.stdout)
+        except FileNotFoundError:
+            print(f"Log file not found: {log_path}")
+        return
+
+    if args.alerts is not None:
+        existing = get_daemon_info()
+        alerts_path = os.path.join(existing.base_dir, "alerts.log")
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["tail", f"-{args.alerts}", alerts_path],
+                capture_output=True,
+                text=True
+            )
+            if result.stdout.strip():
+                print(result.stdout)
+            else:
+                print("No alerts recorded")
+        except FileNotFoundError:
+            print("No alerts log file")
+        return
+
+    if args.wait_for:
+        import time
+        import re
+        existing = get_daemon_info()
+        log_path = os.path.join(existing.base_dir, "latest.log")
+        pattern = re.compile(args.wait_for)
+
+        start_time = time.time()
+        timeout = args.wait_timeout
+
+        # Get initial file size to only read new lines
+        try:
+            with open(log_path, "r") as f:
+                f.seek(0, 2)  # Seek to end
+                initial_pos = f.tell()
+        except FileNotFoundError:
+            initial_pos = 0
+
+        print(f"Waiting for pattern '{args.wait_for}' (timeout: {timeout}s)...")
+
+        while time.time() - start_time < timeout:
+            try:
+                with open(log_path, "r") as f:
+                    f.seek(initial_pos)
+                    for line in f:
+                        if pattern.search(line):
+                            print(f"MATCH: {line.strip()}")
+                            sys.exit(0)
+                    initial_pos = f.tell()
+            except FileNotFoundError:
+                pass
+            time.sleep(0.1)
+
+        print(f"Timeout waiting for pattern '{args.wait_for}'")
+        sys.exit(1)
 
     daemon = SerialDaemon(
         port=args.port,

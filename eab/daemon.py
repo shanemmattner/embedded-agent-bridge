@@ -103,6 +103,8 @@ class SerialDaemon:
         # Pause file path - write seconds to this file to pause daemon
         self._pause_path = os.path.join(base_dir, "pause.txt")
         self._paused = False
+        self._pause_start_time: Optional[float] = None
+        self._original_port: Optional[str] = None  # Track original port for resume
 
         # Device controller for special commands (!RESET, !FLASH, etc.)
         self._device_controller = DeviceController(
@@ -340,7 +342,14 @@ class SerialDaemon:
                 self._clock.sleep(0.1)
 
     def _check_pause(self) -> bool:
-        """Check for pause request. Returns True if paused (caller should continue loop)."""
+        """Check for pause request. Returns True if paused (caller should continue loop).
+
+        Edge cases handled:
+        - Port disappears during pause (USB unplugged)
+        - Port changes during pause (different device)
+        - Rapid pause/resume cycles
+        - esptool holding port briefly after flash
+        """
         try:
             if not self._fs.file_exists(self._pause_path):
                 if self._paused:
@@ -376,15 +385,26 @@ class SerialDaemon:
             if not self._paused:
                 remaining = int(pause_until - now)
                 self._logger.info(f"PAUSING for {remaining}s - releasing serial port for flashing...")
+
+                # Store original port name for later verification
+                self._original_port = self._reconnection._port_name
+                self._pause_start_time = now
+
                 self._reconnection.disconnect()
                 if self._port_lock:
                     self._port_lock.release()
                     self._port_lock = None
                 self._status_manager.set_connection_state(ConnectionState.DISCONNECTED)
+
+                # Log to session for agent visibility
+                self._session_logger.log_line(f"[EAB] PAUSED - port {self._original_port} released for flashing")
+
                 self._paused = True
 
-            # Sleep while paused
-            self._clock.sleep(0.5)
+            # Sleep while paused (check more frequently near end of pause for responsiveness)
+            remaining = pause_until - now
+            sleep_time = 0.5 if remaining > 5 else 0.1
+            self._clock.sleep(sleep_time)
             return True
 
         except Exception as e:
@@ -392,32 +412,83 @@ class SerialDaemon:
             return False
 
     def _resume_from_pause(self) -> None:
-        """Resume from paused state - re-acquire lock and reconnect."""
-        self._logger.info("Resuming from pause...")
+        """Resume from paused state - re-acquire lock and reconnect.
 
-        # Re-acquire port lock
+        Handles edge cases:
+        - Port disappeared (USB unplugged)
+        - Port changed (different device now)
+        - esptool still holding port briefly
+        - Port name changed after ESP32 reset
+        """
+        pause_duration = 0
+        if self._pause_start_time:
+            pause_duration = int(self._clock.timestamp() - self._pause_start_time)
+
+        self._logger.info(f"Resuming from pause (was paused {pause_duration}s)...")
+
+        # Check if original port still exists
         port_name = self._reconnection._port_name
+        original_port = self._original_port or port_name
+
+        # Give esptool/other tools time to release port (common race condition)
+        self._clock.sleep(0.5)
+
+        # Check if port exists using available ports list
+        available_ports = [p.device for p in RealSerialPort.list_ports()]
+
+        if original_port not in available_ports:
+            self._logger.warning(f"Original port {original_port} no longer exists!")
+            self._logger.info(f"Available ports: {available_ports}")
+
+            # Try to auto-detect a new ESP32 port
+            if self._auto_detect:
+                new_port = self._resolve_port()
+                if new_port != self._port and new_port in available_ports:
+                    self._logger.info(f"Auto-detected new port: {new_port}")
+                    self._reconnection._port_name = new_port
+                    port_name = new_port
+                else:
+                    self._logger.warning("No ESP32 port found, will retry on next loop...")
+                    self._status_manager.set_connection_state(ConnectionState.RECONNECTING)
+                    self._session_logger.log_line("[EAB] RESUME FAILED - port disappeared, waiting for reconnect")
+                    self._paused = False
+                    self._pause_start_time = None
+                    self._original_port = None
+                    return
+
+        # Re-acquire port lock with extended retries (esptool can hold port for a bit)
         self._port_lock = PortLock(port_name, logger=self._logger)
 
-        # Try to acquire lock with retries (port may still be in use briefly)
-        for attempt in range(5):
+        lock_acquired = False
+        for attempt in range(10):  # Extended retries for esptool cleanup
             if self._port_lock.acquire(timeout=0, force=True):
+                lock_acquired = True
                 break
-            self._logger.warning(f"Port lock retry {attempt + 1}/5...")
-            self._clock.sleep(1.0)
-        else:
+            self._logger.warning(f"Port lock retry {attempt + 1}/10 (esptool may still be releasing)...")
+            self._clock.sleep(0.5)
+
+        if not lock_acquired:
             self._logger.error("Failed to re-acquire port lock after pause")
+            # Check who's holding the port
+            port_users = find_port_users(port_name)
+            if port_users:
+                for user in port_users:
+                    self._logger.warning(f"  Port held by PID {user['pid']}: {user['name']}")
             # Continue anyway, reconnection may still work
 
         # Reconnect to serial port
         if self._reconnection.connect():
             self._status_manager.set_connection_state(ConnectionState.CONNECTED)
             self._logger.info("Resumed successfully - serial port reconnected")
+            self._session_logger.log_line(f"[EAB] RESUMED - connected to {port_name}")
         else:
             self._logger.warning("Resume: reconnection pending, will retry...")
             self._status_manager.set_connection_state(ConnectionState.RECONNECTING)
+            self._session_logger.log_line("[EAB] RESUME - reconnection pending")
 
         self._paused = False
+        self._pause_start_time = None
+        self._original_port = None
 
     def _process_line(self, line: str) -> None:
         """Process a received line."""

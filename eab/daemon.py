@@ -100,11 +100,44 @@ class SerialDaemon:
         """Resolve 'auto' to actual port."""
         if self._port.lower() == "auto" and self._auto_detect:
             ports = RealSerialPort.list_ports()
-            for p in ports:
-                if "usbmodem" in p.device.lower() or "usb" in p.device.lower():
-                    self._logger.info(f"Auto-detected port: {p.device}")
-                    return p.device
-            self._logger.warning("No USB serial port found")
+
+            # ESP32 USB identifiers (prioritized)
+            esp32_patterns = [
+                # Native USB (ESP32-S2, S3, C3, C6, P4)
+                "usbmodem",
+                # CP210x (most common ESP32 dev boards)
+                "cp210",
+                "silicon_labs",
+                "silabs",
+                # CH340/CH341 (cheap ESP32 boards)
+                "ch340",
+                "ch341",
+                "wch",
+                # FTDI (some dev boards)
+                "ftdi",
+                "ft232",
+                # Generic USB serial
+                "usbserial",
+                "usb",
+            ]
+
+            # Search for ESP32-like devices
+            for pattern in esp32_patterns:
+                for p in ports:
+                    device_lower = p.device.lower()
+                    desc_lower = p.description.lower()
+                    hwid_lower = p.hwid.lower()
+
+                    if (pattern in device_lower or
+                        pattern in desc_lower or
+                        pattern in hwid_lower):
+                        # Skip Bluetooth and debug ports
+                        if "bluetooth" in desc_lower or "debug-console" in device_lower:
+                            continue
+                        self._logger.info(f"Auto-detected ESP32 port: {p.device} ({p.description})")
+                        return p.device
+
+            self._logger.warning("No ESP32 serial port found")
             return self._port
         return self._port
 

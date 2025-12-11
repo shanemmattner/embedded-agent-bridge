@@ -12,15 +12,31 @@ from dataclasses import dataclass
 from .interfaces import FileSystemInterface, ClockInterface, AlertMatch
 
 
-# Default patterns for embedded systems
+# Default patterns for embedded systems (ESP32 focused)
 DEFAULT_PATTERNS = {
-    "ERROR": r"error",
+    # General errors
+    "ERROR": r"\bE\s*\(\d+\)|error",
     "FAIL": r"fail",
     "DISCONNECT": r"disconnect",
     "TIMEOUT": r"timeout|timed?\s*out",
-    "CRASH": r"crash|guru\s*meditation",
-    "panic": r"panic",
-    "assert": r"assert\s*failed",
+
+    # ESP32 crash patterns
+    "CRASH": r"crash|guru\s*meditation|Backtrace:",
+    "panic": r"panic|abort\(\)|Rebooting\.\.\.",
+    "assert": r"assert\s*failed|ESP_ERROR_CHECK",
+
+    # ESP32 memory issues
+    "MEMORY": r"heap|out\s*of\s*memory|alloc\s*failed|stack\s*overflow",
+
+    # ESP32 watchdog
+    "WATCHDOG": r"wdt|watchdog|Task\s+watchdog",
+
+    # ESP32 boot issues
+    "BOOT": r"rst:0x|boot:0x|flash\s*read\s*err",
+
+    # ESP32 Wi-Fi/BLE
+    "WIFI": r"wifi:.*fail|WIFI_EVENT_STA_DISCONNECTED",
+    "BLE": r"BLE.*error|GAP.*fail|GATT.*fail",
 }
 
 

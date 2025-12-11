@@ -1,9 +1,69 @@
 #!/bin/bash
 # EAB Daemon Control Script
-# Usage: eab-control [start|stop|restart|status|logs|enable|disable]
+# AGENTS: Use this script for ALL ESP32 operations. Never use esptool directly!
+#
+# Quick reference:
+#   eab-control status      - Check device status
+#   eab-control tail 50     - View serial output
+#   eab-control send "i"    - Send command to device
+#   eab-control flash <dir> - Flash firmware (handles port automatically)
+#   eab-control reset       - Reset device
 
 PLIST="$HOME/Library/LaunchAgents/com.eab.daemon.plist"
 EAB_DIR="$HOME/tools/embedded-agent-bridge"
+
+# Helper function to check if daemon is running and port is available
+check_daemon() {
+    if [ ! -f /tmp/eab-session/status.json ]; then
+        echo "ERROR: EAB daemon is not running!"
+        echo ""
+        echo "To fix: Run 'eab-control start' or restart the daemon"
+        return 1
+    fi
+    return 0
+}
+
+# Helper function to get port with helpful error message
+get_port() {
+    PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+    if [ -z "$PORT" ]; then
+        echo ""
+        echo "=========================================="
+        echo "ERROR: Could not get port from EAB daemon"
+        echo "=========================================="
+        echo ""
+        echo "The daemon may not be running. Try:"
+        echo "  1. eab-control status    # Check what's happening"
+        echo "  2. eab-control start     # Start the daemon"
+        echo ""
+        return 1
+    fi
+    echo "$PORT"
+    return 0
+}
+
+# Helper to verify port is actually released before flashing
+verify_port_released() {
+    local PORT="$1"
+    local MAX_WAIT=10
+    local COUNT=0
+
+    while [ $COUNT -lt $MAX_WAIT ]; do
+        # Check if any process is using the port
+        if ! lsof "$PORT" >/dev/null 2>&1; then
+            return 0  # Port is free
+        fi
+        echo "Waiting for port to be released... ($COUNT/$MAX_WAIT)"
+        sleep 1
+        COUNT=$((COUNT + 1))
+    done
+
+    echo ""
+    echo "WARNING: Port $PORT may still be in use by:"
+    lsof "$PORT" 2>/dev/null
+    echo ""
+    return 1
+}
 
 case "$1" in
     start)
@@ -118,10 +178,77 @@ case "$1" in
         cd "$EAB_DIR" && python3 -m eab --wait-for "$2" --wait-timeout "$TIMEOUT"
         ;;
 
+    preflight)
+        # Pre-flight check for agents - verify everything is ready for flashing
+        echo "=== EAB Pre-Flight Check ==="
+        echo ""
+
+        ERRORS=0
+
+        # Check 1: Daemon running
+        if [ -f /tmp/eab-session/status.json ]; then
+            echo "[OK] Daemon status file exists"
+        else
+            echo "[FAIL] Daemon not running!"
+            echo "       Fix: Run 'eab-control start'"
+            ERRORS=$((ERRORS + 1))
+        fi
+
+        # Check 2: Port available
+        PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+        if [ -n "$PORT" ]; then
+            echo "[OK] Port detected: $PORT"
+
+            # Check if port device exists
+            if [ -e "$PORT" ]; then
+                echo "[OK] Port device exists"
+            else
+                echo "[FAIL] Port device missing (USB disconnected?)"
+                ERRORS=$((ERRORS + 1))
+            fi
+        else
+            echo "[FAIL] No port in daemon status"
+            ERRORS=$((ERRORS + 1))
+        fi
+
+        # Check 3: Connection status
+        CONN_STATUS=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"status": "[^"]*"' | head -1 | cut -d'"' -f4)
+        if [ "$CONN_STATUS" = "connected" ]; then
+            echo "[OK] Connection status: connected"
+        else
+            echo "[WARN] Connection status: $CONN_STATUS"
+        fi
+
+        # Check 4: Health status
+        HEALTH=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"status": "[^"]*"' | tail -1 | cut -d'"' -f4)
+        if [ "$HEALTH" = "healthy" ]; then
+            echo "[OK] Health status: healthy"
+        else
+            echo "[WARN] Health status: $HEALTH"
+        fi
+
+        echo ""
+        if [ $ERRORS -eq 0 ]; then
+            echo "=== All checks passed! Ready to flash. ==="
+            echo ""
+            echo "Use: eab-control flash <project_dir>"
+            exit 0
+        else
+            echo "=== $ERRORS check(s) failed ==="
+            echo ""
+            echo "Fix the issues above before flashing."
+            exit 1
+        fi
+        ;;
+
     flash)
         # Flash ESP-IDF project or single binary
         # Usage: eab-control flash <project_dir_or_bin> [chip]
         if [ -z "$2" ]; then
+            echo "=========================================="
+            echo "EAB Flash Tool"
+            echo "=========================================="
+            echo ""
             echo "Usage: eab-control flash <project_dir_or_bin> [chip]"
             echo ""
             echo "Examples:"
@@ -133,16 +260,22 @@ case "$1" in
             echo "  - bootloader/bootloader.bin"
             echo "  - partition_table/partition-table.bin"
             echo "  - <project_name>.bin"
+            echo ""
+            echo "IMPORTANT: Always use this command instead of esptool directly!"
+            echo "This command handles port management automatically."
             exit 1
         fi
 
         TARGET="$2"
         CHIP="${3:-auto}"
 
-        # Get port from daemon status
-        PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
-        if [ -z "$PORT" ]; then
-            echo "ERROR: Could not get port from daemon. Is daemon running?"
+        # Use helper function to get port with clear error messages
+        if ! check_daemon; then
+            exit 1
+        fi
+
+        PORT=$(get_port)
+        if [ $? -ne 0 ]; then
             exit 1
         fi
 
@@ -155,6 +288,25 @@ case "$1" in
         echo "Pausing daemon..."
         cd "$EAB_DIR" && python3 -m eab --pause 120
         sleep 1
+
+        # Verify port is released before flashing
+        if ! verify_port_released "$PORT"; then
+            echo ""
+            echo "=========================================="
+            echo "ERROR: Port not released in time!"
+            echo "=========================================="
+            echo ""
+            echo "The serial port is still busy. This usually means:"
+            echo "  1. The daemon didn't pause properly"
+            echo "  2. Another process is using the port"
+            echo ""
+            echo "Try:"
+            echo "  1. eab-control stop     # Stop the daemon"
+            echo "  2. eab-control start    # Restart it"
+            echo "  3. eab-control flash    # Try again"
+            rm -f /tmp/eab-session/pause.txt
+            exit 1
+        fi
 
         # Determine if this is a project directory or single binary
         if [ -d "$TARGET" ]; then
@@ -237,22 +389,44 @@ case "$1" in
             $0 tail 20
         else
             echo ""
-            echo "=== Flash FAILED ==="
+            echo "=========================================="
+            echo "ERROR: Flash FAILED"
+            echo "=========================================="
+            echo ""
+            echo "Common causes:"
+            echo "  1. Wrong chip type (try specifying: eab-control flash <dir> esp32s3)"
+            echo "  2. Device in bad state (try: eab-control erase first)"
+            echo "  3. USB connection issue (check cable)"
+            echo ""
             exit 1
         fi
         ;;
 
     erase)
         # Erase entire flash
-        PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
-        if [ -z "$PORT" ]; then
-            echo "ERROR: Could not get port from daemon. Is daemon running?"
+        if ! check_daemon; then
             exit 1
         fi
+
+        PORT=$(get_port)
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
+
+        echo "=== EAB Erase Flash ==="
+        echo "Port: $PORT"
+        echo ""
 
         echo "Pausing daemon..."
         cd "$EAB_DIR" && python3 -m eab --pause 120
         sleep 1
+
+        # Verify port is released
+        if ! verify_port_released "$PORT"; then
+            echo "ERROR: Port not released!"
+            rm -f /tmp/eab-session/pause.txt
+            exit 1
+        fi
 
         echo "Erasing flash on $PORT..."
         esptool --port "$PORT" erase-flash
@@ -262,9 +436,11 @@ case "$1" in
         rm -f /tmp/eab-session/pause.txt
 
         if [ $RESULT -eq 0 ]; then
-            echo "Flash erased successfully"
+            echo ""
+            echo "=== Flash erased successfully ==="
         else
-            echo "Erase FAILED"
+            echo ""
+            echo "=== Erase FAILED ==="
             exit 1
         fi
         ;;
@@ -482,6 +658,7 @@ case "$1" in
         echo "  cmd <cmd>  - Send command (e.g., '!CHIP_INFO', '!BOOTLOADER')"
         echo ""
         echo "Flashing (handles pause/resume automatically):"
+        echo "  preflight       - Check if ready to flash (run before flashing)"
         echo "  flash <dir>     - Flash ESP-IDF project (auto-detects chip, finds binaries)"
         echo "  flash <file>    - Flash single binary file"
         echo "  build-flash <dir> - Build ESP-IDF project and flash"

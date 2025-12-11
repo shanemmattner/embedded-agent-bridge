@@ -1,0 +1,106 @@
+#!/bin/bash
+# ESPTool Wrapper for EAB
+#
+# AGENTS: This wrapper intercepts direct esptool calls and redirects you
+# to use eab-control instead, which properly manages the serial port.
+#
+# If you're seeing this message, you should be using:
+#   eab-control flash <project_dir>
+# instead of calling esptool directly.
+
+# Find the real esptool (not this wrapper)
+REAL_ESPTOOL=""
+for path in /opt/homebrew/bin/esptool.py /usr/local/bin/esptool.py $(which -a esptool.py 2>/dev/null | grep -v embedded-agent-bridge | head -1); do
+    if [ -x "$path" ] && [ "$path" != "$0" ]; then
+        REAL_ESPTOOL="$path"
+        break
+    fi
+done
+
+# Also check for esptool (without .py)
+if [ -z "$REAL_ESPTOOL" ]; then
+    for path in /opt/homebrew/bin/esptool /usr/local/bin/esptool $(which -a esptool 2>/dev/null | grep -v embedded-agent-bridge | head -1); do
+        if [ -x "$path" ] && [ "$path" != "$0" ]; then
+            REAL_ESPTOOL="$path"
+            break
+        fi
+    done
+fi
+
+# Check if EAB daemon is running
+if [ -f /tmp/eab-session/status.json ]; then
+    EAB_RUNNING=true
+    EAB_PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+else
+    EAB_RUNNING=false
+fi
+
+# Check if this is a write operation that would conflict with the daemon
+IS_WRITE_OP=false
+for arg in "$@"; do
+    case "$arg" in
+        write_flash|erase_flash|erase_region|read_flash)
+            IS_WRITE_OP=true
+            break
+            ;;
+    esac
+done
+
+# Check if the port being used is the EAB-managed port
+USING_EAB_PORT=false
+for i in $(seq 1 $#); do
+    arg="${!i}"
+    if [ "$arg" = "--port" ] || [ "$arg" = "-p" ]; then
+        next=$((i+1))
+        port_arg="${!next}"
+        if [ "$port_arg" = "$EAB_PORT" ]; then
+            USING_EAB_PORT=true
+            break
+        fi
+    fi
+done
+
+# If EAB is running and we're trying to do a write operation on the EAB port
+if [ "$EAB_RUNNING" = true ] && [ "$IS_WRITE_OP" = true ] && [ "$USING_EAB_PORT" = true ]; then
+    echo ""
+    echo "=========================================="
+    echo "STOP! Use eab-control instead of esptool"
+    echo "=========================================="
+    echo ""
+    echo "The EAB daemon is managing port: $EAB_PORT"
+    echo ""
+    echo "You tried to run:"
+    echo "  esptool $@"
+    echo ""
+    echo "Instead, use:"
+    echo "  eab-control flash <project_dir>     # For ESP-IDF projects"
+    echo "  eab-control erase                   # To erase flash"
+    echo ""
+    echo "The eab-control command automatically:"
+    echo "  1. Pauses the daemon to release the port"
+    echo "  2. Performs the flash operation"
+    echo "  3. Resumes the daemon"
+    echo "  4. Shows boot output"
+    echo ""
+    echo "Quick reference:"
+    echo "  eab-control status    # Check daemon status"
+    echo "  eab-control preflight # Verify ready to flash"
+    echo "  eab-control flash .   # Flash current project"
+    echo ""
+    exit 1
+fi
+
+# If we got here, either:
+# - EAB is not running
+# - This is not a write operation
+# - We're using a different port
+# So we can pass through to the real esptool
+
+if [ -z "$REAL_ESPTOOL" ]; then
+    echo "ERROR: Could not find real esptool installation"
+    echo "Install with: pip install esptool"
+    exit 1
+fi
+
+# Pass through to real esptool
+exec "$REAL_ESPTOOL" "$@"

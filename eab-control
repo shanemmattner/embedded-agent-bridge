@@ -84,21 +84,66 @@ case "$1" in
         echo "Daemon will resume on next loop iteration."
         ;;
 
+    reset)
+        echo "Sending reset command to ESP32..."
+        cd "$EAB_DIR" && python3 -m eab --reset
+        ;;
+
+    cmd)
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control cmd <command>"
+            echo "Example: eab-control cmd '!CHIP_INFO'"
+            exit 1
+        fi
+        cd "$EAB_DIR" && python3 -m eab --cmd "$2"
+        ;;
+
+    tail)
+        LINES="${2:-50}"
+        cd "$EAB_DIR" && python3 -m eab --logs "$LINES"
+        ;;
+
+    alerts)
+        LINES="${2:-20}"
+        cd "$EAB_DIR" && python3 -m eab --alerts "$LINES"
+        ;;
+
+    wait)
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control wait <pattern> [timeout]"
+            echo "Example: eab-control wait 'Ready' 30"
+            exit 1
+        fi
+        TIMEOUT="${3:-30}"
+        cd "$EAB_DIR" && python3 -m eab --wait-for "$2" --wait-timeout "$TIMEOUT"
+        ;;
+
     *)
         echo "EAB Daemon Control"
         echo ""
         echo "Usage: eab-control [command]"
         echo ""
-        echo "Commands:"
+        echo "Daemon Commands:"
         echo "  start      - Start the daemon now"
         echo "  stop       - Stop the daemon"
         echo "  restart    - Restart the daemon"
         echo "  status     - Show daemon status"
-        echo "  logs       - Show daemon logs"
+        echo "  logs       - Show daemon logs (stdout/stderr)"
         echo "  enable     - Enable auto-start at login"
         echo "  disable    - Disable auto-start"
+        echo ""
+        echo "Port Control:"
         echo "  pause [N]  - Pause for N seconds (default 120) to release serial port"
         echo "  resume     - Resume from pause early"
+        echo ""
+        echo "Device Control:"
+        echo "  reset      - Reset the ESP32 device"
+        echo "  cmd <cmd>  - Send command (e.g., '!CHIP_INFO', '!BOOTLOADER')"
+        echo ""
+        echo "Log Viewing:"
+        echo "  tail [N]   - Show last N lines from serial log (default 50)"
+        echo "  alerts [N] - Show last N alert lines (default 20)"
+        echo "  wait <pat> - Wait for log line matching pattern"
         echo ""
         echo "Session files are in /tmp/eab-session/"
         ;;

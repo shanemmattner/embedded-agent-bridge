@@ -90,6 +90,64 @@ The daemon should be something you start once and trust completely. It handles r
 | R4.4 | Pattern count statistics | P1 |
 | R4.5 | Configurable actions on pattern match | P2 |
 
+#### R8: Testability
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| R8.1 | All core functions must be unit testable without hardware | P0 |
+| R8.2 | Serial port abstraction layer for mock injection | P0 |
+| R8.3 | File system abstraction for testing file operations | P0 |
+| R8.4 | Test coverage > 80% for core daemon logic | P0 |
+| R8.5 | Integration tests with mock serial port | P1 |
+| R8.6 | Stress tests for reconnection logic | P1 |
+| R8.7 | Memory leak detection in test suite | P2 |
+
+### Development Methodology
+
+**Test-First Development (TDD)**
+
+All features must be developed using test-first methodology:
+
+1. **Write failing test first** that defines expected behavior
+2. **Implement minimum code** to make the test pass
+3. **Refactor** while keeping tests green
+4. **Commit** test and implementation together
+
+**Testability Architecture**
+
+The daemon must be designed for testability from the start:
+
+```python
+# Bad: Hard-coded dependencies (untestable)
+class SerialDaemon:
+    def __init__(self):
+        self.serial = serial.Serial("/dev/ttyUSB0", 115200)
+
+# Good: Dependency injection (testable)
+class SerialDaemon:
+    def __init__(self, serial_port: SerialPortInterface, file_system: FileSystemInterface):
+        self.serial = serial_port
+        self.fs = file_system
+```
+
+**Mock Interfaces**
+
+| Component | Interface | Mock |
+|-----------|-----------|------|
+| Serial port | `SerialPortInterface` | `MockSerialPort` |
+| File system | `FileSystemInterface` | `MockFileSystem` |
+| Time/Clock | `ClockInterface` | `MockClock` |
+| Logging | `LoggerInterface` | `MockLogger` |
+
+**Test Categories**
+
+| Category | Scope | Hardware Required |
+|----------|-------|-------------------|
+| Unit tests | Individual functions | No |
+| Integration tests | Component interaction | No (mocks) |
+| System tests | Full daemon behavior | No (mocks) |
+| Hardware tests | Real device interaction | Yes |
+
 ### Extended Requirements
 
 #### R5: Multi-Tool Correlation (Phase 2)

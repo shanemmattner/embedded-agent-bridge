@@ -67,6 +67,30 @@ class MockSerialPort(SerialPortInterface):
             return self._rx_buffer.popleft()
         return None
 
+    def read_bytes(self, max_bytes: int) -> bytes:
+        if not self._is_open or max_bytes <= 0:
+            return b""
+
+        self._read_count += 1
+
+        if self._disconnect_after and self._read_count >= self._disconnect_after:
+            self._is_open = False
+            self._disconnect_after = None
+            return b""
+
+        if not self._rx_buffer:
+            return b""
+
+        chunk = self._rx_buffer.popleft()
+        if len(chunk) <= max_bytes:
+            return chunk
+
+        head = chunk[:max_bytes]
+        tail = chunk[max_bytes:]
+        if tail:
+            self._rx_buffer.appendleft(tail)
+        return head
+
     def write(self, data: bytes) -> int:
         if not self._is_open:
             return 0

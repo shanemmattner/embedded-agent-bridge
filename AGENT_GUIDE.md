@@ -8,11 +8,29 @@ A daemon and command-line interface for LLM agents to interact with ESP32 device
 # Check device status
 ~/tools/embedded-agent-bridge/eab-control status
 
+# Machine-parseable status (for agents)
+~/tools/embedded-agent-bridge/eab-control status --json
+
 # View serial output
 ~/tools/embedded-agent-bridge/eab-control tail 50
 
+# Machine-parseable tail (for agents)
+~/tools/embedded-agent-bridge/eab-control tail 50 --json
+
+# View recent system events (daemon lifecycle, pause/resume, flash, alerts)
+~/tools/embedded-agent-bridge/eab-control events 50
+
 # Send command to device
 ~/tools/embedded-agent-bridge/eab-control send "help"
+
+# Start high-speed data streaming (arm on marker)
+~/tools/embedded-agent-bridge/eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
+
+# Stop high-speed streaming
+~/tools/embedded-agent-bridge/eab-control stream stop
+
+# Fetch last 64KB of streamed data
+~/tools/embedded-agent-bridge/eab-control recv-latest --bytes 65536 --out latest.bin
 
 # Reset device
 ~/tools/embedded-agent-bridge/eab-control reset
@@ -36,6 +54,7 @@ Daemon Commands:
   stop        Stop the daemon
   restart     Restart the daemon
   status      Show daemon status
+  diagnose    Automated health checks (add --json for agents)
   logs        Show daemon logs (stdout/stderr)
   enable      Enable auto-start at login
   disable     Disable auto-start
@@ -67,7 +86,15 @@ Serial Communication:
 Log Viewing:
   tail [N]    Show last N lines from serial log (default 50)
   alerts [N]  Show last N alert lines (default 20)
+  events [N]  Show last N JSON events (default 50)
   wait <pat>  Wait for log line matching pattern
+  wait-event  Wait for event in events.jsonl
+  capture-between <start> <end> <out> [--decode-base64]  Capture payload between markers
+
+Data Streaming (high-speed):
+  stream start|stop   Enable/disable raw data streaming to data.bin
+  recv --offset N --length M [--out file] [--base64]
+  recv-latest --bytes N [--out file] [--base64]
 ```
 
 ## Common Agent Workflows
@@ -93,6 +120,9 @@ Log Viewing:
 
 # Wait for specific output pattern
 ~/tools/embedded-agent-bridge/eab-control wait "Ready" 30
+
+# Wait for a system event (example: command sent)
+~/tools/embedded-agent-bridge/eab-control wait-event --type command_sent --timeout 10
 ```
 
 ### 3. Fix Boot Loop / Corrupted Firmware
@@ -155,6 +185,79 @@ If the device is stuck in a boot loop (showing watchdog resets, "invalid header"
 
 # Check alerts for crashes/errors
 ~/tools/embedded-agent-bridge/eab-control alerts 20
+
+# Check daemon events for reconnect/pause/flash
+~/tools/embedded-agent-bridge/eab-control events 20
+
+# Run automated diagnostics (human or JSON)
+~/tools/embedded-agent-bridge/eab-control diagnose
+~/tools/embedded-agent-bridge/eab-control diagnose --json
+
+## Event Stream (Non-Blocking IPC)
+
+EAB emits a JSONL event stream at:
+
+```
+/tmp/eab-session/events.jsonl
+```
+
+Each line is a JSON object with:
+
+- `type`: daemon_starting, daemon_started, command_sent, alert, paused, resumed, flash_start, flash_end, etc.
+- `sequence`: monotonic counter (per daemon lifetime)
+- `timestamp`: ISO 8601
+- `data`: event-specific fields (command, port, etc.)
+
+Agents can tail this file or use:
+
+```bash
+~/tools/embedded-agent-bridge/eab-control events 50
+~/tools/embedded-agent-bridge/eab-control wait-event --type command_sent --timeout 10
+```
+
+## High-Speed Data Stream
+
+When enabled, the daemon writes raw bytes to:
+
+```
+/tmp/eab-session/data.bin
+```
+
+Enable streaming (armed on marker):
+
+```bash
+~/tools/embedded-agent-bridge/eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
+```
+
+Stop streaming:
+
+```bash
+~/tools/embedded-agent-bridge/eab-control stream stop
+```
+
+Fetch recent bytes:
+
+```bash
+~/tools/embedded-agent-bridge/eab-control recv-latest --bytes 65536 --out latest.bin
+```
+
+### Compatibility Notes
+
+- **Stock firmware**: use line‑based logs and command queue as usual.
+- **Custom firmware**: optionally enable binary framing (see `PROTOCOL.md`) for maximum throughput.
+```
+
+## Extracting Base64 Payloads (WAV, etc.)
+
+If the device prints a base64 payload between markers (e.g. `===WAV_START===` / `===WAV_END===`),
+use `capture-between` to extract *clean* payload data without timestamps or daemon messages:
+
+```bash
+# Capture base64 text payload to a file
+~/tools/embedded-agent-bridge/eab-control capture-between "===WAV_START===" "===WAV_END===" out.b64
+
+# Or decode base64 directly to bytes (e.g. WAV)
+~/tools/embedded-agent-bridge/eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 ```
 
 ## Understanding Device State

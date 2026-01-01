@@ -59,6 +59,7 @@ class TestStatusManager:
         assert "connection" in status
         assert "counters" in status
         assert "patterns" in status
+        assert "stream" in status
         assert "last_updated" in status
 
     def test_session_info(self):

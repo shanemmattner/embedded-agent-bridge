@@ -61,6 +61,20 @@ class RealSerialPort(SerialPortInterface):
         except Exception:
             return None
 
+    def read_bytes(self, max_bytes: int) -> bytes:
+        if not self._serial:
+            return b""
+        if max_bytes <= 0:
+            return b""
+        try:
+            waiting = self._serial.in_waiting
+            if not waiting:
+                return b""
+            size = min(waiting, max_bytes)
+            return self._serial.read(size)
+        except Exception:
+            return b""
+
     def write(self, data: bytes) -> int:
         if not self._serial:
             return 0

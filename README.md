@@ -44,12 +44,17 @@ That's what Embedded Agent Bridge enables.
 ### 1. Serial Monitor Daemon
 Background process that captures serial output and enables command injection.
 
-**Files:**
-- `serial_daemon.py` - Main daemon
-- `esp32_latest.log` - Captured output (agent reads this)
-- `esp32_cmd.txt` - Command injection (agent writes here)
-- `esp32_alerts.log` - Pattern-matched important events
-- `esp32_stats.json` - Statistics and metrics
+**Current implementation:**
+- Daemon: `python3 -m eab` (`eab/daemon.py`)
+- Recommended wrapper: `eab-control` (bash) + `eabctl` (Python, JSON-friendly)
+
+**Session files (default `/tmp/eab-session/`):**
+- `latest.log` - Captured output (timestamped)
+- `cmd.txt` - Command queue (append one command per line)
+- `alerts.log` - Pattern-matched important events
+- `events.jsonl` - JSONL system events (pause/resume, flash, alerts, commands)
+- `data.bin` - High-speed raw data stream (optional)
+- `status.json` - Connection + health status (for agents)
 
 **Features:**
 - Auto-detect USB serial ports
@@ -91,13 +96,16 @@ Agent runs daemon in background, reads output files.
 
 ```bash
 # Start daemon
-python3 serial_daemon.py --port /dev/cu.usbmodem... &
+python3 -m eab --port auto --base-dir /tmp/eab-session &
 
 # Agent reads output
-cat esp32_latest.log
+cat /tmp/eab-session/latest.log
 
 # Agent sends command
-echo "AT+RST" > esp32_cmd.txt
+./eabctl send "AT+RST"
+
+# Agent tails events (non-blocking)
+./eabctl events -n 50 --json
 ```
 
 ### Pattern 2: Timed Capture
@@ -108,19 +116,27 @@ Agent runs tool for fixed duration, captures output.
 python3 read_uart.py /dev/cu.usbmodem 5 > output.txt
 ```
 
-### Pattern 3: MCP Server (Future)
-Full MCP protocol integration for Claude Code.
+### Pattern 3: JSON CLI (Recommended)
+Prefer simple CLI calls + `--json` instead of loading an MCP skill.
 
-```json
-{
-  "mcpServers": {
-    "embedded-bridge": {
-      "command": "python3",
-      "args": ["mcp_server.py"]
-    }
-  }
-}
+```bash
+./eabctl status --json
+./eabctl tail -n 50 --json
+./eabctl send "help" --json
+./eabctl send "help" --await-event --json
+./eabctl wait-event --type command_sent --timeout 10 --json
+./eabctl stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate --json
+./eabctl recv-latest --bytes 65536 --out latest.bin --json
+./eabctl diagnose --json
 ```
+
+## Binary Framing (Optional, Custom Firmware Only)
+
+High‑speed streaming can use a simple binary framing format when you control
+the firmware. See `PROTOCOL.md` for proposed defaults.
+
+Stock firmware does **not** require framing and continues to work with the
+standard line‑based log mode.
 
 ## Comparison with Existing Tools
 
@@ -210,7 +226,7 @@ cd embedded-agent-bridge
 pip install pyserial
 
 # Run serial daemon
-python3 serial_daemon.py --port /dev/cu.usbmodem...
+python3 -m eab --port auto --base-dir /tmp/eab-session
 ```
 
 ## Contributing

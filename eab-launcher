@@ -1,10 +1,15 @@
 #!/bin/bash
 # EAB Launcher for launchd
 # Keeps trying to connect to ESP32, waits if no device
+#
+# Note: launchd jobs may not always provide a full shell environment (e.g. HOME can be unset).
+# Resolve EAB_DIR relative to this script so `python -m eab` can import from the local checkout.
 
-EAB_DIR="$HOME/tools/embedded-agent-bridge"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+EAB_DIR="$SCRIPT_DIR"
 BASE_DIR="/tmp/eab-session"
 LOG_FILE="/tmp/eab-launcher.log"
+PYTHON_BIN="/opt/homebrew/bin/python3"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
@@ -23,8 +28,14 @@ while true; do
         log "Found device: $DEVICE"
 
         # Run EAB with force flag (takes over from any stuck daemon)
-        cd "$EAB_DIR"
-        /opt/homebrew/bin/python3 -m eab --port auto --base-dir "$BASE_DIR" --force >> "$LOG_FILE" 2>&1
+        if ! cd "$EAB_DIR"; then
+            log "ERROR: Failed to cd to EAB_DIR=$EAB_DIR"
+            sleep 5
+            continue
+        fi
+
+        # Ensure the local checkout is importable even under launchd's minimal environment.
+        PYTHONPATH="$EAB_DIR" "$PYTHON_BIN" -m eab --port auto --base-dir "$BASE_DIR" --force >> "$LOG_FILE" 2>&1
         EXIT_CODE=$?
 
         log "EAB exited with code $EXIT_CODE"

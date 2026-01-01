@@ -129,24 +129,24 @@ class ReconnectionManager:
         Now includes proactive USB disconnect detection by checking
         if the port device file still exists.
         """
-        # First check if the port device file exists (USB disconnect detection)
-        if not self.port_exists():
-            if self._state == ConnectionState.CONNECTED:
-                self._state = ConnectionState.RECONNECTING
-                self._logger.warning(f"Port {self._port_name} disappeared (USB disconnected?)")
+        # First check if the port device file exists (USB disconnect detection).
+        #
+        # Note: even if the device file isn't present, we still attempt an open() below.
+        # On real hardware this will fail fast, but it keeps the logic testable and
+        # avoids special-casing platforms where "port existence" isn't meaningful.
+        if not self.port_exists() and self._state == ConnectionState.CONNECTED:
+            self._state = ConnectionState.RECONNECTING
+            self._logger.warning(f"Port {self._port_name} disappeared (USB disconnected?)")
 
-                # Close the serial port if it thinks it's still open
-                if self._serial.is_open():
-                    try:
-                        self._serial.close()
-                    except Exception:
-                        pass
+            # Close the serial port if it thinks it's still open
+            if self._serial.is_open():
+                try:
+                    self._serial.close()
+                except Exception:
+                    pass
 
-                if self._on_disconnect:
-                    self._on_disconnect()
-
-            # Can't reconnect if device doesn't exist
-            return False
+            if self._on_disconnect:
+                self._on_disconnect()
 
         # Normal serial connection check
         if self._serial.is_open():

@@ -22,6 +22,7 @@ from .device_control import DeviceController, strip_ansi
 from .port_lock import PortLock, find_port_users, list_all_locks
 from .chip_recovery import ChipRecovery, ChipState, ChipHealth
 from .singleton import SingletonDaemon, check_singleton, kill_existing_daemon
+from .event_emitter import EventEmitter
 
 __all__ = [
     "ConnectionState",
@@ -46,4 +47,5 @@ __all__ = [
     "SingletonDaemon",
     "check_singleton",
     "kill_existing_daemon",
+    "EventEmitter",
 ]

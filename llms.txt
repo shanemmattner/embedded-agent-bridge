@@ -11,9 +11,15 @@
 
 Check status:
     ~/tools/embedded-agent-bridge/eab-control status
+    ~/tools/embedded-agent-bridge/eab-control status --json
 
 View serial output:
     ~/tools/embedded-agent-bridge/eab-control tail 50
+    ~/tools/embedded-agent-bridge/eab-control tail 50 --json
+
+View daemon events (non-blocking JSONL):
+    ~/tools/embedded-agent-bridge/eab-control events 50
+    ~/tools/embedded-agent-bridge/eab-control events 50 --json
 
 Flash firmware:
     ~/tools/embedded-agent-bridge/eab-control flash /path/to/project
@@ -23,6 +29,20 @@ Reset device:
 
 Send command:
     ~/tools/embedded-agent-bridge/eab-control send "text"
+    ~/tools/embedded-agent-bridge/eab-control wait-event --type command_sent --timeout 10
+
+High-speed data stream:
+    ~/tools/embedded-agent-bridge/eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
+    ~/tools/embedded-agent-bridge/eab-control recv-latest --bytes 65536 --out latest.bin
+    ~/tools/embedded-agent-bridge/eab-control stream stop
+
+Run diagnostics:
+    ~/tools/embedded-agent-bridge/eab-control diagnose
+    ~/tools/embedded-agent-bridge/eab-control diagnose --json
+
+Extract base64 payload between markers:
+    ~/tools/embedded-agent-bridge/eab-control capture-between "===WAV_START===" "===WAV_END===" out.b64
+    ~/tools/embedded-agent-bridge/eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 
 Pre-flight check (run before flashing):
     ~/tools/embedded-agent-bridge/eab-control preflight
@@ -45,3 +65,12 @@ Check /tmp/eab-session/status.json for:
 - connection.status: connected/reconnecting/disconnected
 - health.status: healthy/idle/stuck/disconnected
 - health.idle_seconds: seconds since last activity
+
+## EVENT STREAM
+
+Check /tmp/eab-session/events.jsonl for JSONL event records (pause/resume, flash, alerts, commands).
+
+## DATA STREAM
+
+When enabled, raw bytes are written to /tmp/eab-session/data.bin.
+Binary framing is **optional** and only applies when custom firmware is allowed (see PROTOCOL.md).

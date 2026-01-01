@@ -6,23 +6,30 @@ A reliable serial daemon with file-based agent interface.
 Designed for LLM agents to interact with embedded devices.
 
 Usage:
-    python -m serial.daemon --port /dev/ttyUSB0 --baud 115200
-    python -m serial.daemon --port auto --base-dir /var/run/eab/serial
+    python3 -m eab --port /dev/ttyUSB0 --baud 115200
+    python3 -m eab --port auto --base-dir /tmp/eab-session
 """
 
 import argparse
 import signal
 import sys
 import os
+import json
+import base64
+import re
 from typing import Optional
 
 from .implementations import RealSerialPort, RealFileSystem, RealClock, ConsoleLogger
+from .command_file import append_command, drain_commands
 from .reconnection import ReconnectionManager
 from .session_logger import SessionLogger
 from .pattern_matcher import PatternMatcher, AlertLogger
 from .status_manager import StatusManager
+from .event_emitter import EventEmitter
+from .data_stream import DataStreamWriter
 from .interfaces import ConnectionState
-from .device_control import DeviceController, strip_ansi
+from .device_control import DeviceController
+from .log_sanitize import sanitize_serial_bytes
 from .port_lock import PortLock, find_port_users, list_all_locks
 from .chip_recovery import ChipRecovery, ChipState
 from .singleton import SingletonDaemon, check_singleton
@@ -44,7 +51,7 @@ class SerialDaemon:
         self,
         port: str,
         baud: int = 115200,
-        base_dir: str = "/var/run/eab/serial",
+        base_dir: str = "/tmp/eab-session",
         auto_detect: bool = True,
     ):
         self._port = port
@@ -96,15 +103,40 @@ class SerialDaemon:
             status_path=os.path.join(base_dir, "status.json"),
         )
 
+        self._events = EventEmitter(
+            filesystem=self._fs,
+            clock=self._clock,
+            events_path=os.path.join(base_dir, "events.jsonl"),
+        )
+
         # Command file path
         self._cmd_path = os.path.join(base_dir, "cmd.txt")
         self._cmd_mtime = 0.0
+
+        # Stream config path (high-speed data mode)
+        self._stream_path = os.path.join(base_dir, "stream.json")
+        self._stream_mtime = 0.0
+        self._stream_enabled = False
+        self._stream_active = False
+        self._stream_mode = "raw"
+        self._stream_chunk_size = 16384
+        self._stream_marker: Optional[str] = None
+        self._stream_pattern_matching = True
+        self._data_stream = DataStreamWriter(
+            filesystem=self._fs,
+            clock=self._clock,
+            data_path=os.path.join(base_dir, "data.bin"),
+        )
 
         # Pause file path - write seconds to this file to pause daemon
         self._pause_path = os.path.join(base_dir, "pause.txt")
         self._paused = False
         self._pause_start_time: Optional[float] = None
         self._original_port: Optional[str] = None  # Track original port for resume
+
+        # File transfer guardrails (prevents false crash/watchdog detection on base64 payload lines)
+        self._file_transfer_active = False
+        self._file_transfer_in_data = False
 
         # Device controller for special commands (!RESET, !FLASH, etc.)
         self._device_controller = DeviceController(
@@ -137,8 +169,20 @@ class SerialDaemon:
         )
         self._auto_recovery = True  # Enable automatic recovery
 
+    def _emit_event(self, event_type: str, data: Optional[dict] = None, level: str = "info") -> None:
+        try:
+            self._events.emit(event_type, data=data or {}, level=level)
+        except Exception as e:
+            self._logger.debug(f"Event emit failed: {e}")
+
     def _resolve_port(self) -> str:
-        """Resolve 'auto' to actual port."""
+        """Resolve 'auto' to an actual serial port.
+
+        If multiple candidates match, attempt to probe each candidate using
+        `esptool` to find an Espressif bootloader-capable port. This helps on
+        dual-interface USB devices (e.g. FTDI dual channels) where only one of
+        the exposed serial ports is wired to UART0.
+        """
         if self._port.lower() == "auto" and self._auto_detect:
             ports = RealSerialPort.list_ports()
 
@@ -162,7 +206,8 @@ class SerialDaemon:
                 "usb",
             ]
 
-            # Search for ESP32-like devices
+            # Collect candidates in priority order.
+            candidates: list[str] = []
             for pattern in esp32_patterns:
                 for p in ports:
                     device_lower = p.device.lower()
@@ -175,48 +220,116 @@ class SerialDaemon:
                         # Skip Bluetooth and debug ports
                         if "bluetooth" in desc_lower or "debug-console" in device_lower:
                             continue
-                        self._logger.info(f"Auto-detected ESP32 port: {p.device} ({p.description})")
-                        return p.device
+                        candidates.append(p.device)
 
-            self._logger.warning("No ESP32 serial port found")
-            return self._port
+            # De-duplicate while preserving order.
+            unique_candidates: list[str] = []
+            seen: set[str] = set()
+            for dev in candidates:
+                if dev in seen:
+                    continue
+                seen.add(dev)
+                unique_candidates.append(dev)
+
+            if not unique_candidates:
+                self._logger.warning("No ESP32 serial port found")
+                return self._port
+
+            if len(unique_candidates) == 1:
+                chosen = unique_candidates[0]
+                self._logger.info(f"Auto-detected ESP32 port: {chosen}")
+                return chosen
+
+            # Multiple candidates: try probing with esptool (fast, reliable).
+            try:
+                import shutil
+                import subprocess
+
+                esptool = shutil.which("esptool") or shutil.which("esptool.py")
+                if esptool:
+                    for dev in unique_candidates:
+                        try:
+                            self._logger.info(f"Probing candidate port with esptool: {dev}")
+                            result = subprocess.run(
+                                [esptool, "--port", dev, "chip-id"],
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                            combined = (result.stdout or "") + "\n" + (result.stderr or "")
+                            if result.returncode == 0 and "ESP32" in combined:
+                                self._logger.info(f"Auto-detected ESP32 port via probe: {dev}")
+                                return dev
+                        except Exception as e:
+                            self._logger.debug(f"Probe failed for {dev}: {e}")
+            except Exception:
+                pass
+
+            # Fallback heuristic: choose the candidate with the highest numeric suffix.
+            try:
+                import re
+
+                def score(dev: str) -> tuple[int, str]:
+                    m = re.search(r"(\\d+)$", dev)
+                    return (int(m.group(1)) if m else -1, dev)
+
+                chosen = max(unique_candidates, key=score)
+            except Exception:
+                chosen = unique_candidates[0]
+
+            self._logger.warning(
+                "Multiple candidate ports matched; falling back to: "
+                f"{chosen} (candidates={unique_candidates})"
+            )
+            return chosen
+
         return self._port
 
     def _on_reconnect(self) -> None:
         """Called when reconnection succeeds."""
         self._status_manager.record_reconnect()
         self._logger.info("Reconnected to device")
+        self._emit_event("reconnect", {"port": self._reconnection._port_name})
 
     def _on_disconnect(self) -> None:
         """Called when disconnect detected."""
         self._status_manager.set_connection_state(ConnectionState.RECONNECTING)
         self._status_manager.record_usb_disconnect()
         self._logger.warning("Connection lost")
+        self._emit_event("disconnect", {"port": self._reconnection._port_name}, level="warn")
 
     def _on_flash_start(self) -> None:
         """Called when flash operation starts (need to release port)."""
         self._status_manager.set_connection_state(ConnectionState.DISCONNECTED)
         self._logger.info("Flash starting, releasing port...")
+        self._emit_event("flash_start", {"port": self._reconnection._port_name})
 
     def _on_flash_end(self, success: bool) -> None:
         """Called when flash operation ends."""
         if success:
             self._status_manager.set_connection_state(ConnectionState.CONNECTED)
             self._logger.info("Flash complete, port reacquired")
+            self._emit_event("flash_end", {"success": True, "port": self._reconnection._port_name})
         else:
             self._logger.error("Flash failed")
+            self._emit_event("flash_end", {"success": False, "port": self._reconnection._port_name}, level="error")
 
     def _on_chip_state_change(self, old_state: ChipState, new_state: ChipState) -> None:
         """Called when chip state changes."""
         self._logger.info(f"Chip state: {old_state.value} -> {new_state.value}")
         # Log to session
         self._session_logger.log_line(f"[EAB] Chip state: {new_state.value}")
+        self._emit_event(
+            "chip_state",
+            {"from": old_state.value, "to": new_state.value},
+        )
 
     def _on_crash_detected(self, line: str) -> None:
         """Called when a crash is detected."""
         self._logger.error(f"Crash detected!")
         # Log to alerts
         self._session_logger.log_line(f"[EAB] CRASH DETECTED: {line[:100]}")
+        self._emit_event("crash_detected", {"line": line[:200]}, level="error")
 
     def start(self, force: bool = False) -> bool:
         """Start the daemon. Returns True if started successfully.
@@ -227,12 +340,22 @@ class SerialDaemon:
         self._logger.info(f"Starting Embedded Agent Bridge Serial Daemon")
         self._logger.info(f"Port: {self._reconnection._port_name}, Baud: {self._baud}")
         self._logger.info(f"Base directory: {self._base_dir}")
+        self._emit_event(
+            "daemon_starting",
+            {
+                "port": self._reconnection._port_name,
+                "baud": self._baud,
+                "base_dir": self._base_dir,
+                "pid": os.getpid(),
+            },
+        )
 
         port_name = self._reconnection._port_name
 
         # Singleton enforcement - only one daemon per machine
         self._singleton = SingletonDaemon(logger=self._logger)
         if not self._singleton.acquire(kill_existing=force, port=port_name, base_dir=self._base_dir):
+            self._emit_event("daemon_start_failed", {"reason": "singleton"})
             return False
 
         # Check for port contention BEFORE connecting
@@ -261,12 +384,15 @@ class SerialDaemon:
                 self._logger.error(
                     f"Port locked by PID {owner.pid} ({owner.process_name})"
                 )
+            self._emit_event("daemon_start_failed", {"reason": "port_lock", "port": port_name}, level="error")
             return False
+        self._emit_event("port_lock_acquired", {"port": port_name})
 
         # Connect to serial port
         if not self._reconnection.connect():
             self._logger.error("Failed to connect to serial port")
             self._port_lock.release()
+            self._emit_event("daemon_start_failed", {"reason": "connect_failed", "port": port_name}, level="error")
             return False
 
         # Generate session ID
@@ -284,6 +410,25 @@ class SerialDaemon:
             baud=self._baud,
         )
         self._status_manager.set_connection_state(ConnectionState.CONNECTED)
+        self._status_manager.set_stream_state(
+            enabled=self._stream_enabled,
+            active=self._stream_active,
+            mode=self._stream_mode,
+            chunk_size=self._stream_chunk_size,
+            marker=self._stream_marker,
+            pattern_matching=self._stream_pattern_matching,
+        )
+        self._events.set_session_id(session_id)
+        self._emit_event(
+            "daemon_started",
+            {
+                "session_id": session_id,
+                "port": self._reconnection._port_name,
+                "baud": self._baud,
+                "base_dir": self._base_dir,
+                "pid": os.getpid(),
+            },
+        )
 
         # Clear command file
         self._fs.write_file(self._cmd_path, "")
@@ -305,20 +450,55 @@ class SerialDaemon:
                 if self._check_pause():
                     continue
 
+                # Check for stream config updates
+                self._check_stream_config()
+
                 # Check connection
                 if not self._reconnection.check_and_reconnect():
                     self._clock.sleep(0.1)
                     continue
 
-                # Read serial data
-                data = self._serial.read_line()
-                if data:
-                    try:
-                        line = data.decode("utf-8", errors="replace").strip()
-                        if line:
-                            self._process_line(line)
-                    except Exception as e:
-                        self._logger.error(f"Error processing line: {e}")
+                # High-speed data mode (raw)
+                if self._stream_enabled and self._stream_active and self._stream_mode == "raw":
+                    chunk = self._serial.read_bytes(self._stream_chunk_size)
+                    if chunk:
+                        meta = self._data_stream.append(chunk)
+                        self._status_manager.record_bytes(len(chunk))
+                        self._status_manager.record_activity(len(chunk))
+                        self._emit_event("data_chunk", meta)
+                    else:
+                        # Avoid busy spin when no data
+                        self._clock.sleep(0.0005)
+                # High-speed data mode (base64 lines)
+                elif self._stream_enabled and self._stream_active and self._stream_mode == "base64":
+                    data = self._serial.read_line()
+                    if data:
+                        try:
+                            line = sanitize_serial_bytes(data)
+                            if line:
+                                try:
+                                    raw = base64.b64decode(line, validate=True)
+                                except Exception:
+                                    raw = b""
+                                if raw:
+                                    meta = self._data_stream.append(raw)
+                                    self._status_manager.record_bytes(len(raw))
+                                    self._status_manager.record_activity(len(raw))
+                                    self._emit_event("data_chunk", meta)
+                        except Exception as e:
+                            self._logger.error(f"Error processing base64 stream: {e}")
+                    else:
+                        self._clock.sleep(0.0005)
+                else:
+                    # Read serial data line-by-line
+                    data = self._serial.read_line()
+                    if data:
+                        try:
+                            line = sanitize_serial_bytes(data)
+                            if line:
+                                self._process_line(line)
+                        except Exception as e:
+                            self._logger.error(f"Error processing line: {e}")
 
                 # Check for commands
                 self._check_commands()
@@ -399,6 +579,10 @@ class SerialDaemon:
 
                 # Log to session for agent visibility
                 self._session_logger.log_line(f"[EAB] PAUSED - port {self._original_port} released for flashing")
+                self._emit_event(
+                    "paused",
+                    {"port": self._original_port, "pause_until": pause_until},
+                )
 
                 self._paused = True
 
@@ -452,6 +636,11 @@ class SerialDaemon:
                     self._logger.warning("No ESP32 port found, will retry on next loop...")
                     self._status_manager.set_connection_state(ConnectionState.RECONNECTING)
                     self._session_logger.log_line("[EAB] RESUME FAILED - port disappeared, waiting for reconnect")
+                    self._emit_event(
+                        "resume_failed",
+                        {"reason": "port_disappeared", "original_port": original_port},
+                        level="warn",
+                    )
                     self._paused = False
                     self._pause_start_time = None
                     self._original_port = None
@@ -476,16 +665,30 @@ class SerialDaemon:
                 for user in port_users:
                     self._logger.warning(f"  Port held by PID {user['pid']}: {user['name']}")
             # Continue anyway, reconnection may still work
+            self._emit_event(
+                "resume_lock_failed",
+                {"port": port_name, "users": port_users},
+                level="warn",
+            )
 
         # Reconnect to serial port
         if self._reconnection.connect():
             self._status_manager.set_connection_state(ConnectionState.CONNECTED)
             self._logger.info("Resumed successfully - serial port reconnected")
             self._session_logger.log_line(f"[EAB] RESUMED - connected to {port_name}")
+            self._emit_event(
+                "resumed",
+                {"port": port_name, "pause_duration_s": pause_duration},
+            )
         else:
             self._logger.warning("Resume: reconnection pending, will retry...")
             self._status_manager.set_connection_state(ConnectionState.RECONNECTING)
             self._session_logger.log_line("[EAB] RESUME - reconnection pending")
+            self._emit_event(
+                "resume_pending",
+                {"port": port_name, "pause_duration_s": pause_duration},
+                level="warn",
+            )
 
         self._paused = False
         self._pause_start_time = None
@@ -493,6 +696,49 @@ class SerialDaemon:
 
     def _process_line(self, line: str) -> None:
         """Process a received line."""
+        # Track file transfer mode (serial file download protocol).
+        if "===FILE_START===" in line:
+            self._file_transfer_active = True
+            self._file_transfer_in_data = False
+        elif self._file_transfer_active and "===DATA===" in line:
+            self._file_transfer_in_data = True
+        elif self._file_transfer_active and "===FILE_END===" in line:
+            self._file_transfer_active = False
+            self._file_transfer_in_data = False
+
+        # If we're inside the DATA section and this line looks like pure base64 payload,
+        # skip chip health/pattern processing to avoid accidental substring matches (e.g. "WDT").
+        suppress_health = False
+        if self._file_transfer_in_data:
+            payload = line.strip()
+            if payload and re.fullmatch(r"[A-Za-z0-9+/=]{20,}", payload):
+                suppress_health = True
+
+        # Check for stream marker to enable high-speed mode.
+        if (
+            self._stream_enabled
+            and not self._stream_active
+            and self._stream_marker
+            and self._stream_marker in line
+        ):
+            self._stream_active = True
+            self._status_manager.set_stream_state(
+                enabled=self._stream_enabled,
+                active=self._stream_active,
+                mode=self._stream_mode,
+                chunk_size=self._stream_chunk_size,
+                marker=self._stream_marker,
+                pattern_matching=self._stream_pattern_matching,
+            )
+            self._emit_event(
+                "stream_started",
+                {
+                    "marker": self._stream_marker,
+                    "mode": self._stream_mode,
+                    "chunk_size": self._stream_chunk_size,
+                },
+            )
+
         # Log the line
         self._session_logger.log_line(line)
         self._status_manager.record_line()
@@ -500,17 +746,24 @@ class SerialDaemon:
         self._status_manager.record_bytes(byte_count)
         self._status_manager.record_activity(byte_count)
 
-        # Feed to chip recovery for state monitoring
-        self._chip_recovery.process_line(line)
+        # Feed to chip recovery for state monitoring (unless this is base64 payload data)
+        if not suppress_health:
+            self._chip_recovery.process_line(line)
 
         # Check for patterns
-        matches = self._pattern_matcher.check_line(line)
-        for match in matches:
-            self._alert_logger.log_alert(match)
-            self._status_manager.record_alert(match.pattern)
+        if self._stream_pattern_matching and not suppress_health:
+            matches = self._pattern_matcher.check_line(line)
+            for match in matches:
+                self._alert_logger.log_alert(match)
+                self._status_manager.record_alert(match.pattern)
+                self._emit_event(
+                    "alert",
+                    {"pattern": match.pattern, "line": line[:200]},
+                    level="warn",
+                )
 
-        # Print to console (strip ANSI for cleaner output)
-        print(strip_ansi(line))
+        # Print to console (line already sanitized/ANSI-stripped)
+        print(line)
 
     def _check_commands(self) -> None:
         """Check for commands in the command file."""
@@ -522,29 +775,118 @@ class SerialDaemon:
             if mtime <= self._cmd_mtime:
                 return
 
-            self._cmd_mtime = mtime
-            content = self._fs.read_file(self._cmd_path).strip()
+            commands = drain_commands(self._cmd_path)
+            # Update mtime after truncation so we don't spin on our own clear.
+            try:
+                self._cmd_mtime = self._fs.get_mtime(self._cmd_path)
+            except Exception:
+                self._cmd_mtime = mtime
 
-            if not content:
-                return
-
-            # Clear the file
-            self._fs.write_file(self._cmd_path, "")
-
-            # Send each command
-            for line in content.split("\n"):
-                cmd = line.strip()
-                if cmd:
-                    self._send_command(cmd)
+            for cmd in commands:
+                self._send_command(cmd)
 
         except Exception as e:
             self._logger.error(f"Error checking commands: {e}")
+
+    def _check_stream_config(self) -> None:
+        """Check for high-speed stream configuration changes."""
+        try:
+            if not self._fs.file_exists(self._stream_path):
+                if self._stream_enabled:
+                    self._stream_enabled = False
+                    self._stream_active = False
+                    self._stream_marker = None
+                    self._status_manager.set_stream_state(
+                        enabled=False,
+                        active=False,
+                        mode=self._stream_mode,
+                        chunk_size=self._stream_chunk_size,
+                        marker=self._stream_marker,
+                        pattern_matching=self._stream_pattern_matching,
+                    )
+                    self._emit_event("stream_disabled", {})
+                return
+
+            mtime = self._fs.get_mtime(self._stream_path)
+            if mtime <= self._stream_mtime:
+                return
+            self._stream_mtime = mtime
+
+            raw = self._fs.read_file(self._stream_path)
+            cfg = json.loads(raw or "{}")
+
+            enabled = bool(cfg.get("enabled", False))
+            mode = str(cfg.get("mode", self._stream_mode or "raw")).lower()
+            if mode not in {"raw", "base64"}:
+                mode = "raw"
+            chunk_size = int(cfg.get("chunk_size", self._stream_chunk_size) or self._stream_chunk_size)
+            if chunk_size <= 0:
+                chunk_size = 16384
+            marker = cfg.get("marker")
+            if marker is not None:
+                marker = str(marker)
+
+            pattern_matching = bool(cfg.get("pattern_matching", True))
+            truncate = bool(cfg.get("truncate", False))
+
+            if truncate:
+                self._data_stream.truncate()
+                self._emit_event("stream_truncated", {})
+
+            self._stream_enabled = enabled
+            self._stream_mode = mode
+            self._stream_chunk_size = chunk_size
+            self._stream_marker = marker
+            self._stream_pattern_matching = pattern_matching
+            if enabled:
+                self._stream_active = False if marker else True
+            else:
+                self._stream_active = False
+
+            self._status_manager.set_stream_state(
+                enabled=self._stream_enabled,
+                active=self._stream_active,
+                mode=self._stream_mode,
+                chunk_size=self._stream_chunk_size,
+                marker=self._stream_marker,
+                pattern_matching=self._stream_pattern_matching,
+            )
+
+            self._emit_event(
+                "stream_config",
+                {
+                    "enabled": self._stream_enabled,
+                    "active": self._stream_active,
+                    "mode": self._stream_mode,
+                    "chunk_size": self._stream_chunk_size,
+                    "marker": self._stream_marker,
+                    "pattern_matching": self._stream_pattern_matching,
+                    "truncate": truncate,
+                },
+            )
+
+            if self._stream_enabled and not self._stream_active and self._stream_marker:
+                self._emit_event(
+                    "stream_armed",
+                    {"marker": self._stream_marker, "mode": self._stream_mode},
+                )
+            elif self._stream_enabled and self._stream_active:
+                self._emit_event(
+                    "stream_active",
+                    {"mode": self._stream_mode, "chunk_size": self._stream_chunk_size},
+                )
+        except Exception as e:
+            self._logger.error(f"Error checking stream config: {e}")
 
     def _send_command(self, cmd: str) -> None:
         """Send a command to the device (or handle special ! commands)."""
         self._logger.info(f"Sending command: {cmd}")
         self._session_logger.log_command(cmd)
         self._status_manager.record_command()
+        self._emit_event(
+            "command_sent",
+            {"command": cmd, "special": self._device_controller.is_special_command(cmd)},
+        )
 
         # Check for special commands (!RESET, !FLASH, etc.)
         if self._device_controller.is_special_command(cmd):
@@ -552,6 +894,7 @@ class SerialDaemon:
             self._logger.info(f"Special command result: {result}")
             # Log result to session
             self._session_logger.log_line(f"[EAB] {result}")
+            self._emit_event("command_result", {"command": cmd, "result": result})
             return
 
         # Regular command - send to device
@@ -562,6 +905,7 @@ class SerialDaemon:
         """Stop the daemon gracefully, leaving chip in good state."""
         self._logger.info("Stopping daemon...")
         self._running = False
+        self._emit_event("daemon_stopping", {"pid": os.getpid()})
 
         # Perform clean shutdown to ensure chip is in good state
         try:
@@ -586,6 +930,7 @@ class SerialDaemon:
             self._singleton.release()
 
         self._logger.info("Daemon stopped")
+        self._emit_event("daemon_stopped", {"pid": os.getpid()})
 
 
 def main():
@@ -594,9 +939,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m serial.daemon --port /dev/ttyUSB0
-  python -m serial.daemon --port auto --baud 115200
-  python -m serial.daemon --port /dev/cu.usbmodem123 --base-dir ./eab
+  python3 -m eab --port /dev/ttyUSB0
+  python3 -m eab --port auto --baud 115200
+  python3 -m eab --port /dev/cu.usbmodem123 --base-dir /tmp/eab-session
         """,
     )
 
@@ -613,7 +958,7 @@ Examples:
     )
     parser.add_argument(
         "--base-dir", "-d",
-        default="/var/run/eab/serial",
+        default="/tmp/eab-session",
         help="Base directory for logs and status files",
     )
     parser.add_argument(
@@ -757,16 +1102,14 @@ Examples:
     if args.cmd:
         existing = get_daemon_info()
         cmd_path = os.path.join(existing.base_dir, "cmd.txt")
-        with open(cmd_path, "w") as f:
-            f.write(args.cmd + "\n")
+        append_command(cmd_path, args.cmd)
         print(f"Command sent: {args.cmd}")
         return
 
     if args.reset:
         existing = get_daemon_info()
         cmd_path = os.path.join(existing.base_dir, "cmd.txt")
-        with open(cmd_path, "w") as f:
-            f.write("!RESET\n")
+        append_command(cmd_path, "!RESET")
         print("Reset command sent")
         return
 

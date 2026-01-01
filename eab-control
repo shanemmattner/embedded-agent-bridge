@@ -5,12 +5,16 @@
 # Quick reference:
 #   eab-control status      - Check device status
 #   eab-control tail 50     - View serial output
+#   eab-control events 50   - View recent daemon events
 #   eab-control send "i"    - Send command to device
+#   eab-control stream ...  - Configure high-speed data stream
+#   eab-control recv ...    - Read bytes from data.bin
 #   eab-control flash <dir> - Flash firmware (handles port automatically)
 #   eab-control reset       - Reset device
 
 PLIST="$HOME/Library/LaunchAgents/com.eab.daemon.plist"
 EAB_DIR="$HOME/tools/embedded-agent-bridge"
+SELF_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 
 # Helper function to check if daemon is running and port is available
 check_daemon() {
@@ -68,32 +72,43 @@ verify_port_released() {
 case "$1" in
     start)
         echo "Starting EAB daemon..."
-        launchctl load "$PLIST" 2>/dev/null || launchctl start com.eab.daemon
-        sleep 2
-        if launchctl list | grep -q com.eab.daemon; then
-            echo "EAB daemon started"
-            cd "$EAB_DIR" && python3 -m eab --status
-        else
-            echo "Failed to start daemon. Check logs with: eab-control logs"
+        FORCE_FLAG=""
+        if [ "$2" = "--force" ]; then
+            FORCE_FLAG="--force"
         fi
+
+        # Prefer the in-repo daemon supervisor (reliable even when launchd env is minimal).
+        (cd "$EAB_DIR" && ./eabctl --base-dir /tmp/eab-session start --port auto --baud 115200 $FORCE_FLAG) >/dev/null 2>&1 || true
+
+        # Also try to start via launchd when installed (keeps it running across sessions).
+        launchctl load "$PLIST" 2>/dev/null || launchctl start com.eab.daemon 2>/dev/null || true
+
+        sleep 1
+        (cd "$EAB_DIR" && python3 -m eab --status)
         ;;
 
     stop)
         echo "Stopping EAB daemon..."
         launchctl stop com.eab.daemon 2>/dev/null
         launchctl unload "$PLIST" 2>/dev/null
+        (cd "$EAB_DIR" && ./eabctl stop) >/dev/null 2>&1 || true
         # Also kill any orphaned processes
         pkill -f "python3 -m eab" 2>/dev/null
+        pkill -f " -m eab.daemon" 2>/dev/null
         echo "EAB daemon stopped"
         ;;
 
     restart)
-        $0 stop
+        "$SELF_PATH" stop
         sleep 2
-        $0 start
+        "$SELF_PATH" start
         ;;
 
     status)
+        if [ "$2" = "--json" ]; then
+            (cd "$EAB_DIR" && ./eabctl status --json)
+            exit $?
+        fi
         echo "=== LaunchAgent Status ==="
         if launchctl list | grep -q com.eab.daemon; then
             echo "Service: LOADED"
@@ -103,7 +118,7 @@ case "$1" in
         fi
         echo ""
         echo "=== EAB Daemon Status ==="
-        cd "$EAB_DIR" && python3 -m eab --status
+        (cd "$EAB_DIR" && python3 -m eab --status)
         echo ""
         echo "=== Session Files ==="
         ls -la /tmp/eab-session/ 2>/dev/null || echo "No session directory"
@@ -135,7 +150,7 @@ case "$1" in
     pause)
         SECONDS="${2:-120}"
         echo "Pausing EAB daemon for ${SECONDS}s to release serial port..."
-        cd "$EAB_DIR" && python3 -m eab --pause "$SECONDS"
+        (cd "$EAB_DIR" && python3 -m eab --pause "$SECONDS")
         ;;
 
     resume)
@@ -146,7 +161,7 @@ case "$1" in
 
     reset)
         echo "Sending reset command to ESP32..."
-        cd "$EAB_DIR" && python3 -m eab --reset
+        (cd "$EAB_DIR" && python3 -m eab --reset)
         ;;
 
     cmd)
@@ -155,17 +170,80 @@ case "$1" in
             echo "Example: eab-control cmd '!CHIP_INFO'"
             exit 1
         fi
-        cd "$EAB_DIR" && python3 -m eab --cmd "$2"
+        (cd "$EAB_DIR" && python3 -m eab --cmd "$2")
         ;;
 
     tail)
-        LINES="${2:-50}"
-        cd "$EAB_DIR" && python3 -m eab --logs "$LINES"
+        JSON=false
+        LINES=50
+        if [ "$2" = "--json" ]; then
+            JSON=true
+        elif [ -n "$2" ]; then
+            LINES="$2"
+        fi
+        if [ "$3" = "--json" ]; then
+            JSON=true
+        fi
+
+        if [ "$JSON" = true ]; then
+            (cd "$EAB_DIR" && ./eabctl tail -n "$LINES" --json)
+        else
+            (cd "$EAB_DIR" && python3 -m eab --logs "$LINES")
+        fi
         ;;
 
     alerts)
-        LINES="${2:-20}"
-        cd "$EAB_DIR" && python3 -m eab --alerts "$LINES"
+        JSON=false
+        LINES=20
+        if [ "$2" = "--json" ]; then
+            JSON=true
+        elif [ -n "$2" ]; then
+            LINES="$2"
+        fi
+        if [ "$3" = "--json" ]; then
+            JSON=true
+        fi
+
+        if [ "$JSON" = true ]; then
+            (cd "$EAB_DIR" && ./eabctl alerts -n "$LINES" --json)
+        else
+            (cd "$EAB_DIR" && python3 -m eab --alerts "$LINES")
+        fi
+        ;;
+
+    events)
+        JSON=false
+        LINES=50
+        if [ "$2" = "--json" ]; then
+            JSON=true
+        elif [ -n "$2" ]; then
+            LINES="$2"
+        fi
+        if [ "$3" = "--json" ]; then
+            JSON=true
+        fi
+
+        if [ "$JSON" = true ]; then
+            (cd "$EAB_DIR" && ./eabctl events -n "$LINES" --json)
+        else
+            (cd "$EAB_DIR" && ./eabctl events -n "$LINES")
+        fi
+        ;;
+
+    diagnose)
+        if [ "$2" = "--json" ]; then
+            (cd "$EAB_DIR" && ./eabctl diagnose --json)
+        else
+            (cd "$EAB_DIR" && ./eabctl diagnose)
+        fi
+        ;;
+
+    capture-between)
+        if [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
+            echo "Usage: eab-control capture-between <start_marker> <end_marker> <output_file> [--decode-base64] [--json]"
+            exit 1
+        fi
+        (cd "$EAB_DIR" && ./eabctl capture-between "$2" "$3" "$4" "${@:5}")
         ;;
 
     wait)
@@ -175,7 +253,40 @@ case "$1" in
             exit 1
         fi
         TIMEOUT="${3:-30}"
-        cd "$EAB_DIR" && python3 -m eab --wait-for "$2" --wait-timeout "$TIMEOUT"
+        (cd "$EAB_DIR" && python3 -m eab --wait-for "$2" --wait-timeout "$TIMEOUT")
+        ;;
+
+    wait-event)
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control wait-event --type <event_type> [--timeout <seconds>]"
+            echo "Example: eab-control wait-event --type command_sent --timeout 10"
+            exit 1
+        fi
+        (cd "$EAB_DIR" && ./eabctl wait-event "${@:2}")
+        ;;
+
+    stream)
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control stream start|stop [--mode raw|base64] [--chunk N] [--marker STR] [--no-patterns] [--truncate]"
+            exit 1
+        fi
+        (cd "$EAB_DIR" && ./eabctl stream "${@:2}")
+        ;;
+
+    recv)
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control recv --offset N --length M [--out file] [--base64]"
+            exit 1
+        fi
+        (cd "$EAB_DIR" && ./eabctl recv "${@:2}")
+        ;;
+
+    recv-latest)
+        if [ -z "$2" ]; then
+            echo "Usage: eab-control recv-latest --bytes N [--out file] [--base64]"
+            exit 1
+        fi
+        (cd "$EAB_DIR" && ./eabctl recv-latest "${@:2}")
         ;;
 
     preflight)
@@ -286,7 +397,7 @@ case "$1" in
         # Pause daemon to release port
         echo ""
         echo "Pausing daemon..."
-        cd "$EAB_DIR" && python3 -m eab --pause 120
+        (cd "$EAB_DIR" && python3 -m eab --pause 120)
         sleep 1
 
         # Verify port is released before flashing
@@ -354,13 +465,60 @@ case "$1" in
             echo ""
             echo "Flashing..."
 
+            TMPLOG="$(mktemp /tmp/eab-flash.XXXXXX.log 2>/dev/null || echo /tmp/eab-flash.log)"
             esptool --chip "$CHIP" --port "$PORT" --baud 921600 \
                 --before default-reset --after hard-reset \
                 write-flash --flash-mode dio --flash-size detect --flash-freq 80m \
                 0x0 "$BOOTLOADER" \
                 0x8000 "$PARTITION" \
-                0x10000 "$APP_BIN"
-            RESULT=$?
+                0x10000 "$APP_BIN" 2>&1 | tee "$TMPLOG"
+            RESULT=${PIPESTATUS[0]}
+
+            # Sandbox fallback: if we can't open the serial device from this process,
+            # flash via the EAB daemon itself using !FLASH on a merged image.
+            if [ $RESULT -ne 0 ] && grep -qi "Operation not permitted" "$TMPLOG"; then
+                echo ""
+                echo "Detected serial permission restrictions; falling back to daemon-based flashing..."
+
+                MERGED_BIN="$BUILD_DIR/eab_merged_flash.bin"
+                echo "Merging images to: $MERGED_BIN"
+                esptool.py --chip "$CHIP" merge_bin -o "$MERGED_BIN" \
+                    --flash-mode dio --flash-freq 80m --flash-size 4MB \
+                    0x0 "$BOOTLOADER" \
+                    0x8000 "$PARTITION" \
+                    0x10000 "$APP_BIN"
+                MERGE_RESULT=$?
+                if [ $MERGE_RESULT -ne 0 ] || [ ! -f "$MERGED_BIN" ]; then
+                    echo "ERROR: Failed to create merged image for daemon flash"
+                    rm -f /tmp/eab-session/pause.txt
+                    exit 1
+                fi
+
+                echo ""
+                echo "Resuming daemon..."
+                rm -f /tmp/eab-session/pause.txt
+                sleep 2
+
+                echo "Requesting daemon flash via !FLASH..."
+                "$SELF_PATH" cmd "!FLASH:$MERGED_BIN"
+
+                echo "Waiting for flash completion..."
+                if "$SELF_PATH" wait "OK: Flash complete" 240; then
+                    echo ""
+                    echo "=== Flash successful (daemon) ==="
+                    sleep 2
+                    "$SELF_PATH" tail 20
+                    exit 0
+                fi
+
+                echo ""
+                echo "=========================================="
+                echo "ERROR: Daemon flash did not complete in time"
+                echo "=========================================="
+                echo ""
+                "$SELF_PATH" tail 50
+                exit 1
+            fi
         else
             # Single binary file
             if [ ! -f "$TARGET" ]; then
@@ -386,7 +544,7 @@ case "$1" in
             echo "=== Flash successful! ==="
             # Show output after reset
             sleep 2
-            $0 tail 20
+            "$SELF_PATH" tail 20
         else
             echo ""
             echo "=========================================="
@@ -418,7 +576,7 @@ case "$1" in
         echo ""
 
         echo "Pausing daemon..."
-        cd "$EAB_DIR" && python3 -m eab --pause 120
+        (cd "$EAB_DIR" && python3 -m eab --pause 120)
         sleep 1
 
         # Verify port is released
@@ -454,7 +612,7 @@ case "$1" in
         fi
 
         echo "Pausing daemon..."
-        cd "$EAB_DIR" && python3 -m eab --pause 30
+        (cd "$EAB_DIR" && python3 -m eab --pause 30)
         sleep 1
 
         echo "Getting chip info from $PORT..."
@@ -483,7 +641,7 @@ case "$1" in
         echo ""
 
         echo "Pausing daemon..."
-        cd "$EAB_DIR" && python3 -m eab --pause 300
+        (cd "$EAB_DIR" && python3 -m eab --pause 300)
         sleep 1
 
         echo "Reading flash..."
@@ -532,7 +690,7 @@ case "$1" in
         echo ""
 
         echo "Pausing daemon..."
-        cd "$EAB_DIR" && python3 -m eab --pause 300
+        (cd "$EAB_DIR" && python3 -m eab --pause 300)
         sleep 1
 
         echo "Writing flash..."
@@ -546,7 +704,7 @@ case "$1" in
         if [ $RESULT -eq 0 ]; then
             echo ""
             echo "=== Restore complete ==="
-            $0 tail 20
+            "$SELF_PATH" tail 20
         else
             echo "=== Restore FAILED ==="
             exit 1
@@ -562,7 +720,7 @@ case "$1" in
         fi
 
         echo "Pausing daemon..."
-        cd "$EAB_DIR" && python3 -m eab --pause 30
+        (cd "$EAB_DIR" && python3 -m eab --pause 30)
         sleep 1
 
         esptool --port "$PORT" read-mac
@@ -607,7 +765,7 @@ case "$1" in
 
         echo ""
         echo "Build successful, now flashing..."
-        $0 flash "$TARGET"
+        "$SELF_PATH" flash "$TARGET"
         ;;
 
     monitor)
@@ -630,9 +788,9 @@ case "$1" in
 
         TEXT="$2"
         echo "Sending: $TEXT"
-        cd "$EAB_DIR" && python3 -m eab --cmd "$TEXT"
+        (cd "$EAB_DIR" && python3 -m eab --cmd "$TEXT")
         sleep 1
-        $0 tail 10
+        "$SELF_PATH" tail 10
         ;;
 
     *)
@@ -648,6 +806,7 @@ case "$1" in
         echo "  logs       - Show daemon logs (stdout/stderr)"
         echo "  enable     - Enable auto-start at login"
         echo "  disable    - Disable auto-start"
+        echo "  diagnose   - Automated health checks (add --json for agents)"
         echo ""
         echo "Port Control:"
         echo "  pause [N]  - Pause for N seconds (default 120) to release serial port"
@@ -675,9 +834,10 @@ case "$1" in
         echo "  monitor         - Live serial output (Ctrl+C to exit)"
         echo ""
         echo "Log Viewing:"
-        echo "  tail [N]   - Show last N lines from serial log (default 50)"
-        echo "  alerts [N] - Show last N alert lines (default 20)"
+        echo "  tail [N] [--json]   - Show last N lines from serial log (default 50)"
+        echo "  alerts [N] [--json] - Show last N alert lines (default 20)"
         echo "  wait <pat> - Wait for log line matching pattern"
+        echo "  capture-between <start> <end> <out> [--decode-base64] [--json]"
         echo ""
         echo "Session files are in /tmp/eab-session/"
         ;;

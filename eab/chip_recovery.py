@@ -135,7 +135,6 @@ class ChipRecovery:
 
         # SPI flash errors
         "flash read err",
-        "spi_flash",
     ]
 
     BOOTLOADER_PATTERNS = [
@@ -150,8 +149,6 @@ class ChipRecovery:
     WATCHDOG_PATTERNS = [
         "Task watchdog got triggered",
         "Interrupt wdt timeout",
-        "esp_task_wdt",
-        "WDT",
         "RTC_WDT",
         "INT_WDT",
         "wdt reset",

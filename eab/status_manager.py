@@ -49,6 +49,14 @@ class StatusManager:
         self._commands_sent = 0
         self._alerts_triggered = 0
         self._pattern_counts: Dict[str, int] = {}
+        self._stream = {
+            "enabled": False,
+            "active": False,
+            "mode": "raw",
+            "chunk_size": 0,
+            "marker": None,
+            "pattern_matching": True,
+        }
 
         # Health tracking
         self._last_activity_time: Optional[datetime] = None
@@ -115,6 +123,27 @@ class StatusManager:
         else:
             self._bytes_last_minute += byte_count
 
+    def set_stream_state(
+        self,
+        *,
+        enabled: bool,
+        active: bool,
+        mode: str,
+        chunk_size: int,
+        marker: Optional[str],
+        pattern_matching: bool,
+    ) -> None:
+        """Update stream state for agents."""
+        self._stream = {
+            "enabled": enabled,
+            "active": active,
+            "mode": mode,
+            "chunk_size": chunk_size,
+            "marker": marker,
+            "pattern_matching": pattern_matching,
+        }
+        self.update()
+
     def record_read_error(self) -> None:
         """Record a serial read error."""
         self._read_errors += 1
@@ -163,6 +192,7 @@ class StatusManager:
                 "status": self._compute_health_status(idle_seconds),
             },
             "patterns": self._pattern_counts,
+            "stream": self._stream,
             "last_updated": now.isoformat(),
         }
 

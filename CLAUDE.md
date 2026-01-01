@@ -14,9 +14,11 @@ ESP32 serial communication daemon. **ALWAYS use eab-control for ALL ESP32 operat
 ```bash
 # Check status (ALWAYS do this first)
 ~/tools/embedded-agent-bridge/eab-control status
+~/tools/embedded-agent-bridge/eab-control status --json   # machine-parseable
 
 # View serial output
 ~/tools/embedded-agent-bridge/eab-control tail 50
+~/tools/embedded-agent-bridge/eab-control tail 50 --json  # machine-parseable
 
 # Send command to device
 ~/tools/embedded-agent-bridge/eab-control send "i"
@@ -68,6 +70,22 @@ If device shows `invalid header: 0xffffffff` or watchdog resets:
 
 # View crash/error alerts only
 ~/tools/embedded-agent-bridge/eab-control alerts
+~/tools/embedded-agent-bridge/eab-control alerts --json   # machine-parseable
+```
+
+## Payload Capture (Base64/WAV/etc.)
+
+If the device outputs base64 between markers and you need a clean extract:
+
+```bash
+~/tools/embedded-agent-bridge/eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
+```
+
+## Diagnostics
+
+```bash
+~/tools/embedded-agent-bridge/eab-control diagnose
+~/tools/embedded-agent-bridge/eab-control diagnose --json
 ```
 
 ## Status JSON
@@ -77,6 +95,14 @@ Check `/tmp/eab-session/status.json` for:
 - `health.status`: "healthy", "idle", "stuck", "disconnected"
 - `health.idle_seconds`: Seconds since last serial activity
 - `health.usb_disconnects`: Count of USB disconnect events
+
+## Event Stream (JSONL)
+
+Check `/tmp/eab-session/events.jsonl` for non-blocking system events:
+- daemon_starting/daemon_started/daemon_stopped
+- command_sent/command_result
+- paused/resumed/flash_start/flash_end
+- alert/crash_detected
 
 ## Pre-Flight Check
 
@@ -99,12 +125,22 @@ eab-control status      # Check daemon and device status
 eab-control preflight   # Verify ready to flash (run before flashing!)
 eab-control tail [N]    # Show last N lines (default 50)
 eab-control alerts [N]  # Show last N alerts (default 20)
+eab-control events [N]  # Show last N JSON events (default 50)
 eab-control send <text> # Send text to device
 eab-control reset       # Reset ESP32
 eab-control flash <dir> # Flash ESP-IDF project
 eab-control erase       # Erase entire flash
 eab-control wait <pat>  # Wait for pattern in output
+eab-control wait-event  # Wait for event in events.jsonl
+eab-control stream ...  # High-speed data stream (data.bin)
+eab-control recv ...    # Read bytes from data.bin
 ```
+
+## Binary Framing (Optional)
+
+If you can deploy custom firmware, you can use the proposed binary framing
+defaults in `PROTOCOL.md` to reach high throughput. Stock firmware remains
+compatible with line‑based logs.
 
 ## Troubleshooting
 

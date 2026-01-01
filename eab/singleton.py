@@ -7,6 +7,7 @@ Ensures only one EAB daemon runs per machine using a PID file with flock.
 
 import os
 import sys
+import errno
 import fcntl
 import atexit
 import signal
@@ -118,7 +119,16 @@ class SingletonDaemon:
         try:
             os.kill(pid, 0)
             return True
-        except OSError:
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # Some sandboxed environments disallow signaling other processes
+            # (even with signal 0). Treat this as "unknown but likely alive"
+            # so higher-level coordination can fall back to file-based control.
+            return True
+        except OSError as e:
+            if getattr(e, "errno", None) == errno.EPERM:
+                return True
             return False
 
     def _kill_process(self, pid: int, timeout: float = 5.0) -> bool:

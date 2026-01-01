@@ -8,6 +8,7 @@ and log archiving.
 from typing import Optional, List
 from collections import deque
 from .interfaces import FileSystemInterface, ClockInterface
+from .device_control import strip_ansi
 
 
 class SessionLogger:
@@ -112,6 +113,7 @@ class SessionLogger:
 
         Format: [HH:MM:SS.mmm] <line>
         """
+        line = strip_ansi(line)
         timestamp = self._clock.now().strftime("%H:%M:%S.%f")[:-3]
         formatted = f"[{timestamp}] {line}\n"
 
@@ -125,6 +127,7 @@ class SessionLogger:
 
         Format: [HH:MM:SS.mmm] >>> CMD: <command>
         """
+        command = strip_ansi(command)
         timestamp = self._clock.now().strftime("%H:%M:%S.%f")[:-3]
         formatted = f"[{timestamp}] >>> CMD: {command}\n"
 

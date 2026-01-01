@@ -67,6 +67,11 @@ class SerialPortInterface(ABC):
         pass
 
     @abstractmethod
+    def read_bytes(self, max_bytes: int) -> bytes:
+        """Read up to max_bytes from serial. Returns b'' if no data."""
+        pass
+
+    @abstractmethod
     def write(self, data: bytes) -> int:
         """Write data to serial. Returns bytes written."""
         pass

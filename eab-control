@@ -16,6 +16,11 @@ PLIST="$HOME/Library/LaunchAgents/com.eab.daemon.plist"
 EAB_DIR="$HOME/tools/embedded-agent-bridge"
 SELF_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 
+# Always invoke tooling from inside EAB_DIR so the local `eab/` package is importable.
+eabctl_cmd() {
+    (cd "$EAB_DIR" && ./eabctl "$@")
+}
+
 # Helper function to check if daemon is running and port is available
 check_daemon() {
     if [ ! -f /tmp/eab-session/status.json ]; then
@@ -84,14 +89,14 @@ case "$1" in
         launchctl load "$PLIST" 2>/dev/null || launchctl start com.eab.daemon 2>/dev/null || true
 
         sleep 1
-        (cd "$EAB_DIR" && python3 -m eab --status)
+        eabctl_cmd status
         ;;
 
     stop)
         echo "Stopping EAB daemon..."
         launchctl stop com.eab.daemon 2>/dev/null
         launchctl unload "$PLIST" 2>/dev/null
-        (cd "$EAB_DIR" && ./eabctl stop) >/dev/null 2>&1 || true
+        eabctl_cmd stop >/dev/null 2>&1 || true
         # Also kill any orphaned processes
         pkill -f "python3 -m eab" 2>/dev/null
         pkill -f " -m eab.daemon" 2>/dev/null
@@ -118,7 +123,7 @@ case "$1" in
         fi
         echo ""
         echo "=== EAB Daemon Status ==="
-        (cd "$EAB_DIR" && python3 -m eab --status)
+        eabctl_cmd status
         echo ""
         echo "=== Session Files ==="
         ls -la /tmp/eab-session/ 2>/dev/null || echo "No session directory"
@@ -150,18 +155,18 @@ case "$1" in
     pause)
         SECONDS="${2:-120}"
         echo "Pausing EAB daemon for ${SECONDS}s to release serial port..."
-        (cd "$EAB_DIR" && python3 -m eab --pause "$SECONDS")
+        eabctl_cmd pause "$SECONDS"
         ;;
 
     resume)
         echo "Resuming EAB daemon (removing pause file)..."
-        rm -f /tmp/eab-session/pause.txt
+        eabctl_cmd resume >/dev/null 2>&1 || rm -f /tmp/eab-session/pause.txt
         echo "Daemon will resume on next loop iteration."
         ;;
 
     reset)
         echo "Sending reset command to ESP32..."
-        (cd "$EAB_DIR" && python3 -m eab --reset)
+        eabctl_cmd send "!RESET"
         ;;
 
     cmd)
@@ -170,7 +175,7 @@ case "$1" in
             echo "Example: eab-control cmd '!CHIP_INFO'"
             exit 1
         fi
-        (cd "$EAB_DIR" && python3 -m eab --cmd "$2")
+        eabctl_cmd send "$2"
         ;;
 
     tail)
@@ -188,7 +193,7 @@ case "$1" in
         if [ "$JSON" = true ]; then
             (cd "$EAB_DIR" && ./eabctl tail -n "$LINES" --json)
         else
-            (cd "$EAB_DIR" && python3 -m eab --logs "$LINES")
+            eabctl_cmd tail -n "$LINES"
         fi
         ;;
 
@@ -207,7 +212,7 @@ case "$1" in
         if [ "$JSON" = true ]; then
             (cd "$EAB_DIR" && ./eabctl alerts -n "$LINES" --json)
         else
-            (cd "$EAB_DIR" && python3 -m eab --alerts "$LINES")
+            eabctl_cmd alerts -n "$LINES"
         fi
         ;;
 
@@ -253,7 +258,7 @@ case "$1" in
             exit 1
         fi
         TIMEOUT="${3:-30}"
-        (cd "$EAB_DIR" && python3 -m eab --wait-for "$2" --wait-timeout "$TIMEOUT")
+        eabctl_cmd wait "$2" "$TIMEOUT"
         ;;
 
     wait-event)
@@ -394,11 +399,11 @@ case "$1" in
         echo "Port: $PORT"
         echo "Target: $TARGET"
 
-        # Pause daemon to release port
-        echo ""
-        echo "Pausing daemon..."
-        (cd "$EAB_DIR" && python3 -m eab --pause 120)
-        sleep 1
+	        # Pause daemon to release port
+	        echo ""
+	        echo "Pausing daemon..."
+	        eabctl_cmd pause 120
+	        sleep 1
 
         # Verify port is released before flashing
         if ! verify_port_released "$PORT"; then
@@ -575,9 +580,9 @@ case "$1" in
         echo "Port: $PORT"
         echo ""
 
-        echo "Pausing daemon..."
-        (cd "$EAB_DIR" && python3 -m eab --pause 120)
-        sleep 1
+	        echo "Pausing daemon..."
+	        eabctl_cmd pause 120
+	        sleep 1
 
         # Verify port is released
         if ! verify_port_released "$PORT"; then
@@ -611,9 +616,9 @@ case "$1" in
             exit 1
         fi
 
-        echo "Pausing daemon..."
-        (cd "$EAB_DIR" && python3 -m eab --pause 30)
-        sleep 1
+	        echo "Pausing daemon..."
+	        eabctl_cmd pause 30
+	        sleep 1
 
         echo "Getting chip info from $PORT..."
         esptool --port "$PORT" chip-id
@@ -640,9 +645,9 @@ case "$1" in
         echo "Size: $SIZE"
         echo ""
 
-        echo "Pausing daemon..."
-        (cd "$EAB_DIR" && python3 -m eab --pause 300)
-        sleep 1
+	        echo "Pausing daemon..."
+	        eabctl_cmd pause 300
+	        sleep 1
 
         echo "Reading flash..."
         esptool --port "$PORT" read-flash 0x0 "$SIZE" "$OUTFILE"
@@ -689,9 +694,9 @@ case "$1" in
         echo "WARNING: This will overwrite ALL flash contents!"
         echo ""
 
-        echo "Pausing daemon..."
-        (cd "$EAB_DIR" && python3 -m eab --pause 300)
-        sleep 1
+	        echo "Pausing daemon..."
+	        eabctl_cmd pause 300
+	        sleep 1
 
         echo "Writing flash..."
         esptool --port "$PORT" --baud 921600 write-flash 0x0 "$INFILE"
@@ -719,9 +724,9 @@ case "$1" in
             exit 1
         fi
 
-        echo "Pausing daemon..."
-        (cd "$EAB_DIR" && python3 -m eab --pause 30)
-        sleep 1
+	        echo "Pausing daemon..."
+	        eabctl_cmd pause 30
+	        sleep 1
 
         esptool --port "$PORT" read-mac
 
@@ -786,12 +791,12 @@ case "$1" in
             exit 1
         fi
 
-        TEXT="$2"
-        echo "Sending: $TEXT"
-        (cd "$EAB_DIR" && python3 -m eab --cmd "$TEXT")
-        sleep 1
-        "$SELF_PATH" tail 10
-        ;;
+	        TEXT="$2"
+	        echo "Sending: $TEXT"
+	        eabctl_cmd send "$TEXT"
+	        sleep 1
+	        "$SELF_PATH" tail 10
+	        ;;
 
     *)
         echo "EAB Daemon Control"

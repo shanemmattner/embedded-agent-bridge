@@ -63,25 +63,34 @@ Background process that captures serial output and enables command injection.
 - Bidirectional communication
 - Statistics tracking
 
-### 2. GDB Bridge (Planned)
-Daemon that wraps GDB and exposes it via file-based interface.
+### 2. USB-JTAG + GDB (EAB-managed)
+EAB includes an **OpenOCD + GDB** control surface via `eabctl` so you can keep chip/debug interaction inside EAB.
 
-**Capabilities:**
-- Execute GDB commands (`bt`, `p variable`, `c`, `b main.c:50`)
-- Custom hardware-aware commands (`show-i2c`, `show-gpio`)
-- Parse MI protocol output into readable format
-- Correlate with serial output
+**Start OpenOCD (ESP32-S3 built-in USB Serial/JTAG defaults):**
+```bash
+./eabctl openocd start --chip esp32s3 --vid 0x303a --pid 0x1001
+```
 
-### 3. OpenOCD Bridge (Planned)
-Interface to OpenOCD for flash/debug operations.
+**Send an OpenOCD command (via telnet port, default 4444):**
+```bash
+./eabctl openocd cmd --command "targets"
+```
 
-**Capabilities:**
-- Flash firmware
-- Reset target
-- Read/write memory
-- Control execution
+**Run one-shot GDB commands against the OpenOCD GDB server (default :3333):**
+```bash
+./eabctl gdb --chip esp32s3 --cmd "monitor reset halt" --cmd "bt"
+```
 
-### 4. ESP-IDF Integration (Planned)
+**Stop OpenOCD:**
+```bash
+./eabctl openocd stop
+```
+
+**Notes:**
+- This is a minimal bridge (OpenOCD lifecycle + batch GDB commands). A persistent MI wrapper can be added later.
+- If OpenOCD exits immediately, check `/tmp/eab-session/openocd.err` and ensure the device exposes USB-JTAG.
+
+### 3. ESP-IDF Integration (Planned)
 Build and flash integration for ESP32 development.
 
 **Capabilities:**

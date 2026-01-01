@@ -24,6 +24,8 @@ from typing import Any, Optional
 from eab.command_file import append_command
 from eab.capture import capture_between_markers
 from eab.singleton import check_singleton, kill_existing_daemon
+from eab.openocd_bridge import OpenOCDBridge, DEFAULT_TELNET_PORT, DEFAULT_GDB_PORT, DEFAULT_TCL_PORT
+from eab.gdb_bridge import run_gdb_batch
 
 
 DEFAULT_BASE_DIR = "/tmp/eab-session"
@@ -449,6 +451,121 @@ def cmd_resume(*, base_dir: str, json_mode: bool) -> int:
     return 0
 
 
+def cmd_openocd_status(*, base_dir: str, json_mode: bool) -> int:
+    bridge = OpenOCDBridge(base_dir)
+    st = bridge.status()
+    _print(
+        {
+            "running": st.running,
+            "pid": st.pid,
+            "cfg_path": st.cfg_path,
+            "log_path": st.log_path,
+            "err_path": st.err_path,
+            "telnet_port": st.telnet_port,
+            "gdb_port": st.gdb_port,
+            "tcl_port": st.tcl_port,
+        },
+        json_mode=json_mode,
+    )
+    return 0
+
+
+def cmd_openocd_start(
+    *,
+    base_dir: str,
+    chip: str,
+    vid: str,
+    pid: str,
+    telnet_port: int,
+    gdb_port: int,
+    tcl_port: int,
+    json_mode: bool,
+) -> int:
+    bridge = OpenOCDBridge(base_dir)
+    st = bridge.start(
+        chip=chip,
+        vid=vid,
+        pid=pid,
+        telnet_port=telnet_port,
+        gdb_port=gdb_port,
+        tcl_port=tcl_port,
+    )
+    _print(
+        {
+            "running": st.running,
+            "pid": st.pid,
+            "cfg_path": st.cfg_path,
+            "log_path": st.log_path,
+            "err_path": st.err_path,
+            "telnet_port": st.telnet_port,
+            "gdb_port": st.gdb_port,
+            "tcl_port": st.tcl_port,
+        },
+        json_mode=json_mode,
+    )
+    return 0 if st.running else 1
+
+
+def cmd_openocd_stop(*, base_dir: str, json_mode: bool) -> int:
+    bridge = OpenOCDBridge(base_dir)
+    st = bridge.stop()
+    _print(
+        {
+            "running": st.running,
+            "pid": st.pid,
+        },
+        json_mode=json_mode,
+    )
+    return 0
+
+
+def cmd_openocd_cmd(
+    *,
+    base_dir: str,
+    command: str,
+    telnet_port: int,
+    timeout_s: float,
+    json_mode: bool,
+) -> int:
+    bridge = OpenOCDBridge(base_dir)
+    out = bridge.cmd(command, telnet_port=telnet_port, timeout_s=timeout_s)
+    _print({"command": command, "output": out}, json_mode=json_mode)
+    return 0
+
+
+def cmd_gdb(
+    *,
+    base_dir: str,
+    chip: str,
+    target: str,
+    elf: Optional[str],
+    gdb_path: Optional[str],
+    commands: list[str],
+    timeout_s: float,
+    json_mode: bool,
+) -> int:
+    # base_dir is currently unused; included for symmetry and future session logging.
+    res = run_gdb_batch(
+        chip=chip,
+        target=target,
+        elf=elf,
+        gdb_path=gdb_path,
+        commands=commands,
+        timeout_s=timeout_s,
+    )
+    _print(
+        {
+            "success": res.success,
+            "returncode": res.returncode,
+            "gdb_path": res.gdb_path,
+            "stdout": res.stdout,
+            "stderr": res.stderr,
+        },
+        json_mode=json_mode,
+    )
+    return 0 if res.success else 1
+
+
 def cmd_stream_start(
     *,
     base_dir: str,
@@ -855,6 +972,25 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     sub.add_parser("resume", help="Resume daemon early (remove pause file)")
 
+    p_openocd = sub.add_parser("openocd", help="Manage OpenOCD (USB-JTAG) through EAB")
+    p_openocd.add_argument("action", choices=["status", "start", "stop", "cmd"])
+    p_openocd.add_argument("--chip", default="esp32s3")
+    p_openocd.add_argument("--vid", default="0x303a")
+    p_openocd.add_argument("--pid", default="0x1001")
+    p_openocd.add_argument("--telnet-port", type=int, default=DEFAULT_TELNET_PORT)
+    p_openocd.add_argument("--gdb-port", type=int, default=DEFAULT_GDB_PORT)
+    p_openocd.add_argument("--tcl-port", type=int, default=DEFAULT_TCL_PORT)
+    p_openocd.add_argument("--timeout", type=float, default=2.0)
+    p_openocd.add_argument("--command", default="", help="Command for 'openocd cmd'")
+
+    p_gdb = sub.add_parser("gdb", help="Run one-shot GDB commands through EAB (requires OpenOCD)")
+    p_gdb.add_argument("--chip", default="esp32s3")
+    p_gdb.add_argument("--target", default=f"localhost:{DEFAULT_GDB_PORT}")
+    p_gdb.add_argument("--elf", default=None)
+    p_gdb.add_argument("--gdb", dest="gdb_path", default=None)
+    p_gdb.add_argument("--timeout", type=float, default=60.0)
+    p_gdb.add_argument("--cmd", dest="commands", action="append", default=[], help="GDB command (repeatable)")
+
     p_stream = sub.add_parser("stream", help="Configure high-speed data stream mode")
     p_stream.add_argument("action", choices=["start", "stop"])
     p_stream.add_argument("--mode", choices=["raw", "base64"], default="raw")
@@ -956,6 +1092,47 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_pause(base_dir=base_dir, seconds=args.seconds, json_mode=args.json)
     if args.cmd == "resume":
         return cmd_resume(base_dir=base_dir, json_mode=args.json)
+    if args.cmd == "openocd":
+        if args.action == "status":
+            return cmd_openocd_status(base_dir=base_dir, json_mode=args.json)
+        if args.action == "start":
+            return cmd_openocd_start(
+                base_dir=base_dir,
+                chip=args.chip,
+                vid=args.vid,
+                pid=args.pid,
+                telnet_port=args.telnet_port,
+                gdb_port=args.gdb_port,
+                tcl_port=args.tcl_port,
+                json_mode=args.json,
+            )
+        if args.action == "stop":
+            return cmd_openocd_stop(base_dir=base_dir, json_mode=args.json)
+        if args.action == "cmd":
+            if not args.command:
+                _print({"error": "missing --command"}, json_mode=args.json)
+                return 2
+            return cmd_openocd_cmd(
+                base_dir=base_dir,
+                command=args.command,
+                telnet_port=args.telnet_port,
+                timeout_s=args.timeout,
+                json_mode=args.json,
+            )
+    if args.cmd == "gdb":
+        if not args.commands:
+            _print({"error": "missing --cmd (repeatable)"}, json_mode=args.json)
+            return 2
+        return cmd_gdb(
+            base_dir=base_dir,
+            chip=args.chip,
+            target=args.target,
+            elf=args.elf,
+            gdb_path=args.gdb_path,
+            commands=args.commands,
+            timeout_s=args.timeout,
+            json_mode=args.json,
+        )
     if args.cmd == "stream":
         if args.action == "start":
             return cmd_stream_start(

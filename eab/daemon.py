@@ -27,7 +27,13 @@ from .pattern_matcher import PatternMatcher, AlertLogger
 from .status_manager import StatusManager
 from .event_emitter import EventEmitter
 from .data_stream import DataStreamWriter
-from .interfaces import ConnectionState
+from .interfaces import (
+    ClockInterface,
+    ConnectionState,
+    FileSystemInterface,
+    LoggerInterface,
+    SerialPortInterface,
+)
 from .device_control import DeviceController
 from .log_sanitize import sanitize_serial_bytes
 from .port_lock import PortLock, find_port_users, list_all_locks
@@ -53,6 +59,11 @@ class SerialDaemon:
         baud: int = 115200,
         base_dir: str = "/tmp/eab-session",
         auto_detect: bool = True,
+        *,
+        serial_port: Optional[SerialPortInterface] = None,
+        filesystem: Optional[FileSystemInterface] = None,
+        clock: Optional[ClockInterface] = None,
+        logger: Optional[LoggerInterface] = None,
     ):
         self._port = port
         self._baud = baud
@@ -60,11 +71,11 @@ class SerialDaemon:
         self._auto_detect = auto_detect
         self._running = False
 
-        # Create real implementations
-        self._serial = RealSerialPort()
-        self._fs = RealFileSystem()
-        self._clock = RealClock()
-        self._logger = ConsoleLogger()
+        # Implementations (allow injection for tests)
+        self._serial = serial_port or RealSerialPort()
+        self._fs = filesystem or RealFileSystem()
+        self._clock = clock or RealClock()
+        self._logger = logger or ConsoleLogger()
 
         # Ensure base directory exists
         self._fs.ensure_dir(base_dir)
@@ -184,7 +195,7 @@ class SerialDaemon:
         the exposed serial ports is wired to UART0.
         """
         if self._port.lower() == "auto" and self._auto_detect:
-            ports = RealSerialPort.list_ports()
+            ports = self._serial.list_ports()
 
             # ESP32 USB identifiers (prioritized)
             esp32_patterns = [
@@ -619,7 +630,7 @@ class SerialDaemon:
         self._clock.sleep(0.5)
 
         # Check if port exists using available ports list
-        available_ports = [p.device for p in RealSerialPort.list_ports()]
+        available_ports = [p.device for p in self._serial.list_ports()]
 
         if original_port not in available_ports:
             self._logger.warning(f"Original port {original_port} no longer exists!")

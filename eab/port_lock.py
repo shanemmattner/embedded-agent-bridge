@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 import json
+import errno
 
 
 @dataclass
@@ -184,8 +185,11 @@ class PortLock:
             "port": self._port,
         }
 
-        with open(self._info_path, "w") as f:
+        # Atomic write to avoid corrupt JSON on crash.
+        tmp_path = f"{self._info_path}.tmp.{os.getpid()}"
+        with open(tmp_path, "w") as f:
             json.dump(info, f, indent=2)
+        os.replace(tmp_path, self._info_path)
 
     @staticmethod
     def _get_process_name() -> str:
@@ -204,7 +208,15 @@ class PortLock:
         try:
             os.kill(pid, 0)
             return True
-        except (OSError, ProcessLookupError):
+        except PermissionError:
+            # Some environments disallow signaling other processes (even with signal 0).
+            # Treat as "unknown but likely alive" to avoid unsafe lock stealing.
+            return True
+        except ProcessLookupError:
+            return False
+        except OSError as e:
+            if getattr(e, "errno", None) == errno.EPERM:
+                return True
             return False
 
     def _cleanup_stale_lock(self) -> None:
@@ -255,6 +267,75 @@ def list_all_locks() -> List[PortOwner]:
             pass
 
     return locks
+
+
+def cleanup_dead_locks(*, logger=None) -> dict:
+    """Remove lock artifacts for dead processes.
+
+    Safety: we only delete `.lock` files when we can prove the recorded PID is dead.
+    If we cannot parse `.info`, we only delete the `.info` file (never the `.lock`),
+    because deleting a lock file while a live process holds a flock can cause a second
+    process to create a new lock inode and 'double-own' the lock.
+    """
+    lock_dir = Path(PortLock.LOCK_DIR)
+    removed_info = 0
+    removed_lock = 0
+    corrupt_info = 0
+    dead_pids: list[int] = []
+
+    def log(msg: str) -> None:
+        if logger:
+            try:
+                logger.info(msg)
+            except Exception:
+                pass
+
+    if not lock_dir.exists():
+        return {
+            "removed_info": 0,
+            "removed_lock": 0,
+            "corrupt_info": 0,
+            "dead_pids": [],
+        }
+
+    for info_path in lock_dir.glob("*.lock.info"):
+        lock_path = str(info_path).removesuffix(".info")
+        try:
+            info = json.loads(info_path.read_text(encoding="utf-8", errors="replace"))
+            pid = int(info.get("pid", -1))
+        except Exception:
+            # Corrupt JSON: safe cleanup is to delete only the info file.
+            corrupt_info += 1
+            try:
+                info_path.unlink(missing_ok=True)
+                removed_info += 1
+                log(f"Removed corrupt lock info: {info_path}")
+            except Exception:
+                pass
+            continue
+
+        if pid > 0 and not PortLock._is_process_alive(pid):
+            dead_pids.append(pid)
+            # Remove info first.
+            try:
+                info_path.unlink(missing_ok=True)
+                removed_info += 1
+            except Exception:
+                pass
+
+            # Only now safe to remove the lock file (no process holds the lock anymore).
+            try:
+                os.unlink(lock_path)
+                removed_lock += 1
+            except Exception:
+                pass
+
+    return {
+        "removed_info": removed_info,
+        "removed_lock": removed_lock,
+        "corrupt_info": corrupt_info,
+        "dead_pids": dead_pids,
+    }
 
 
 def find_port_users(port: str) -> List[dict]:

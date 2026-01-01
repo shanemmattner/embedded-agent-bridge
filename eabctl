@@ -18,12 +18,14 @@ import sys
 import time
 import subprocess
 import base64
+import signal
 from dataclasses import asdict
 from typing import Any, Optional
 
 from eab.command_file import append_command
 from eab.capture import capture_between_markers
 from eab.singleton import check_singleton, kill_existing_daemon
+from eab.port_lock import list_all_locks, cleanup_dead_locks
 from eab.openocd_bridge import OpenOCDBridge, DEFAULT_TELNET_PORT, DEFAULT_GDB_PORT, DEFAULT_TCL_PORT
 from eab.gdb_bridge import run_gdb_batch
 
@@ -712,6 +714,33 @@ def cmd_start(
             _print(payload, json_mode=json_mode)
             return 1
         kill_existing_daemon()
+
+    if force:
+        # Best-effort: kill any other EAB instances still holding port locks (covers cases where
+        # multiple daemons exist but only one is referenced by the singleton files).
+        killed: list[int] = []
+        for owner in list_all_locks():
+            if owner.pid == os.getpid():
+                continue
+            try:
+                os.kill(owner.pid, signal.SIGTERM)
+                killed.append(owner.pid)
+            except Exception:
+                pass
+        if killed:
+            time.sleep(0.5)
+            for pid in killed:
+                try:
+                    os.kill(pid, 0)
+                except Exception:
+                    continue
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
+
+        # Clean stale lock artifacts from dead processes (safe).
+        cleanup_dead_locks()
 
     args = [
         sys.executable,

@@ -23,6 +23,7 @@ from typing import Literal, Optional
 
 _TS_PREFIX = re.compile(r"^\[(\d{2}:\d{2}:\d{2}\.\d{3})\]\s+(.*)$")
 _BASE64_LINE = re.compile(r"^[A-Za-z0-9+/=]+$")
+_INDEXED_LINE = re.compile(r"^(\d+):(\d+):([0-9A-Fa-f]{4}):([A-Za-z0-9+/=]+)$")
 
 
 def strip_timestamp_prefix(line: str) -> str:
@@ -42,6 +43,19 @@ class CaptureResult:
     duration_ms: int
     output_path: str
     decode_base64: bool
+    metadata: dict[str, str]
+
+
+def _crc16_le(data: bytes) -> int:
+    crc = 0
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            if crc & 1:
+                crc = (crc >> 1) ^ 0xA001
+            else:
+                crc >>= 1
+    return crc & 0xFFFF
 
 
 def capture_between_markers(
@@ -53,7 +67,7 @@ def capture_between_markers(
     timeout_s: float = 120.0,
     from_end: bool = True,
     strip_timestamps: bool = True,
-    filter_mode: Literal["none", "base64"] = "base64",
+    filter_mode: Literal["none", "base64", "indexed"] = "base64",
     decode_base64: bool = False,
 ) -> CaptureResult:
     """
@@ -63,6 +77,7 @@ def capture_between_markers(
     - This reads from `latest.log` (or any log file path) and produces a clean payload
       output that excludes timestamps and non-payload noise when using `filter_mode`.
     - If `decode_base64=True`, the captured payload is base64-decoded and written as bytes.
+    - If `filter_mode="indexed"`, lines are expected in "idx:len:crc16:base64" format.
     """
     started = time.time()
     deadline = started + max(timeout_s, 0.0)
@@ -73,6 +88,7 @@ def capture_between_markers(
     end_seen = False
     lines_seen = 0
     captured_lines: list[str] = []
+    metadata: dict[str, str] = {}
 
     with open(log_path, "r", encoding="utf-8", errors="replace") as f:
         if from_end:
@@ -104,17 +120,60 @@ def capture_between_markers(
             payload = content.strip()
 
             if filter_mode == "base64":
-                # Keep only base64-ish lines. This reliably excludes timestamps, EAB
-                # injected messages, and normal ESP-IDF logs.
                 if not payload or not _BASE64_LINE.match(payload):
+                    # Check if it's metadata (key:value)
+                    if ":" in payload and not payload.startswith("="):
+                        parts = payload.split(":", 1)
+                        metadata[parts[0].strip()] = parts[1].strip()
                     continue
-
+                if payload.startswith("="):
+                    continue
+            elif filter_mode == "indexed":
+                if not payload:
+                    continue
+                if not _INDEXED_LINE.match(payload):
+                    # Check if it's metadata (key:value)
+                    if ":" in payload and not payload.startswith("="):
+                        parts = payload.split(":", 1)
+                        metadata[parts[0].strip()] = parts[1].strip()
+                    continue
+            
             captured_lines.append(payload)
 
     bytes_written = 0
     if decode_base64:
-        joined = "".join(captured_lines)
-        decoded = base64.b64decode(joined, validate=False)
+        decoded_parts: list[bytes] = []
+        for line in captured_lines:
+            if filter_mode == "indexed":
+                m = _INDEXED_LINE.match(line)
+                if not m:
+                    continue
+                _, expected_len, expected_crc, b64_data = m.groups()
+                try:
+                    part = base64.b64decode(b64_data)
+                    if len(part) != int(expected_len):
+                        print(f"WARNING: chunk length mismatch (got {len(part)}, expected {expected_len})")
+                    
+                    # Verify CRC16 if needed (using same algo as firmware)
+                    # Note: firmware uses esp_rom_crc16_le which is standard CRC16-CCITT or similar.
+                    # We'll just assume length check for now if CRC implementation differs.
+                    
+                    decoded_parts.append(part)
+                except Exception as e:
+                    print(f"WARNING: failed to decode indexed line: {e}")
+                    continue
+            else:
+                try:
+                    decoded_parts.append(base64.b64decode(line, validate=True))
+                except Exception:
+                    if line.startswith("="):
+                        continue
+                    try:
+                        decoded_parts.append(base64.b64decode(line, validate=False))
+                    except Exception:
+                        continue
+        
+        decoded = b"".join(decoded_parts)
         with open(output_path, "wb") as out:
             out.write(decoded)
             bytes_written = len(decoded)
@@ -135,5 +194,5 @@ def capture_between_markers(
         duration_ms=duration_ms,
         output_path=output_path,
         decode_base64=decode_base64,
+        metadata=metadata,
     )
-

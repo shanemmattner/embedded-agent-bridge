@@ -12,7 +12,10 @@ References:
 
 from __future__ import annotations
 
+import glob
 import re
+import shutil
+from pathlib import Path
 from typing import Optional
 
 from .base import (
@@ -22,6 +25,38 @@ from .base import (
     OpenOCDConfig,
     ResetSequence,
 )
+
+
+def _find_stm32_programmer_cli() -> str:
+    """
+    Find STM32_Programmer_CLI executable.
+
+    Searches in PATH first, then common installation locations on macOS.
+
+    Returns:
+        Path to STM32_Programmer_CLI or "STM32_Programmer_CLI" if not found
+        (will fail gracefully with "tool not found" error).
+    """
+    # Check PATH first
+    path = shutil.which("STM32_Programmer_CLI")
+    if path:
+        return path
+
+    # Common locations on macOS (STM32CubeIDE installs here)
+    search_patterns = [
+        "/Applications/STM32CubeIDE.app/Contents/Eclipse/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.*/tools/bin/STM32_Programmer_CLI",
+        "/Applications/STMicroelectronics/STM32Cube/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/MacOs/bin/STM32_Programmer_CLI",
+        str(Path.home() / "STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI"),
+    ]
+
+    for pattern in search_patterns:
+        matches = glob.glob(pattern)
+        if matches:
+            # Return the most recent version (sorted by path)
+            return sorted(matches)[-1]
+
+    # Not found - return bare name and let subprocess fail with clear error
+    return "STM32_Programmer_CLI"
 
 
 class STM32Profile(ChipProfile):
@@ -207,7 +242,7 @@ class STM32Profile(ChipProfile):
             "UART_ERROR": r"USART.*error|UART.*error|ORE|FE|NE|PE",
             "I2C_ERROR": r"I2C.*error|NACK|BERR|ARLO|AF",
             "SPI_ERROR": r"SPI.*error|MODF|OVR|CRCERR",
-        ]
+        }
 
     # =========================================================================
     # Reset Sequences
@@ -256,6 +291,7 @@ class STM32Profile(ChipProfile):
         port: str,  # Not used for st-flash (uses USB)
         address: str = "0x08000000",
         tool: str = "st-flash",
+        connect_under_reset: bool = False,
         **kwargs,
     ) -> FlashCommand:
         """
@@ -266,13 +302,25 @@ class STM32Profile(ChipProfile):
             port: Serial port (ignored for st-flash, used for serial bootloader)
             address: Flash address (default 0x08000000 for STM32)
             tool: "st-flash" or "stm32programmer"
+            connect_under_reset: Use connect-under-reset for crashed chips
+
+        Note:
+            st-flash has a known bug (github.com/stlink-org/stlink/issues/1260)
+            where it falsely reports "NRST is not connected" even when connected.
+            When connect_under_reset is True, we prefer STM32CubeProgrammer
+            which handles hardware reset correctly.
         """
-        if tool == "stm32programmer":
+        # Prefer STM32CubeProgrammer for connect-under-reset (st-flash has bugs)
+        use_cubeprog = tool == "stm32programmer" or connect_under_reset
+
+        if use_cubeprog:
             # STM32CubeProgrammer CLI
+            cubeprog = _find_stm32_programmer_cli()
+            port_arg = "port=SWD mode=UR reset=HWrst" if connect_under_reset else "port=SWD"
             return FlashCommand(
-                tool="STM32_Programmer_CLI",
+                tool=cubeprog,
                 args=[
-                    "-c", "port=SWD",
+                    "-c", port_arg,
                     "-w", firmware_path, address,
                     "-v",  # Verify
                     "-rst",  # Reset after
@@ -280,7 +328,7 @@ class STM32Profile(ChipProfile):
                 timeout=120.0,
             )
         else:
-            # st-flash (stlink-org/stlink)
+            # st-flash (stlink-org/stlink) - normal mode only
             return FlashCommand(
                 tool="st-flash",
                 args=[
@@ -292,12 +340,39 @@ class STM32Profile(ChipProfile):
                 timeout=120.0,
             )
 
-    def get_erase_command(self, port: str, tool: str = "st-flash", **kwargs) -> FlashCommand:
-        """Build st-flash erase command."""
-        if tool == "stm32programmer":
+    def get_erase_command(
+        self,
+        port: str,
+        tool: str = "st-flash",
+        connect_under_reset: bool = False,
+        **kwargs,
+    ) -> FlashCommand:
+        """
+        Build st-flash erase command.
+
+        Args:
+            port: Serial port (ignored for st-flash)
+            tool: "st-flash" or "stm32programmer"
+            connect_under_reset: Use connect-under-reset for crashed chips
+
+        Note:
+            st-flash has a known bug (github.com/stlink-org/stlink/issues/1260)
+            where it falsely reports "NRST is not connected" even when connected.
+            When connect_under_reset is True, we prefer STM32CubeProgrammer
+            which handles hardware reset correctly.
+        """
+        # Prefer STM32CubeProgrammer for connect-under-reset (st-flash has bugs)
+        use_cubeprog = tool == "stm32programmer" or connect_under_reset
+
+        if use_cubeprog:
+            cubeprog = _find_stm32_programmer_cli()
+            args = ["-c", "port=SWD"]
+            if connect_under_reset:
+                args[1] = "port=SWD mode=UR reset=HWrst"  # Under Reset with HW reset
+            args.extend(["-e", "all"])
             return FlashCommand(
-                tool="STM32_Programmer_CLI",
-                args=["-c", "port=SWD", "-e", "all"],
+                tool=cubeprog,
+                args=args,
                 timeout=60.0,
             )
         else:

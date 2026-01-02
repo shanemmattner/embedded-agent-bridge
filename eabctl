@@ -28,6 +28,7 @@ from eab.singleton import check_singleton, kill_existing_daemon
 from eab.port_lock import list_all_locks, cleanup_dead_locks
 from eab.openocd_bridge import OpenOCDBridge, DEFAULT_TELNET_PORT, DEFAULT_GDB_PORT, DEFAULT_TCL_PORT
 from eab.gdb_bridge import run_gdb_batch
+from eab.chips import get_chip_profile
 
 
 DEFAULT_BASE_DIR = "/tmp/eab-session"
@@ -850,6 +851,255 @@ def cmd_capture_between(
     return 0 if (result.start_seen and result.end_seen) else 1
 
 
+def cmd_flash(
+    *,
+    firmware: str,
+    chip: str,
+    address: Optional[str],
+    port: Optional[str],
+    tool: Optional[str],
+    baud: int,
+    connect_under_reset: bool,
+    json_mode: bool,
+) -> int:
+    """Flash firmware to device using chip-specific tool."""
+    started = time.time()
+
+    try:
+        profile = get_chip_profile(chip)
+    except ValueError as e:
+        _print({"error": str(e)}, json_mode=json_mode)
+        return 2
+
+    # Build flash command from chip profile
+    kwargs = {"baud": baud, "connect_under_reset": connect_under_reset}
+    if tool:
+        kwargs["tool"] = tool
+
+    flash_cmd = profile.get_flash_command(
+        firmware_path=firmware,
+        port=port or "",
+        address=address or profile.flash_tool,  # Use default if not specified
+        **kwargs,
+    )
+
+    # For STM32, address defaults to 0x08000000 if not specified
+    if chip.lower().startswith("stm32") and not address:
+        flash_cmd = profile.get_flash_command(
+            firmware_path=firmware,
+            port=port or "",
+            address="0x08000000",
+            **kwargs,
+        )
+
+    # Execute flash command
+    cmd_list = [flash_cmd.tool] + flash_cmd.args
+    try:
+        result = subprocess.run(
+            cmd_list,
+            capture_output=True,
+            text=True,
+            timeout=flash_cmd.timeout,
+        )
+        success = result.returncode == 0
+        stdout = result.stdout
+        stderr = result.stderr
+    except subprocess.TimeoutExpired:
+        success = False
+        stdout = ""
+        stderr = f"Timeout after {flash_cmd.timeout}s"
+    except FileNotFoundError:
+        success = False
+        stdout = ""
+        stderr = f"Tool not found: {flash_cmd.tool}. Install with: brew install stlink"
+
+    duration_ms = int((time.time() - started) * 1000)
+
+    payload = {
+        "schema_version": 1,
+        "timestamp": _now_iso(),
+        "success": success,
+        "chip": chip,
+        "firmware": firmware,
+        "address": address,
+        "tool": flash_cmd.tool,
+        "command": cmd_list,
+        "stdout": stdout,
+        "stderr": stderr,
+        "duration_ms": duration_ms,
+    }
+    _print(payload, json_mode=json_mode)
+    return 0 if success else 1
+
+
+def cmd_erase(
+    *,
+    chip: str,
+    port: Optional[str],
+    tool: Optional[str],
+    connect_under_reset: bool,
+    json_mode: bool,
+) -> int:
+    """Erase flash memory using chip-specific tool."""
+    started = time.time()
+
+    try:
+        profile = get_chip_profile(chip)
+    except ValueError as e:
+        _print({"error": str(e)}, json_mode=json_mode)
+        return 2
+
+    kwargs = {"connect_under_reset": connect_under_reset}
+    if tool:
+        kwargs["tool"] = tool
+
+    erase_cmd = profile.get_erase_command(port=port or "", **kwargs)
+
+    cmd_list = [erase_cmd.tool] + erase_cmd.args
+    try:
+        result = subprocess.run(
+            cmd_list,
+            capture_output=True,
+            text=True,
+            timeout=erase_cmd.timeout,
+        )
+        success = result.returncode == 0
+        stdout = result.stdout
+        stderr = result.stderr
+    except subprocess.TimeoutExpired:
+        success = False
+        stdout = ""
+        stderr = f"Timeout after {erase_cmd.timeout}s"
+    except FileNotFoundError:
+        success = False
+        stdout = ""
+        stderr = f"Tool not found: {erase_cmd.tool}"
+
+    duration_ms = int((time.time() - started) * 1000)
+
+    payload = {
+        "schema_version": 1,
+        "timestamp": _now_iso(),
+        "success": success,
+        "chip": chip,
+        "tool": erase_cmd.tool,
+        "command": cmd_list,
+        "stdout": stdout,
+        "stderr": stderr,
+        "duration_ms": duration_ms,
+    }
+    _print(payload, json_mode=json_mode)
+    return 0 if success else 1
+
+
+def cmd_chip_info(
+    *,
+    chip: str,
+    port: Optional[str],
+    json_mode: bool,
+) -> int:
+    """Get chip information using chip-specific tool."""
+    started = time.time()
+
+    try:
+        profile = get_chip_profile(chip)
+    except ValueError as e:
+        _print({"error": str(e)}, json_mode=json_mode)
+        return 2
+
+    info_cmd = profile.get_chip_info_command(port=port or "")
+
+    cmd_list = [info_cmd.tool] + info_cmd.args
+    try:
+        result = subprocess.run(
+            cmd_list,
+            capture_output=True,
+            text=True,
+            timeout=info_cmd.timeout,
+        )
+        success = result.returncode == 0
+        stdout = result.stdout
+        stderr = result.stderr
+    except subprocess.TimeoutExpired:
+        success = False
+        stdout = ""
+        stderr = f"Timeout after {info_cmd.timeout}s"
+    except FileNotFoundError:
+        success = False
+        stdout = ""
+        stderr = f"Tool not found: {info_cmd.tool}"
+
+    duration_ms = int((time.time() - started) * 1000)
+
+    payload = {
+        "schema_version": 1,
+        "timestamp": _now_iso(),
+        "success": success,
+        "chip": chip,
+        "tool": info_cmd.tool,
+        "command": cmd_list,
+        "stdout": stdout,
+        "stderr": stderr,
+        "duration_ms": duration_ms,
+    }
+    _print(payload, json_mode=json_mode)
+    return 0 if success else 1
+
+
+def cmd_reset(
+    *,
+    chip: str,
+    method: str,
+    json_mode: bool,
+) -> int:
+    """Hardware reset device using st-flash reset or OpenOCD."""
+    started = time.time()
+
+    # For STM32, use st-flash reset command directly
+    if chip.lower().startswith("stm32"):
+        cmd_list = ["st-flash", "reset"]
+        try:
+            result = subprocess.run(
+                cmd_list,
+                capture_output=True,
+                text=True,
+                timeout=30.0,
+            )
+            success = result.returncode == 0
+            stdout = result.stdout
+            stderr = result.stderr
+        except subprocess.TimeoutExpired:
+            success = False
+            stdout = ""
+            stderr = "Timeout after 30s"
+        except FileNotFoundError:
+            success = False
+            stdout = ""
+            stderr = "st-flash not found. Install with: brew install stlink"
+    else:
+        # For ESP32, would need OpenOCD or esptool
+        success = False
+        stdout = ""
+        stderr = f"Reset for {chip} not yet implemented. Use OpenOCD: eabctl openocd cmd --command 'reset run'"
+        cmd_list = []
+
+    duration_ms = int((time.time() - started) * 1000)
+
+    payload = {
+        "schema_version": 1,
+        "timestamp": _now_iso(),
+        "success": success,
+        "chip": chip,
+        "method": method,
+        "command": cmd_list,
+        "stdout": stdout,
+        "stderr": stderr,
+        "duration_ms": duration_ms,
+    }
+    _print(payload, json_mode=json_mode)
+    return 0 if success else 1
+
+
 def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
     existing = check_singleton()
     status_path = os.path.join(base_dir, "status.json")
@@ -1088,6 +1338,32 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     sub.add_parser("diagnose", help="Run basic health checks and print recommendations")
 
+    # Flash operations (chip-agnostic)
+    p_flash = sub.add_parser("flash", help="Flash firmware to device")
+    p_flash.add_argument("firmware", help="Path to firmware binary (.bin/.hex)")
+    p_flash.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_flash.add_argument("--address", default=None, help="Flash address (default: chip-specific)")
+    p_flash.add_argument("--port", default=None, help="Serial port (ESP32) or ignored (STM32)")
+    p_flash.add_argument("--tool", default=None, help="Flash tool override (st-flash, esptool.py)")
+    p_flash.add_argument("--baud", type=int, default=921600, help="Baud rate (ESP32 only)")
+    p_flash.add_argument("--connect-under-reset", action="store_true",
+                        help="STM32: Connect while holding reset (for crashed chips)")
+
+    p_erase = sub.add_parser("erase", help="Erase flash memory")
+    p_erase.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_erase.add_argument("--port", default=None, help="Serial port (ESP32) or ignored (STM32)")
+    p_erase.add_argument("--tool", default=None, help="Erase tool override")
+    p_erase.add_argument("--connect-under-reset", action="store_true",
+                        help="STM32: Connect while holding reset (for crashed chips)")
+
+    p_chip_info = sub.add_parser("chip-info", help="Get chip information")
+    p_chip_info.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_chip_info.add_argument("--port", default=None, help="Serial port (ESP32) or ignored (STM32)")
+
+    p_reset = sub.add_parser("reset", help="Hardware reset device")
+    p_reset.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_reset.add_argument("--method", choices=["hard", "soft", "bootloader"], default="hard")
+
     args = parser.parse_args(argv)
     base_dir = _resolve_base_dir(args.base_dir)
 
@@ -1218,6 +1494,37 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     if args.cmd == "diagnose":
         return cmd_diagnose(base_dir=base_dir, json_mode=args.json)
+    if args.cmd == "flash":
+        return cmd_flash(
+            firmware=args.firmware,
+            chip=args.chip,
+            address=args.address,
+            port=args.port,
+            tool=args.tool,
+            baud=args.baud,
+            connect_under_reset=getattr(args, "connect_under_reset", False),
+            json_mode=args.json,
+        )
+    if args.cmd == "erase":
+        return cmd_erase(
+            chip=args.chip,
+            port=args.port,
+            tool=args.tool,
+            connect_under_reset=getattr(args, "connect_under_reset", False),
+            json_mode=args.json,
+        )
+    if args.cmd == "chip-info":
+        return cmd_chip_info(
+            chip=args.chip,
+            port=args.port,
+            json_mode=args.json,
+        )
+    if args.cmd == "reset":
+        return cmd_reset(
+            chip=args.chip,
+            method=args.method,
+            json_mode=args.json,
+        )
 
     parser.error(f"Unknown command: {args.cmd}")
     return 2

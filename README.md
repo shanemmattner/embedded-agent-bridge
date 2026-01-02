@@ -90,7 +90,62 @@ EAB includes an **OpenOCD + GDB** control surface via `eabctl` so you can keep c
 - This is a minimal bridge (OpenOCD lifecycle + batch GDB commands). A persistent MI wrapper can be added later.
 - If OpenOCD exits immediately, check `/tmp/eab-session/openocd.err` and ensure the device exposes USB-JTAG.
 
-### 3. ESP-IDF Integration (Planned)
+### 3. Flash Operations (Chip-Agnostic)
+EAB provides chip-agnostic flash commands that work with ESP32, STM32, and other supported chips.
+
+**Flash firmware:**
+```bash
+# ESP32
+./eabctl flash firmware.bin --chip esp32s3 --port /dev/cu.usbserial-0001 --address 0x10000
+
+# STM32
+./eabctl flash firmware.bin --chip stm32l4 --address 0x08004000
+```
+
+**Erase flash:**
+```bash
+./eabctl erase --chip stm32l4
+./eabctl erase --chip esp32s3 --port /dev/cu.usbserial-0001
+```
+
+**Get chip info:**
+```bash
+./eabctl chip-info --chip stm32l4 --json
+./eabctl chip-info --chip esp32s3 --port /dev/cu.usbserial-0001
+```
+
+**Hardware reset:**
+```bash
+./eabctl reset --chip stm32l4
+```
+
+### 4. STM32 + ST-Link Integration
+Full support for STM32 development with ST-Link debugging.
+
+**Start OpenOCD with ST-Link:**
+```bash
+./eabctl openocd start --chip stm32l4
+```
+
+**GDB debugging:**
+```bash
+./eabctl gdb --chip stm32l4 --cmd "monitor reset halt" --cmd "bt"
+```
+
+**Flash firmware workflow:**
+```bash
+# Check chip connection
+./eabctl chip-info --chip stm32l4
+
+# Flash bootloader + app
+./eabctl flash bootloader.bin --chip stm32l4 --address 0x08000000
+./eabctl flash app.bin --chip stm32l4 --address 0x08004000
+
+# Reset and run
+./eabctl reset --chip stm32l4
+```
+
+### 5. ESP-IDF Integration (Planned)
 Build and flash integration for ESP32 development.
 
 **Capabilities:**

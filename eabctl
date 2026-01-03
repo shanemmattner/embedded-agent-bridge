@@ -19,6 +19,7 @@ import time
 import subprocess
 import base64
 import signal
+import shutil
 from dataclasses import asdict
 from typing import Any, Optional
 
@@ -913,6 +914,37 @@ def cmd_flash(
         stdout = ""
         stderr = f"Tool not found: {flash_cmd.tool}. Install with: brew install stlink"
 
+    # Auto-retry with connect-under-reset if connection failed (STM32 only)
+    retried_with_cur = False
+    if not success and chip.lower().startswith("stm32") and not connect_under_reset:
+        if "Can not connect" in stderr or "unable to get core" in stderr.lower():
+            # Retry with connect-under-reset using STM32CubeProgrammer
+            retried_with_cur = True
+            kwargs["connect_under_reset"] = True
+            flash_cmd = profile.get_flash_command(
+                firmware_path=firmware,
+                port=port or "",
+                address=address or "0x08000000",
+                **kwargs,
+            )
+            cmd_list = [flash_cmd.tool] + flash_cmd.args
+            try:
+                result = subprocess.run(
+                    cmd_list,
+                    capture_output=True,
+                    text=True,
+                    timeout=flash_cmd.timeout,
+                )
+                success = result.returncode == 0
+                stdout = result.stdout
+                stderr = result.stderr
+            except subprocess.TimeoutExpired:
+                stdout = ""
+                stderr = f"Timeout after {flash_cmd.timeout}s (connect-under-reset retry)"
+            except FileNotFoundError:
+                stdout = ""
+                stderr = f"Tool not found: {flash_cmd.tool}"
+
     duration_ms = int((time.time() - started) * 1000)
 
     payload = {
@@ -924,6 +956,7 @@ def cmd_flash(
         "address": address,
         "tool": flash_cmd.tool,
         "command": cmd_list,
+        "retried_with_connect_under_reset": retried_with_cur,
         "stdout": stdout,
         "stderr": stderr,
         "duration_ms": duration_ms,
@@ -1046,36 +1079,87 @@ def cmd_chip_info(
     return 0 if success else 1
 
 
+def _find_stm32_programmer_cli() -> str:
+    """Find STM32_Programmer_CLI executable."""
+    import glob as glob_mod
+    path = shutil.which("STM32_Programmer_CLI")
+    if path:
+        return path
+    # Common locations on macOS
+    patterns = [
+        "/Applications/STM32CubeIDE.app/Contents/Eclipse/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.*/tools/bin/STM32_Programmer_CLI",
+    ]
+    for pattern in patterns:
+        matches = glob_mod.glob(pattern)
+        if matches:
+            return sorted(matches)[-1]
+    return "STM32_Programmer_CLI"
+
+
 def cmd_reset(
     *,
     chip: str,
     method: str,
+    connect_under_reset: bool,
     json_mode: bool,
 ) -> int:
-    """Hardware reset device using st-flash reset or OpenOCD."""
+    """Hardware reset device using st-flash reset or STM32CubeProgrammer."""
     started = time.time()
+    retried_with_cur = False
 
     # For STM32, use st-flash reset command directly
     if chip.lower().startswith("stm32"):
-        cmd_list = ["st-flash", "reset"]
-        try:
-            result = subprocess.run(
-                cmd_list,
-                capture_output=True,
-                text=True,
-                timeout=30.0,
-            )
-            success = result.returncode == 0
-            stdout = result.stdout
-            stderr = result.stderr
-        except subprocess.TimeoutExpired:
-            success = False
-            stdout = ""
-            stderr = "Timeout after 30s"
-        except FileNotFoundError:
-            success = False
-            stdout = ""
-            stderr = "st-flash not found. Install with: brew install stlink"
+        # Try st-flash first (unless connect-under-reset requested)
+        if not connect_under_reset:
+            cmd_list = ["st-flash", "reset"]
+            try:
+                result = subprocess.run(
+                    cmd_list,
+                    capture_output=True,
+                    text=True,
+                    timeout=30.0,
+                )
+                success = result.returncode == 0
+                stdout = result.stdout
+                stderr = result.stderr
+
+                # Auto-retry with connect-under-reset if normal reset fails
+                if not success and ("Can not connect" in stderr or "unable to get core" in stderr.lower()):
+                    connect_under_reset = True
+                    retried_with_cur = True
+            except subprocess.TimeoutExpired:
+                success = False
+                stdout = ""
+                stderr = "Timeout after 30s"
+                connect_under_reset = True
+                retried_with_cur = True
+            except FileNotFoundError:
+                success = False
+                stdout = ""
+                stderr = "st-flash not found. Install with: brew install stlink"
+
+        # Use STM32CubeProgrammer with connect-under-reset
+        if connect_under_reset:
+            cubeprog = _find_stm32_programmer_cli()
+            cmd_list = [cubeprog, "-c", "port=SWD mode=UR reset=HWrst", "-rst"]
+            try:
+                result = subprocess.run(
+                    cmd_list,
+                    capture_output=True,
+                    text=True,
+                    timeout=30.0,
+                )
+                success = result.returncode == 0
+                stdout = result.stdout
+                stderr = result.stderr
+            except subprocess.TimeoutExpired:
+                success = False
+                stdout = ""
+                stderr = "Timeout after 30s (connect-under-reset)"
+            except FileNotFoundError:
+                success = False
+                stdout = ""
+                stderr = f"STM32CubeProgrammer not found: {cubeprog}"
     else:
         # For ESP32, would need OpenOCD or esptool
         success = False
@@ -1091,6 +1175,8 @@ def cmd_reset(
         "success": success,
         "chip": chip,
         "method": method,
+        "connect_under_reset": connect_under_reset,
+        "retried_with_connect_under_reset": retried_with_cur,
         "command": cmd_list,
         "stdout": stdout,
         "stderr": stderr,
@@ -1363,6 +1449,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_reset = sub.add_parser("reset", help="Hardware reset device")
     p_reset.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
     p_reset.add_argument("--method", choices=["hard", "soft", "bootloader"], default="hard")
+    p_reset.add_argument("--connect-under-reset", action="store_true",
+                        help="STM32: Connect while holding reset (for crashed chips)")
 
     args = parser.parse_args(argv)
     base_dir = _resolve_base_dir(args.base_dir)
@@ -1523,6 +1611,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_reset(
             chip=args.chip,
             method=args.method,
+            connect_under_reset=getattr(args, "connect_under_reset", False),
             json_mode=args.json,
         )
 

@@ -278,6 +278,55 @@ class STM32Profile(ChipProfile):
         }
 
     # =========================================================================
+    # Stock Firmware Registry
+    # =========================================================================
+
+    @property
+    def stock_firmware_registry(self) -> dict[str, dict[str, str]]:
+        """
+        Known-good stock firmware paths by board type.
+
+        Used by `preflight-hw` command to verify hardware chain before debugging.
+        These are paths relative to project roots where stock firmware can be found.
+
+        Key = board identifier
+        Value = dict with:
+            - path: Relative path to stock firmware binary
+            - address: Flash address for this firmware
+            - description: Human-readable description
+        """
+        return {
+            "sensortile": {
+                "path": "firmware/fp-sns-allmems1-4.2.0/Projects/STM32L476JG-SensorTile/Applications/ALLMEMS1/Binary/STM32L476JG-SensorTile_ALLMEMS1_v4.2.0.bin",
+                "address": "0x08004000",  # App runs after bootloader
+                "description": "ST ALLMEMS1 demo firmware v4.2.0",
+            },
+            "sensortile-bootloader": {
+                "path": "firmware/fp-sns-allmems1-4.2.0/Utilities/BootLoader/STM32L476RG/BootLoaderL4.bin",
+                "address": "0x08000000",
+                "description": "ST bootloader for SensorTile",
+            },
+            # Add more boards as we encounter them:
+            # "nucleo-l476rg": {
+            #     "path": "...",
+            #     "address": "0x08000000",
+            #     "description": "...",
+            # },
+        }
+
+    def get_stock_firmware(self, board: str) -> Optional[dict[str, str]]:
+        """
+        Get stock firmware info for a board.
+
+        Args:
+            board: Board identifier (e.g., "sensortile", "nucleo-l476rg")
+
+        Returns:
+            Dict with path, address, description or None if not found
+        """
+        return self.stock_firmware_registry.get(board.lower())
+
+    # =========================================================================
     # Flash Tool Integration
     # =========================================================================
 

@@ -655,7 +655,7 @@ class SerialDaemon:
                     self._paused = False
                     self._pause_start_time = None
                     self._original_port = None
-                    return
+                    return 0
 
         # Re-acquire port lock with extended retries (esptool can hold port for a bit)
         self._port_lock = PortLock(port_name, logger=self._logger)
@@ -780,11 +780,11 @@ class SerialDaemon:
         """Check for commands in the command file."""
         try:
             if not self._fs.file_exists(self._cmd_path):
-                return
+                return 0
 
             mtime = self._fs.get_mtime(self._cmd_path)
             if mtime <= self._cmd_mtime:
-                return
+                return 0
 
             commands = drain_commands(self._cmd_path)
             # Update mtime after truncation so we don't spin on our own clear.
@@ -816,11 +816,11 @@ class SerialDaemon:
                         pattern_matching=self._stream_pattern_matching,
                     )
                     self._emit_event("stream_disabled", {})
-                return
+                return 0
 
             mtime = self._fs.get_mtime(self._stream_path)
             if mtime <= self._stream_mtime:
-                return
+                return 0
             self._stream_mtime = mtime
 
             raw = self._fs.read_file(self._stream_path)
@@ -906,7 +906,7 @@ class SerialDaemon:
             # Log result to session
             self._session_logger.log_line(f"[EAB] {result}")
             self._emit_event("command_result", {"command": cmd, "result": result})
-            return
+            return 0
 
         # Regular command - send to device
         data = (cmd + "\n").encode()
@@ -944,7 +944,15 @@ class SerialDaemon:
         self._emit_event("daemon_stopped", {"pid": os.getpid()})
 
 
-def main():
+def main(argv: Optional[list[str]] = None) -> int:
+    """Entry point for the EAB daemon CLI.
+
+    Args:
+        argv: Command-line arguments (defaults to sys.argv[1:])
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
     parser = argparse.ArgumentParser(
         description="Embedded Agent Bridge - Serial Daemon",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -956,6 +964,11 @@ Examples:
         """,
     )
 
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="%(prog)s 1.0.0 (embedded-agent-bridge)",
+    )
     parser.add_argument(
         "--port", "-p",
         default="auto",
@@ -1039,7 +1052,7 @@ Examples:
         help="Show last N alert lines (default: 20)",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.list:
         print("Available serial ports:")
@@ -1048,7 +1061,7 @@ Examples:
             print(f"    Description: {p.description}")
             print(f"    HWID: {p.hwid}")
             print()
-        return
+        return 0
 
     if args.status:
         existing = check_singleton()
@@ -1061,7 +1074,7 @@ Examples:
             print(f"  Started: {existing.started}")
         else:
             print("No EAB daemon is running")
-        return
+        return 0
 
     if args.stop:
         from .singleton import kill_existing_daemon
@@ -1070,18 +1083,19 @@ Examples:
             print(f"Stopping EAB daemon (PID {existing.pid})...")
             if kill_existing_daemon():
                 print("Daemon stopped")
+                return 0
             else:
                 print("Failed to stop daemon")
-                sys.exit(1)
+                return 1
         else:
             print("No EAB daemon is running")
-        return
+        return 0
 
     if args.pause:
         existing = check_singleton()
         if not existing or not existing.is_alive:
             print("No EAB daemon is running")
-            sys.exit(1)
+            return 1
 
         import time
         pause_seconds = args.pause
@@ -1100,32 +1114,38 @@ Examples:
         print(f"Port released. You have {pause_seconds - 1} seconds to flash.")
         print(f"Daemon will auto-resume when pause expires.")
         print(f"To resume early: rm {pause_path}")
-        return
+        return 0
 
     # Helper to get daemon info for commands that need it
     def get_daemon_info():
         existing = check_singleton()
         if not existing or not existing.is_alive:
             print("No EAB daemon is running")
-            sys.exit(1)
+            return None
         return existing
 
     if args.cmd:
         existing = get_daemon_info()
+        if not existing:
+            return 1
         cmd_path = os.path.join(existing.base_dir, "cmd.txt")
         append_command(cmd_path, args.cmd)
         print(f"Command sent: {args.cmd}")
-        return
+        return 0
 
     if args.reset:
         existing = get_daemon_info()
+        if not existing:
+            return 1
         cmd_path = os.path.join(existing.base_dir, "cmd.txt")
         append_command(cmd_path, "!RESET")
         print("Reset command sent")
-        return
+        return 0
 
     if args.logs is not None:
         existing = get_daemon_info()
+        if not existing:
+            return 1
         log_path = os.path.join(existing.base_dir, "latest.log")
         try:
             import subprocess
@@ -1137,10 +1157,12 @@ Examples:
             print(result.stdout)
         except FileNotFoundError:
             print(f"Log file not found: {log_path}")
-        return
+        return 0
 
     if args.alerts is not None:
         existing = get_daemon_info()
+        if not existing:
+            return 1
         alerts_path = os.path.join(existing.base_dir, "alerts.log")
         try:
             import subprocess
@@ -1155,12 +1177,14 @@ Examples:
                 print("No alerts recorded")
         except FileNotFoundError:
             print("No alerts log file")
-        return
+        return 0
 
     if args.wait_for:
         import time
         import re
         existing = get_daemon_info()
+        if not existing:
+            return 1
         log_path = os.path.join(existing.base_dir, "latest.log")
         pattern = re.compile(args.wait_for)
 
@@ -1184,14 +1208,14 @@ Examples:
                     for line in f:
                         if pattern.search(line):
                             print(f"MATCH: {line.strip()}")
-                            sys.exit(0)
+                            return 0
                     initial_pos = f.tell()
             except FileNotFoundError:
                 pass
             time.sleep(0.1)
 
         print(f"Timeout waiting for pattern '{args.wait_for}'")
-        sys.exit(1)
+        return 1
 
     daemon = SerialDaemon(
         port=args.port,
@@ -1202,16 +1226,17 @@ Examples:
     # Handle signals
     def signal_handler(sig, frame):
         daemon.stop()
-        sys.exit(0)
+        raise SystemExit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     if daemon.start(force=args.force):
         daemon.run()
+        return 0
     else:
-        sys.exit(1)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

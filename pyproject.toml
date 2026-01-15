@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "embedded-agent-bridge"
+version = "1.0.0"
+description = "AI agent bridge for embedded systems debugging"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Shane Mattner"}
+]
+keywords = ["embedded", "serial", "esp32", "stm32", "debugging", "ai-agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Embedded Systems",
+    "Topic :: System :: Hardware",
+]
+
+dependencies = [
+    "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9",
+    "pytest-cov>=6",
+]
+
+[project.scripts]
+eab = "eab.daemon:main"
+eab-control = "eab.control:main"
+
+[project.urls]
+Homepage = "https://github.com/shanemattner/embedded-agent-bridge"
+Repository = "https://github.com/shanemattner/embedded-agent-bridge"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["eab*"]
+exclude = ["eab.tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "eab/tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["eab"]
+omit = ["eab/tests/*", "*/tests/*"]

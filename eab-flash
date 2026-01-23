@@ -1,0 +1,136 @@
+#!/bin/bash
+# eab-flash - Flash wrapper that coordinates with EAB
+#
+# Usage:
+#   eab-flash [idf.py flash args...]
+#   eab-flash --esptool [esptool args...]
+#   eab-flash --project /path/to/project [idf.py flash args...]
+#
+# This script:
+#   1. Pauses EAB daemon (releases serial port)
+#   2. Runs idf.py flash or esptool
+#   3. EAB auto-resumes after flash completes
+#
+# Examples:
+#   eab-flash                              # Flash current ESP-IDF project
+#   eab-flash -p /dev/cu.usbmodem1101      # Flash to specific port
+#   eab-flash --esptool write_flash 0x0 firmware.bin
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+EAB_DIR="$SCRIPT_DIR"
+
+# Source ESP-IDF environment if available
+IDF_EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
+if [ -f "$IDF_EXPORT" ]; then
+    # Suppress the verbose output from export.sh
+    source "$IDF_EXPORT" > /dev/null 2>&1 || true
+fi
+
+# Use venv if available
+if [ -f "$SCRIPT_DIR/.venv/bin/python3" ]; then
+    PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
+else
+    PYTHON_BIN="$(command -v python3 || echo /usr/bin/python3)"
+fi
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Default values
+PAUSE_DURATION=60
+PROJECT_DIR=""
+USE_ESPTOOL=false
+FLASH_ARGS=()
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --esptool)
+            USE_ESPTOOL=true
+            shift
+            ;;
+        --project|-C)
+            PROJECT_DIR="$2"
+            shift 2
+            ;;
+        --pause-duration)
+            PAUSE_DURATION="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "eab-flash - Flash wrapper that coordinates with EAB"
+            echo ""
+            echo "Usage:"
+            echo "  eab-flash [options] [flash args...]"
+            echo ""
+            echo "Options:"
+            echo "  --esptool          Use esptool directly instead of idf.py"
+            echo "  --project, -C DIR  Specify ESP-IDF project directory"
+            echo "  --pause-duration N Pause EAB for N seconds (default: 60)"
+            echo "  --help, -h         Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  eab-flash                                # Flash current project"
+            echo "  eab-flash -p /dev/cu.usbmodem1101        # Flash to specific port"
+            echo "  eab-flash --esptool --port /dev/ttyUSB0 write_flash 0x0 fw.bin"
+            exit 0
+            ;;
+        *)
+            FLASH_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+echo -e "${BLUE}=== EAB Flash Wrapper ===${NC}"
+
+# Check if EAB daemon is running
+EAB_STATUS=$(PYTHONPATH="$EAB_DIR" "$PYTHON_BIN" -m eab --status 2>/dev/null) || true
+
+if echo "$EAB_STATUS" | grep -q "Running: True"; then
+    echo -e "${YELLOW}EAB daemon detected - pausing for ${PAUSE_DURATION}s${NC}"
+
+    # Pause EAB (releases serial port)
+    PYTHONPATH="$EAB_DIR" "$PYTHON_BIN" -m eab --pause "$PAUSE_DURATION"
+
+    # Small delay to ensure port is released
+    sleep 1
+    echo -e "${GREEN}Serial port released${NC}"
+else
+    echo -e "${YELLOW}No EAB daemon running - proceeding with flash${NC}"
+fi
+
+# Run the flash command
+echo -e "${BLUE}Starting flash...${NC}"
+
+FLASH_EXIT_CODE=0
+
+if [ "$USE_ESPTOOL" = true ]; then
+    # Use esptool directly
+    echo -e "${BLUE}Running: esptool ${FLASH_ARGS[*]}${NC}"
+    esptool "${FLASH_ARGS[@]}" || FLASH_EXIT_CODE=$?
+else
+    # Use idf.py flash
+    if [ -n "$PROJECT_DIR" ]; then
+        cd "$PROJECT_DIR"
+    fi
+
+    echo -e "${BLUE}Running: idf.py flash ${FLASH_ARGS[*]}${NC}"
+    idf.py flash "${FLASH_ARGS[@]}" || FLASH_EXIT_CODE=$?
+fi
+
+# Report result
+if [ $FLASH_EXIT_CODE -eq 0 ]; then
+    echo -e "${GREEN}Flash completed successfully!${NC}"
+    echo -e "${BLUE}EAB daemon will auto-resume in a few seconds${NC}"
+else
+    echo -e "${RED}Flash failed with exit code $FLASH_EXIT_CODE${NC}"
+fi
+
+exit $FLASH_EXIT_CODE

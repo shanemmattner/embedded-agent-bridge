@@ -145,13 +145,50 @@ Full support for STM32 development with ST-Link debugging.
 ./eabctl reset --chip stm32l4
 ```
 
-### 5. ESP-IDF Integration (Planned)
-Build and flash integration for ESP32 development.
+### 5. ESP-IDF Integration
 
-**Capabilities:**
-- `idf.py build`
-- `idf.py flash`
-- `idf.py monitor` (via serial daemon)
+The `eab-flash` wrapper enables seamless flashing while EAB daemon is running.
+
+**The Problem:** EAB holds the serial port open for monitoring, which blocks `esptool`/`idf.py flash` from accessing the device.
+
+**The Solution:** `eab-flash` automatically pauses EAB, flashes, and EAB auto-resumes.
+
+```bash
+# Flash ESP-IDF project (from project directory)
+./eab-flash
+
+# Flash specific project
+./eab-flash --project /path/to/esp-idf-project
+
+# Flash to specific port
+./eab-flash -p /dev/cu.usbmodem1101
+
+# Use esptool directly
+./eab-flash --esptool --port /dev/ttyUSB0 write_flash 0x0 firmware.bin
+
+# Longer pause duration (default 60s)
+./eab-flash --pause-duration 120
+```
+
+**How it works:**
+1. Detects if EAB daemon is running
+2. Calls `eab --pause 60` to release serial port
+3. Sources ESP-IDF environment and runs `idf.py flash`
+4. EAB auto-resumes after pause expires
+
+**Manual pause (for other tools):**
+```bash
+# Pause EAB for 60 seconds
+python3 -m eab --pause 60
+
+# EAB releases port immediately
+# Flash with any tool you want
+esptool.py ...
+
+# EAB auto-resumes when pause expires
+# Or resume early by removing pause file:
+rm /tmp/eab-session/pause.txt
+```
 
 ## Usage Patterns
 
@@ -251,7 +288,10 @@ standard line‑based log mode.
 - [x] Pattern detection for alerts
 - [x] Command injection via file
 - [x] Statistics tracking
-- [ ] Reconnection handling
+- [x] Reconnection handling
+- [x] Port pause/resume for flashing (`--pause`)
+- [x] Automatic crash recovery
+- [x] ESP-IDF flash integration (`eab-flash`)
 - [ ] Multiple port support
 
 ### Phase 2: GDB Bridge
@@ -286,11 +326,61 @@ standard line‑based log mode.
 git clone git@github.com:circuit-synth/embedded-agent-bridge.git
 cd embedded-agent-bridge
 
+# Create virtual environment (recommended)
+python3 -m venv .venv
+source .venv/bin/activate
+
 # Install dependencies
 pip install pyserial
 
 # Run serial daemon
 python3 -m eab --port auto --base-dir /tmp/eab-session
+```
+
+## CLI Reference
+
+### Daemon Commands
+
+```bash
+# Start daemon (foreground)
+python3 -m eab --port auto --base-dir /tmp/eab-session
+
+# Start with force (kill existing daemon)
+python3 -m eab --port auto --force
+
+# Check daemon status
+python3 -m eab --status
+
+# Stop running daemon
+python3 -m eab --stop
+
+# Pause daemon for flashing (releases serial port)
+python3 -m eab --pause 60
+
+# Send command to device
+python3 -m eab --cmd "help"
+
+# Reset device
+python3 -m eab --reset
+
+# View recent logs
+python3 -m eab --logs 50
+
+# View alerts
+python3 -m eab --alerts 20
+
+# Wait for pattern in log
+python3 -m eab --wait-for "BOOT" --wait-timeout 30
+```
+
+### Flash Wrapper
+
+```bash
+# Flash ESP-IDF project
+./eab-flash --project /path/to/project
+
+# Flash with esptool
+./eab-flash --esptool --port /dev/ttyUSB0 write_flash 0x0 fw.bin
 ```
 
 ## Contributing

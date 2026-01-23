@@ -9,7 +9,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EAB_DIR="$SCRIPT_DIR"
 BASE_DIR="/tmp/eab-session"
 LOG_FILE="/tmp/eab-launcher.log"
-PYTHON_BIN="/opt/homebrew/bin/python3"
+# Use venv if available, otherwise find system python
+if [ -f "$SCRIPT_DIR/.venv/bin/python3" ]; then
+    PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
+else
+    PYTHON_BIN="$(command -v python3 || echo /usr/bin/python3)"
+fi
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"

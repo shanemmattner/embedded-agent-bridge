@@ -1,136 +1,679 @@
 #!/bin/bash
-# eab-flash - Flash wrapper that coordinates with EAB
+# =============================================================================
+# eab-flash - Flash wrapper that coordinates with EAB (Embedded Agent Bridge)
+# =============================================================================
 #
-# Usage:
-#   eab-flash [idf.py flash args...]
+# PURPOSE:
+#   This script solves the serial port contention problem that occurs when
+#   the EAB daemon is monitoring a serial port and you need to flash firmware.
+#   Tools like esptool and idf.py require exclusive access to the serial port,
+#   but EAB holds it open for continuous monitoring.
+#
+# HOW IT WORKS:
+#   1. Detects if EAB daemon is running
+#   2. If running, sends a pause command (EAB releases the serial port)
+#   3. Waits for the port to be released (with verification)
+#   4. Runs the flash command (idf.py flash or esptool)
+#   5. EAB automatically resumes monitoring after the pause expires
+#
+# USAGE:
+#   eab-flash [options] [flash args...]
 #   eab-flash --esptool [esptool args...]
 #   eab-flash --project /path/to/project [idf.py flash args...]
 #
-# This script:
-#   1. Pauses EAB daemon (releases serial port)
-#   2. Runs idf.py flash or esptool
-#   3. EAB auto-resumes after flash completes
+# EXAMPLES:
+#   eab-flash                                    # Flash current ESP-IDF project
+#   eab-flash -p /dev/cu.usbmodem1101            # Flash to specific port
+#   eab-flash --project ~/myproject -p /dev/ttyUSB0
+#   eab-flash --esptool -p /dev/ttyUSB0 write_flash 0x0 firmware.bin
+#   eab-flash --dry-run                          # Show what would be executed
+#   eab-flash --verbose -p /dev/ttyUSB0          # Verbose output for debugging
 #
-# Examples:
-#   eab-flash                              # Flash current ESP-IDF project
-#   eab-flash -p /dev/cu.usbmodem1101      # Flash to specific port
-#   eab-flash --esptool write_flash 0x0 firmware.bin
+# ENVIRONMENT VARIABLES:
+#   IDF_PATH        - Path to ESP-IDF installation (default: $HOME/esp/esp-idf)
+#   EAB_SESSION_DIR - EAB session directory (default: /tmp/eab-session)
+#
+# EXIT CODES:
+#   0 - Flash completed successfully
+#   1 - Argument parsing error or validation failure
+#   2 - Environment setup error (Python, ESP-IDF not found)
+#   3 - EAB communication error
+#   * - Flash tool exit code (passed through from esptool/idf.py)
+#
+# NOTES:
+#   - Requires bash (uses arrays and [[ ]] constructs)
+#   - If flash fails, EAB will still auto-resume after the pause expires
+#   - Ctrl+C during flash is safe; EAB pause timer continues independently
+#   - For concurrent access concerns, only one flash operation at a time is safe
+#
+# =============================================================================
 
-set -e
+# -----------------------------------------------------------------------------
+# Strict mode: Exit on error, undefined variables, and pipe failures
+# -----------------------------------------------------------------------------
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-EAB_DIR="$SCRIPT_DIR"
+# -----------------------------------------------------------------------------
+# Script version (for debugging and compatibility tracking)
+# -----------------------------------------------------------------------------
+readonly VERSION="1.1.0"
 
-# Source ESP-IDF environment if available
-IDF_EXPORT="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
-if [ -f "$IDF_EXPORT" ]; then
-    # Suppress the verbose output from export.sh
-    source "$IDF_EXPORT" > /dev/null 2>&1 || true
-fi
+# -----------------------------------------------------------------------------
+# Determine script location and EAB directory
+# -----------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+readonly EAB_DIR="$SCRIPT_DIR"
+readonly EAB_SESSION_DIR="${EAB_SESSION_DIR:-/tmp/eab-session}"
 
-# Use venv if available
-if [ -f "$SCRIPT_DIR/.venv/bin/python3" ]; then
-    PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
+# -----------------------------------------------------------------------------
+# Terminal colors (disabled if not a TTY)
+# -----------------------------------------------------------------------------
+if [[ -t 1 ]]; then
+    readonly RED='\033[0;31m'
+    readonly GREEN='\033[0;32m'
+    readonly YELLOW='\033[1;33m'
+    readonly BLUE='\033[0;34m'
+    readonly CYAN='\033[0;36m'
+    readonly BOLD='\033[1m'
+    readonly NC='\033[0m'  # No Color
 else
-    PYTHON_BIN="$(command -v python3 || echo /usr/bin/python3)"
+    readonly RED=''
+    readonly GREEN=''
+    readonly YELLOW=''
+    readonly BLUE=''
+    readonly CYAN=''
+    readonly BOLD=''
+    readonly NC=''
 fi
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# -----------------------------------------------------------------------------
+# Default configuration values
+# -----------------------------------------------------------------------------
+# Default pause duration in seconds. 60s is typically enough for most flash
+# operations (ESP32 full flash takes ~20-30s, STM32 is faster).
+# Users can override with --pause-duration if needed.
+DEFAULT_PAUSE_DURATION=60
 
-# Default values
-PAUSE_DURATION=60
+# Maximum time in seconds to wait for serial port to be released after pause
+PORT_RELEASE_TIMEOUT=10
+
+# Number of retries for flash operation (0 = no retries)
+MAX_FLASH_RETRIES=0
+
+# Delay between flash retries in seconds
+RETRY_DELAY=2
+
+# -----------------------------------------------------------------------------
+# Runtime state variables
+# -----------------------------------------------------------------------------
+PAUSE_DURATION=$DEFAULT_PAUSE_DURATION
 PROJECT_DIR=""
 USE_ESPTOOL=false
+DRY_RUN=false
+VERBOSE=false
 FLASH_ARGS=()
+PYTHON_BIN=""
+EAB_WAS_PAUSED=false
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --esptool)
-            USE_ESPTOOL=true
-            shift
-            ;;
-        --project|-C)
-            PROJECT_DIR="$2"
-            shift 2
-            ;;
-        --pause-duration)
-            PAUSE_DURATION="$2"
-            shift 2
-            ;;
-        --help|-h)
-            echo "eab-flash - Flash wrapper that coordinates with EAB"
-            echo ""
-            echo "Usage:"
-            echo "  eab-flash [options] [flash args...]"
-            echo ""
-            echo "Options:"
-            echo "  --esptool          Use esptool directly instead of idf.py"
-            echo "  --project, -C DIR  Specify ESP-IDF project directory"
-            echo "  --pause-duration N Pause EAB for N seconds (default: 60)"
-            echo "  --help, -h         Show this help"
-            echo ""
-            echo "Examples:"
-            echo "  eab-flash                                # Flash current project"
-            echo "  eab-flash -p /dev/cu.usbmodem1101        # Flash to specific port"
-            echo "  eab-flash --esptool --port /dev/ttyUSB0 write_flash 0x0 fw.bin"
-            exit 0
-            ;;
-        *)
-            FLASH_ARGS+=("$1")
-            shift
-            ;;
-    esac
-done
+# -----------------------------------------------------------------------------
+# Logging functions
+# -----------------------------------------------------------------------------
 
-echo -e "${BLUE}=== EAB Flash Wrapper ===${NC}"
+# Print an informational message
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $*"
+}
 
-# Check if EAB daemon is running
-EAB_STATUS=$(PYTHONPATH="$EAB_DIR" "$PYTHON_BIN" -m eab --status 2>/dev/null) || true
+# Print a success message
+log_success() {
+    echo -e "${GREEN}[OK]${NC} $*"
+}
 
-if echo "$EAB_STATUS" | grep -q "Running: True"; then
-    echo -e "${YELLOW}EAB daemon detected - pausing for ${PAUSE_DURATION}s${NC}"
+# Print a warning message
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $*" >&2
+}
 
-    # Pause EAB (releases serial port)
-    PYTHONPATH="$EAB_DIR" "$PYTHON_BIN" -m eab --pause "$PAUSE_DURATION"
+# Print an error message
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $*" >&2
+}
 
-    # Small delay to ensure port is released
-    sleep 1
-    echo -e "${GREEN}Serial port released${NC}"
-else
-    echo -e "${YELLOW}No EAB daemon running - proceeding with flash${NC}"
-fi
+# Print a verbose/debug message (only if --verbose is set)
+log_verbose() {
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "${CYAN}[DEBUG]${NC} $*"
+    fi
+}
 
-# Run the flash command
-echo -e "${BLUE}Starting flash...${NC}"
+# -----------------------------------------------------------------------------
+# Helper function: Check if a command exists
+# -----------------------------------------------------------------------------
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
 
-FLASH_EXIT_CODE=0
+# -----------------------------------------------------------------------------
+# Helper function: Validate that an argument has a value
+# This prevents bugs where --project or --pause-duration is passed without a value
+# -----------------------------------------------------------------------------
+require_arg() {
+    local opt_name="$1"
+    local opt_value="${2:-}"
 
-if [ "$USE_ESPTOOL" = true ]; then
-    # Use esptool directly
-    echo -e "${BLUE}Running: esptool ${FLASH_ARGS[*]}${NC}"
-    esptool "${FLASH_ARGS[@]}" || FLASH_EXIT_CODE=$?
-else
-    # Use idf.py flash
-    if [ -n "$PROJECT_DIR" ]; then
-        cd "$PROJECT_DIR"
+    # Check if value is missing or looks like another flag
+    if [[ -z "$opt_value" || "$opt_value" == -* ]]; then
+        log_error "Option '$opt_name' requires an argument"
+        echo "Try 'eab-flash --help' for more information." >&2
+        exit 1
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Helper function: Validate that a value is a positive integer
+# -----------------------------------------------------------------------------
+require_positive_int() {
+    local opt_name="$1"
+    local value="$2"
+
+    if ! [[ "$value" =~ ^[0-9]+$ ]] || [[ "$value" -lt 1 ]]; then
+        log_error "Option '$opt_name' must be a positive integer, got: '$value'"
+        exit 1
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Helper function: Validate that a directory exists
+# -----------------------------------------------------------------------------
+require_directory() {
+    local dir_path="$1"
+    local opt_name="${2:-directory}"
+
+    if [[ ! -d "$dir_path" ]]; then
+        log_error "The $opt_name does not exist: $dir_path"
+        exit 1
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Setup Python environment
+# Finds the correct Python interpreter, preferring the EAB venv
+# -----------------------------------------------------------------------------
+setup_python() {
+    log_verbose "Setting up Python environment..."
+
+    # Priority 1: EAB's own virtual environment
+    if [[ -f "$SCRIPT_DIR/.venv/bin/python3" ]]; then
+        PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
+        log_verbose "Using EAB venv Python: $PYTHON_BIN"
+    # Priority 2: System python3
+    elif command_exists python3; then
+        PYTHON_BIN="$(command -v python3)"
+        log_verbose "Using system Python: $PYTHON_BIN"
+    # Priority 3: Fallback path (macOS/Linux common locations)
+    elif [[ -x "/usr/bin/python3" ]]; then
+        PYTHON_BIN="/usr/bin/python3"
+        log_verbose "Using fallback Python: $PYTHON_BIN"
+    else
+        log_error "Python 3 not found. Please install Python 3 or create a venv in $SCRIPT_DIR/.venv"
+        exit 2
     fi
 
-    echo -e "${BLUE}Running: idf.py flash ${FLASH_ARGS[*]}${NC}"
-    idf.py flash "${FLASH_ARGS[@]}" || FLASH_EXIT_CODE=$?
-fi
+    # Verify Python is actually executable
+    if ! "$PYTHON_BIN" --version >/dev/null 2>&1; then
+        log_error "Python at '$PYTHON_BIN' is not working correctly"
+        exit 2
+    fi
 
-# Report result
-if [ $FLASH_EXIT_CODE -eq 0 ]; then
-    echo -e "${GREEN}Flash completed successfully!${NC}"
-    echo -e "${BLUE}EAB daemon will auto-resume in a few seconds${NC}"
-else
-    echo -e "${RED}Flash failed with exit code $FLASH_EXIT_CODE${NC}"
-fi
+    log_verbose "Python version: $("$PYTHON_BIN" --version 2>&1)"
+}
 
-exit $FLASH_EXIT_CODE
+# -----------------------------------------------------------------------------
+# Setup ESP-IDF environment
+# Sources the ESP-IDF export.sh to set up PATH and environment variables
+# -----------------------------------------------------------------------------
+setup_espidf() {
+    # Skip if using esptool directly (doesn't need full IDF environment)
+    if [[ "$USE_ESPTOOL" == true ]]; then
+        log_verbose "Using esptool directly, skipping ESP-IDF setup"
+        return 0
+    fi
+
+    log_verbose "Setting up ESP-IDF environment..."
+
+    # Find ESP-IDF export.sh
+    local idf_export="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
+
+    if [[ -f "$idf_export" ]]; then
+        log_verbose "Sourcing ESP-IDF from: $idf_export"
+
+        # Source ESP-IDF environment, capturing any errors
+        # We suppress stdout (very verbose) but keep stderr for debugging
+        if ! source "$idf_export" > /dev/null 2>&1; then
+            log_warn "ESP-IDF export.sh returned non-zero, environment may be incomplete"
+        fi
+
+        # Verify critical variables are set
+        if [[ -z "${IDF_PATH:-}" ]]; then
+            log_warn "IDF_PATH not set after sourcing export.sh"
+            log_warn "ESP-IDF environment may not be fully configured"
+        else
+            log_verbose "IDF_PATH set to: $IDF_PATH"
+        fi
+
+        # Verify idf.py is available
+        if ! command_exists idf.py; then
+            log_error "idf.py not found in PATH after sourcing ESP-IDF"
+            log_error "Please check your ESP-IDF installation at: ${IDF_PATH:-$HOME/esp/esp-idf}"
+            exit 2
+        fi
+
+        log_verbose "ESP-IDF environment configured successfully"
+    else
+        log_warn "ESP-IDF export.sh not found at: $idf_export"
+        log_warn "Set IDF_PATH environment variable if ESP-IDF is installed elsewhere"
+
+        # Check if idf.py is already available (maybe user already sourced it)
+        if command_exists idf.py; then
+            log_verbose "idf.py found in PATH, proceeding without export.sh"
+        else
+            log_error "idf.py not found. Please install ESP-IDF or source export.sh manually"
+            exit 2
+        fi
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Print usage/help information
+# -----------------------------------------------------------------------------
+print_help() {
+    cat << 'EOF'
+eab-flash - Flash wrapper that coordinates with EAB (Embedded Agent Bridge)
+
+USAGE:
+    eab-flash [OPTIONS] [FLASH_ARGS...]
+
+DESCRIPTION:
+    Coordinates with the EAB daemon to safely flash ESP32/STM32 devices while
+    serial monitoring is active. Automatically pauses EAB, flashes, and lets
+    EAB resume monitoring.
+
+OPTIONS:
+    --esptool           Use esptool directly instead of idf.py flash
+    --project, -C DIR   Specify ESP-IDF project directory (for idf.py)
+    --pause-duration N  Pause EAB for N seconds (default: 60)
+    --dry-run           Show what would be executed without actually running
+    --verbose, -v       Enable verbose output for debugging
+    --version, -V       Show version information
+    --help, -h          Show this help message
+
+FLASH_ARGS:
+    All additional arguments are passed directly to idf.py flash or esptool.
+    Common examples:
+      -p PORT           Specify serial port (e.g., /dev/cu.usbmodem1101)
+      -b BAUD           Set baud rate for flashing
+      --no-stub         Don't use stub loader (esptool)
+
+EXAMPLES:
+    # Flash current ESP-IDF project (auto-detects port)
+    eab-flash
+
+    # Flash to a specific port
+    eab-flash -p /dev/cu.usbmodem1101
+
+    # Flash a different project directory
+    eab-flash --project ~/esp/myproject
+
+    # Use esptool directly for raw binary
+    eab-flash --esptool -p /dev/ttyUSB0 write_flash 0x0 firmware.bin
+
+    # Dry run to see what would happen
+    eab-flash --dry-run -p /dev/cu.usbmodem1101
+
+    # Verbose mode for debugging
+    eab-flash --verbose -p /dev/cu.usbmodem1101
+
+    # Longer pause for large firmware
+    eab-flash --pause-duration 120 -p /dev/ttyUSB0
+
+ENVIRONMENT VARIABLES:
+    IDF_PATH            Path to ESP-IDF (default: $HOME/esp/esp-idf)
+    EAB_SESSION_DIR     EAB session directory (default: /tmp/eab-session)
+
+EXIT CODES:
+    0    Flash completed successfully
+    1    Argument or validation error
+    2    Environment error (Python/ESP-IDF not found)
+    3    EAB communication error
+    *    Exit code from esptool/idf.py (passed through)
+
+NOTES:
+    - If flash fails, EAB will still auto-resume after the pause expires
+    - Press Ctrl+C to abort; EAB pause timer continues independently
+    - The script requires bash (not sh) due to use of arrays and [[ ]]
+
+For more information, see: https://github.com/circuit-synth/embedded-agent-bridge
+EOF
+}
+
+# -----------------------------------------------------------------------------
+# Print version information
+# -----------------------------------------------------------------------------
+print_version() {
+    echo "eab-flash version $VERSION"
+    echo "Part of Embedded Agent Bridge (EAB)"
+}
+
+# -----------------------------------------------------------------------------
+# Parse command line arguments
+# -----------------------------------------------------------------------------
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --esptool)
+                USE_ESPTOOL=true
+                shift
+                ;;
+            --project|-C)
+                require_arg "$1" "${2:-}"
+                PROJECT_DIR="$2"
+                shift 2
+                ;;
+            --pause-duration)
+                require_arg "$1" "${2:-}"
+                require_positive_int "$1" "$2"
+                PAUSE_DURATION="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --verbose|-v)
+                VERBOSE=true
+                shift
+                ;;
+            --version|-V)
+                print_version
+                exit 0
+                ;;
+            --help|-h)
+                print_help
+                exit 0
+                ;;
+            --)
+                # End of eab-flash options, rest goes to flash tool
+                shift
+                FLASH_ARGS+=("$@")
+                break
+                ;;
+            -*)
+                # Unknown flag - could be for the flash tool, pass it through
+                # This allows -p, -b, etc. to be passed to idf.py/esptool
+                FLASH_ARGS+=("$1")
+                shift
+                ;;
+            *)
+                # Positional argument - pass to flash tool
+                FLASH_ARGS+=("$1")
+                shift
+                ;;
+        esac
+    done
+}
+
+# -----------------------------------------------------------------------------
+# Validate all arguments and preconditions after parsing
+# -----------------------------------------------------------------------------
+validate_args() {
+    log_verbose "Validating arguments..."
+
+    # Validate project directory if specified
+    if [[ -n "$PROJECT_DIR" ]]; then
+        require_directory "$PROJECT_DIR" "project directory"
+        log_verbose "Project directory validated: $PROJECT_DIR"
+    fi
+
+    # Log the configuration
+    log_verbose "Configuration:"
+    log_verbose "  USE_ESPTOOL: $USE_ESPTOOL"
+    log_verbose "  PROJECT_DIR: ${PROJECT_DIR:-<current directory>}"
+    log_verbose "  PAUSE_DURATION: ${PAUSE_DURATION}s"
+    log_verbose "  DRY_RUN: $DRY_RUN"
+    log_verbose "  FLASH_ARGS: ${FLASH_ARGS[*]:-<none>}"
+}
+
+# -----------------------------------------------------------------------------
+# Check if EAB daemon is running and get its status
+# Returns 0 if running, 1 if not running
+# -----------------------------------------------------------------------------
+check_eab_status() {
+    log_verbose "Checking EAB daemon status..."
+
+    local eab_status
+    if ! eab_status=$(PYTHONPATH="$EAB_DIR" "$PYTHON_BIN" -m eab --status 2>/dev/null); then
+        log_verbose "EAB status command failed or daemon not installed"
+        return 1
+    fi
+
+    log_verbose "EAB status output: $eab_status"
+
+    # Check for "Running: True" in the status output
+    # This is the format used by the EAB daemon's --status command
+    if echo "$eab_status" | grep -q "Running: True"; then
+        log_verbose "EAB daemon is running"
+        return 0
+    else
+        log_verbose "EAB daemon is not running"
+        return 1
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Pause the EAB daemon to release the serial port
+# This creates a pause.txt file that the daemon monitors
+# -----------------------------------------------------------------------------
+pause_eab() {
+    log_info "Pausing EAB daemon for ${PAUSE_DURATION} seconds..."
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "[DRY RUN] Would pause EAB for ${PAUSE_DURATION}s"
+        return 0
+    fi
+
+    # Send pause command to EAB
+    if ! PYTHONPATH="$EAB_DIR" "$PYTHON_BIN" -m eab --pause "$PAUSE_DURATION" 2>/dev/null; then
+        log_error "Failed to pause EAB daemon"
+        log_error "The serial port may still be in use"
+        exit 3
+    fi
+
+    EAB_WAS_PAUSED=true
+    log_success "EAB pause command sent"
+}
+
+# -----------------------------------------------------------------------------
+# Wait for the serial port to be released after pausing EAB
+# This is important because the daemon needs a moment to close the port
+# -----------------------------------------------------------------------------
+wait_for_port_release() {
+    log_verbose "Waiting for serial port to be released..."
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "[DRY RUN] Would wait for port release"
+        return 0
+    fi
+
+    local waited=0
+    local check_interval=1
+
+    # Give EAB a moment to process the pause and close the port
+    # We check for the pause.txt file as an indicator
+    while [[ $waited -lt $PORT_RELEASE_TIMEOUT ]]; do
+        # Check if pause file exists (indicates EAB received the pause)
+        if [[ -f "$EAB_SESSION_DIR/pause.txt" ]]; then
+            log_verbose "Pause file detected, port should be released"
+            # Small additional delay to ensure port is fully closed
+            sleep 1
+            log_success "Serial port released"
+            return 0
+        fi
+
+        log_verbose "Waiting for pause confirmation... ($waited/$PORT_RELEASE_TIMEOUT)"
+        sleep $check_interval
+        waited=$((waited + check_interval))
+    done
+
+    # Timeout reached, but proceed anyway with a warning
+    log_warn "Timeout waiting for port release confirmation"
+    log_warn "Proceeding with flash attempt anyway..."
+}
+
+# -----------------------------------------------------------------------------
+# Execute the flash command (idf.py flash or esptool)
+# -----------------------------------------------------------------------------
+run_flash() {
+    local flash_cmd
+    local flash_exit_code=0
+
+    if [[ "$USE_ESPTOOL" == true ]]; then
+        # Using esptool directly
+        flash_cmd="esptool ${FLASH_ARGS[*]}"
+
+        if [[ "$DRY_RUN" == true ]]; then
+            log_info "[DRY RUN] Would execute: $flash_cmd"
+            return 0
+        fi
+
+        log_info "Executing: $flash_cmd"
+        echo ""  # Visual separator before flash output
+
+        esptool "${FLASH_ARGS[@]}" || flash_exit_code=$?
+    else
+        # Using idf.py flash
+
+        # Change to project directory if specified
+        if [[ -n "$PROJECT_DIR" ]]; then
+            log_verbose "Changing to project directory: $PROJECT_DIR"
+            cd "$PROJECT_DIR"
+        fi
+
+        flash_cmd="idf.py flash ${FLASH_ARGS[*]}"
+
+        if [[ "$DRY_RUN" == true ]]; then
+            log_info "[DRY RUN] Would execute: $flash_cmd"
+            log_info "[DRY RUN] Working directory: $(pwd)"
+            return 0
+        fi
+
+        log_info "Executing: $flash_cmd"
+        log_verbose "Working directory: $(pwd)"
+        echo ""  # Visual separator before flash output
+
+        idf.py flash "${FLASH_ARGS[@]}" || flash_exit_code=$?
+    fi
+
+    echo ""  # Visual separator after flash output
+    return $flash_exit_code
+}
+
+# -----------------------------------------------------------------------------
+# Signal handler for graceful cleanup on Ctrl+C or termination
+# -----------------------------------------------------------------------------
+cleanup() {
+    local exit_code=$?
+
+    echo ""  # New line after potential ^C
+    log_warn "Interrupted (signal received)"
+
+    if [[ "$EAB_WAS_PAUSED" == true ]]; then
+        log_info "Note: EAB pause timer will expire in ~${PAUSE_DURATION}s and auto-resume"
+        log_info "To resume EAB immediately, run: rm $EAB_SESSION_DIR/pause.txt"
+    fi
+
+    exit $exit_code
+}
+
+# -----------------------------------------------------------------------------
+# Main function - orchestrates the flash process
+# -----------------------------------------------------------------------------
+main() {
+    # Set up signal handlers for graceful cleanup
+    trap cleanup INT TERM
+
+    # Parse command line arguments
+    parse_args "$@"
+
+    # Print banner
+    echo -e "${BOLD}${BLUE}=== EAB Flash Wrapper v${VERSION} ===${NC}"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_warn "DRY RUN MODE - No actual commands will be executed"
+    fi
+
+    # Set up environments
+    setup_python
+    setup_espidf
+
+    # Validate arguments after environment setup
+    validate_args
+
+    # Check if EAB daemon is running and pause if needed
+    if check_eab_status; then
+        pause_eab
+        wait_for_port_release
+    else
+        log_info "No EAB daemon running - proceeding directly with flash"
+    fi
+
+    # Execute the flash command
+    log_info "Starting flash operation..."
+
+    local flash_exit_code=0
+    local attempt=1
+    local max_attempts=$((MAX_FLASH_RETRIES + 1))
+
+    while [[ $attempt -le $max_attempts ]]; do
+        if [[ $attempt -gt 1 ]]; then
+            log_warn "Flash attempt $attempt of $max_attempts..."
+            sleep $RETRY_DELAY
+        fi
+
+        if run_flash; then
+            flash_exit_code=0
+            break
+        else
+            flash_exit_code=$?
+
+            if [[ $attempt -lt $max_attempts ]]; then
+                log_warn "Flash failed with exit code $flash_exit_code, retrying..."
+            fi
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
+    # Report final result
+    if [[ $flash_exit_code -eq 0 ]]; then
+        log_success "Flash completed successfully!"
+
+        if [[ "$EAB_WAS_PAUSED" == true && "$DRY_RUN" == false ]]; then
+            log_info "EAB daemon will auto-resume when pause expires (~${PAUSE_DURATION}s from pause)"
+            log_info "To resume immediately: rm $EAB_SESSION_DIR/pause.txt"
+        fi
+    else
+        log_error "Flash failed with exit code $flash_exit_code"
+
+        if [[ "$EAB_WAS_PAUSED" == true ]]; then
+            log_info "EAB daemon will still auto-resume when pause expires"
+        fi
+    fi
+
+    exit $flash_exit_code
+}
+
+# -----------------------------------------------------------------------------
+# Entry point
+# -----------------------------------------------------------------------------
+main "$@"

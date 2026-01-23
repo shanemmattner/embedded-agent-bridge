@@ -56,7 +56,7 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 # Script version (for debugging and compatibility tracking)
 # -----------------------------------------------------------------------------
-readonly VERSION="1.1.0"
+readonly VERSION="1.2.0"
 
 # -----------------------------------------------------------------------------
 # Determine script location and EAB directory
@@ -230,6 +230,34 @@ setup_python() {
 }
 
 # -----------------------------------------------------------------------------
+# Setup esptool environment
+# Verifies esptool is available when --esptool flag is used
+# -----------------------------------------------------------------------------
+setup_esptool() {
+    if [[ "$USE_ESPTOOL" != true ]]; then
+        return 0
+    fi
+
+    log_verbose "Verifying esptool is available..."
+
+    if ! command_exists esptool; then
+        # Also check for esptool.py (older naming convention)
+        if command_exists esptool.py; then
+            log_verbose "Found esptool.py (will use 'esptool.py' command)"
+            # Note: We still call 'esptool' in run_flash, but esptool.py usually
+            # installs both names. If this becomes an issue, we can add an alias.
+        else
+            log_error "esptool not found in PATH"
+            log_error "Install with: pip install esptool"
+            log_error "Or use idf.py flash (without --esptool flag) if using ESP-IDF"
+            exit 2
+        fi
+    fi
+
+    log_verbose "esptool found: $(command -v esptool || command -v esptool.py)"
+}
+
+# -----------------------------------------------------------------------------
 # Setup ESP-IDF environment
 # Sources the ESP-IDF export.sh to set up PATH and environment variables
 # -----------------------------------------------------------------------------
@@ -248,11 +276,30 @@ setup_espidf() {
     if [[ -f "$idf_export" ]]; then
         log_verbose "Sourcing ESP-IDF from: $idf_export"
 
-        # Source ESP-IDF environment, capturing any errors
-        # We suppress stdout (very verbose) but keep stderr for debugging
-        if ! source "$idf_export" > /dev/null 2>&1; then
+        # Source ESP-IDF environment, capturing output for debugging
+        # We suppress stdout (very verbose) but capture stderr for verbose mode
+        local idf_stderr
+        idf_stderr=$(mktemp)
+
+        if ! source "$idf_export" > /dev/null 2>"$idf_stderr"; then
             log_warn "ESP-IDF export.sh returned non-zero, environment may be incomplete"
+            if [[ -s "$idf_stderr" ]]; then
+                log_verbose "ESP-IDF stderr output:"
+                while IFS= read -r line; do
+                    log_verbose "  $line"
+                done < "$idf_stderr"
+            fi
         fi
+
+        # Show any stderr in verbose mode even on success (may contain warnings)
+        if [[ "$VERBOSE" == true && -s "$idf_stderr" ]]; then
+            log_verbose "ESP-IDF stderr output:"
+            while IFS= read -r line; do
+                log_verbose "  $line"
+            done < "$idf_stderr"
+        fi
+
+        rm -f "$idf_stderr"
 
         # Verify critical variables are set
         if [[ -z "${IDF_PATH:-}" ]]; then
@@ -429,10 +476,19 @@ parse_args() {
 validate_args() {
     log_verbose "Validating arguments..."
 
-    # Validate project directory if specified
+    # Validate and normalize project directory if specified
     if [[ -n "$PROJECT_DIR" ]]; then
         require_directory "$PROJECT_DIR" "project directory"
+
+        # Convert to absolute path to avoid confusion in error messages
+        # and ensure consistent behavior regardless of current directory
+        PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
         log_verbose "Project directory validated: $PROJECT_DIR"
+    fi
+
+    # Verify esptool is available if --esptool flag was used
+    if [[ "$USE_ESPTOOL" == true ]]; then
+        setup_esptool
     fi
 
     # Log the configuration
@@ -600,7 +656,8 @@ cleanup() {
 # -----------------------------------------------------------------------------
 main() {
     # Set up signal handlers for graceful cleanup
-    trap cleanup INT TERM
+    # INT = Ctrl+C, TERM = kill, HUP = terminal hangup (e.g., SSH disconnect)
+    trap cleanup INT TERM HUP
 
     # Parse command line arguments
     parse_args "$@"

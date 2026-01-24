@@ -145,13 +145,125 @@ Full support for STM32 development with ST-Link debugging.
 ./eabctl reset --chip stm32l4
 ```
 
-### 5. ESP-IDF Integration (Planned)
-Build and flash integration for ESP32 development.
+### 5. ESP-IDF Integration
 
-**Capabilities:**
-- `idf.py build`
-- `idf.py flash`
-- `idf.py monitor` (via serial daemon)
+The `eab-flash` wrapper enables seamless flashing while EAB daemon is running.
+
+**The Problem:** EAB holds the serial port open for monitoring, which blocks `esptool`/`idf.py flash` from accessing the device.
+
+**The Solution:** `eab-flash` automatically pauses EAB, flashes, and EAB auto-resumes.
+
+#### Basic Usage
+
+```bash
+# Flash ESP-IDF project (from project directory)
+./eab-flash
+
+# Flash specific project
+./eab-flash --project /path/to/esp-idf-project
+
+# Flash to specific port
+./eab-flash -p /dev/cu.usbmodem1101
+
+# Use esptool directly
+./eab-flash --esptool -p /dev/ttyUSB0 write_flash 0x0 firmware.bin
+
+# Longer pause duration (default 60s)
+./eab-flash --pause-duration 120
+
+# Dry run - see what would happen without actually flashing
+./eab-flash --dry-run -p /dev/cu.usbmodem1101
+
+# Verbose mode for debugging
+./eab-flash --verbose -p /dev/cu.usbmodem1101
+```
+
+#### How It Works
+
+1. Detects if EAB daemon is running
+2. Sends pause command (EAB releases serial port)
+3. Waits for port release confirmation (with timeout)
+4. Sources ESP-IDF environment and runs `idf.py flash` or `esptool`
+5. EAB auto-resumes after pause expires
+
+#### Command-Line Options
+
+| Option | Description |
+|--------|-------------|
+| `--esptool` | Use esptool directly instead of idf.py flash |
+| `--project`, `-C DIR` | Specify ESP-IDF project directory |
+| `--pause-duration N` | Pause EAB for N seconds (default: 60) |
+| `--dry-run` | Show what would be executed without running |
+| `--verbose`, `-v` | Enable verbose output for debugging |
+| `--version`, `-V` | Show version information |
+| `--help`, `-h` | Show help message |
+
+All other arguments (like `-p PORT`, `-b BAUD`) are passed through to `idf.py flash` or `esptool`.
+
+#### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Flash completed successfully |
+| 1 | Argument or validation error |
+| 2 | Environment error (Python/ESP-IDF not found) |
+| 3 | EAB communication error |
+| * | Exit code from esptool/idf.py (passed through) |
+
+#### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `IDF_PATH` | Path to ESP-IDF installation | `$HOME/esp/esp-idf` |
+| `EAB_SESSION_DIR` | EAB session directory | `/tmp/eab-session` |
+
+#### Error Scenarios and Edge Cases
+
+**Flash fails:**
+- EAB will still auto-resume after the pause expires
+- Error message will indicate the exit code from esptool/idf.py
+- Check device connection and port availability
+
+**Ctrl+C during flash:**
+- Safe to abort; EAB pause timer continues independently
+- EAB will auto-resume when the pause expires
+- To resume EAB immediately: `rm /tmp/eab-session/pause.txt`
+
+**Port still busy after pause:**
+- The script waits up to 10 seconds for port release
+- If timeout occurs, it proceeds with flash attempt anyway
+- Check for other processes using the port with `lsof /dev/cu.usbmodem*`
+
+**ESP-IDF not found:**
+- Set `IDF_PATH` environment variable to your ESP-IDF location
+- Or source `export.sh` manually before running `eab-flash`
+
+**Multiple devices connected:**
+- Use `-p PORT` to specify the exact port
+- Without `-p`, idf.py/esptool may select wrong device
+
+**Concurrent eab-flash calls:**
+- Only one flash operation at a time is safe
+- The pause file mechanism doesn't support concurrent access
+
+#### Manual Pause (For Other Tools)
+
+If you need to use other flash tools that `eab-flash` doesn't support:
+
+```bash
+# Pause EAB for 60 seconds
+python3 -m eab --pause 60
+
+# EAB releases port immediately
+# Flash with any tool you want
+esptool.py ...
+platformio run --target upload
+make flash
+
+# EAB auto-resumes when pause expires
+# Or resume early by removing pause file:
+rm /tmp/eab-session/pause.txt
+```
 
 ## Usage Patterns
 
@@ -251,7 +363,10 @@ standard line‑based log mode.
 - [x] Pattern detection for alerts
 - [x] Command injection via file
 - [x] Statistics tracking
-- [ ] Reconnection handling
+- [x] Reconnection handling
+- [x] Port pause/resume for flashing (`--pause`)
+- [x] Automatic crash recovery
+- [x] ESP-IDF flash integration (`eab-flash`)
 - [ ] Multiple port support
 
 ### Phase 2: GDB Bridge
@@ -286,11 +401,82 @@ standard line‑based log mode.
 git clone git@github.com:circuit-synth/embedded-agent-bridge.git
 cd embedded-agent-bridge
 
+# Create virtual environment (recommended)
+python3 -m venv .venv
+source .venv/bin/activate
+
 # Install dependencies
 pip install pyserial
 
 # Run serial daemon
 python3 -m eab --port auto --base-dir /tmp/eab-session
+```
+
+## CLI Reference
+
+### Daemon Commands
+
+```bash
+# Start daemon (foreground)
+python3 -m eab --port auto --base-dir /tmp/eab-session
+
+# Start with force (kill existing daemon)
+python3 -m eab --port auto --force
+
+# Check daemon status
+python3 -m eab --status
+
+# Stop running daemon
+python3 -m eab --stop
+
+# Pause daemon for flashing (releases serial port)
+python3 -m eab --pause 60
+
+# Send command to device
+python3 -m eab --cmd "help"
+
+# Reset device
+python3 -m eab --reset
+
+# View recent logs
+python3 -m eab --logs 50
+
+# View alerts
+python3 -m eab --alerts 20
+
+# Wait for pattern in log
+python3 -m eab --wait-for "BOOT" --wait-timeout 30
+```
+
+### Flash Wrapper (eab-flash)
+
+```bash
+# Flash ESP-IDF project (auto-detects port)
+./eab-flash
+
+# Flash to specific port
+./eab-flash -p /dev/cu.usbmodem1101
+
+# Flash specific project directory
+./eab-flash --project /path/to/project
+
+# Flash with esptool directly
+./eab-flash --esptool -p /dev/ttyUSB0 write_flash 0x0 fw.bin
+
+# Dry run to preview commands
+./eab-flash --dry-run -p /dev/cu.usbmodem1101
+
+# Verbose output for debugging
+./eab-flash --verbose -p /dev/cu.usbmodem1101
+
+# Longer pause for large firmware
+./eab-flash --pause-duration 120 -p /dev/ttyUSB0
+
+# Show version
+./eab-flash --version
+
+# Show help
+./eab-flash --help
 ```
 
 ## Contributing

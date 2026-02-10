@@ -955,21 +955,17 @@ def cmd_flash(
     if tool:
         kwargs["tool"] = tool
 
+    # Use chip-appropriate default address when none specified
+    if not address and chip.lower().startswith("stm32"):
+        address = "0x08000000"
+    # ESP32 default (0x10000) is handled by the profile's get_flash_command
+
     flash_cmd = profile.get_flash_command(
         firmware_path=firmware,
         port=port or "",
-        address=address or profile.flash_tool,  # Use default if not specified
+        **({"address": address} if address else {}),
         **kwargs,
     )
-
-    # For STM32, address defaults to 0x08000000 if not specified
-    if chip.lower().startswith("stm32") and not address:
-        flash_cmd = profile.get_flash_command(
-            firmware_path=firmware,
-            port=port or "",
-            address="0x08000000",
-            **kwargs,
-        )
 
     # Execute flash command
     cmd_list = [flash_cmd.tool] + flash_cmd.args

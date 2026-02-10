@@ -27,12 +27,11 @@
 #include "esp_flash.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "driver/uart.h"
+#include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
 
 static const char *TAG = "EAB_TEST";
 
-#define UART_NUM       UART_NUM_0
-#define BUF_SIZE       256
 #define HEARTBEAT_MS   5000
 #define MAX_CMD_LEN    128
 
@@ -148,27 +147,25 @@ static void heartbeat_task(void *arg)
     }
 }
 
-static void uart_rx_task(void *arg)
+static void console_rx_task(void *arg)
 {
-    uint8_t buf[BUF_SIZE];
     char cmd_buf[MAX_CMD_LEN];
     int cmd_pos = 0;
 
     while (1) {
-        int len = uart_read_bytes(UART_NUM, buf, sizeof(buf) - 1, pdMS_TO_TICKS(100));
-        if (len > 0) {
-            for (int i = 0; i < len; i++) {
-                char c = (char)buf[i];
-                if (c == '\n' || c == '\r') {
-                    if (cmd_pos > 0) {
-                        cmd_buf[cmd_pos] = '\0';
-                        process_command(cmd_buf);
-                        cmd_pos = 0;
-                    }
-                } else if (cmd_pos < MAX_CMD_LEN - 1) {
-                    cmd_buf[cmd_pos++] = c;
-                }
+        int c = fgetc(stdin);
+        if (c == EOF) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+        if (c == '\n' || c == '\r') {
+            if (cmd_pos > 0) {
+                cmd_buf[cmd_pos] = '\0';
+                process_command(cmd_buf);
+                cmd_pos = 0;
             }
+        } else if (cmd_pos < MAX_CMD_LEN - 1) {
+            cmd_buf[cmd_pos++] = (char)c;
         }
     }
 }
@@ -177,16 +174,13 @@ void app_main(void)
 {
     start_time_us = esp_timer_get_time();
 
-    /* Configure UART0 for serial communication */
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    /* Install USB Serial/JTAG VFS driver for stdin/stdout on ESP32-C6 */
+    usb_serial_jtag_driver_config_t usb_serial_cfg = {
+        .rx_buffer_size = 1024,
+        .tx_buffer_size = 1024,
     };
-    uart_param_config(UART_NUM, &uart_config);
-    uart_driver_install(UART_NUM, BUF_SIZE * 2, 0, 0, NULL, 0);
+    ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb_serial_cfg));
+    usb_serial_jtag_vfs_use_driver();
 
     printf("\n\n");
     printf("========================================\n");
@@ -198,5 +192,5 @@ void app_main(void)
 
     /* Start background tasks */
     xTaskCreate(heartbeat_task, "heartbeat", 2048, NULL, 5, NULL);
-    xTaskCreate(uart_rx_task, "uart_rx", 4096, NULL, 10, NULL);
+    xTaskCreate(console_rx_task, "console_rx", 4096, NULL, 10, NULL);
 }

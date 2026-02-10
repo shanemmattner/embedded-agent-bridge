@@ -112,6 +112,14 @@ eabctl openocd stop
 | `status.json` | Connection and health status |
 | `data.bin` | High-speed raw data (optional) |
 
+## Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| **macOS** | Tested | Primary development platform |
+| **Linux** | Expected to work | Same APIs (fcntl, pyserial), not yet tested |
+| **Windows** | Not supported | File locking uses `fcntl` (Unix-only). Contributions welcome. |
+
 ## Supported Hardware
 
 - **ESP32** family (S3, C3, C6) — serial + USB-JTAG + ESP-IDF flash

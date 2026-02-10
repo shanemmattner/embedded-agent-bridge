@@ -22,13 +22,14 @@ Background daemons that manage serial ports, GDB, and OpenOCD so LLM agents (Cla
 pip install embedded-agent-bridge   # or: git clone + pip install -e .
 
 # Start the serial daemon (auto-detects USB serial ports)
-eab --port auto &
+eabctl start --port auto
 
 # Now any agent can:
-eabctl tail -n 50            # Read serial output
-eabctl send "AT+RST"         # Send commands to device
-eabctl status --json         # Check connection health
-eabctl flash fw.bin --chip esp32s3   # Flash firmware
+eabctl tail 50 --json              # Read serial output
+eabctl send "AT+RST" --json        # Send commands to device
+eabctl status --json               # Check connection health
+eabctl flash fw.bin --chip esp32s3  # Flash firmware
+eabctl diagnose --json             # Full health check
 ```
 
 That's it. Your agent reads files and calls CLI commands. No MCP server, no custom protocol, no interactive sessions.
@@ -54,6 +55,7 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 - Start/stop OpenOCD from CLI (`eabctl openocd start --chip esp32s3`)
 - One-shot GDB commands (`eabctl gdb --cmd "bt" --cmd "info registers"`)
 - Chip-agnostic flash, erase, reset, chip-info commands
+- Automatic ELF-to-binary conversion for STM32 (st-flash requires .bin)
 - ESP32 and STM32 (ST-Link) support built-in
 
 **ESP-IDF Integration**
@@ -71,23 +73,24 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 ### Agent reads serial output and sends commands
 
 ```bash
-eabctl tail -n 50 --json     # Last 50 lines of serial output
-eabctl send "help"            # Send command to device
-eabctl events -n 20 --json   # Recent system events
-eabctl diagnose --json        # Full health check
+eabctl tail 50 --json        # Last 50 lines of serial output
+eabctl send "help" --json    # Send command to device
+eabctl events 20 --json      # Recent system events
+eabctl diagnose --json       # Full health check
 ```
 
 ### Agent flashes firmware
 
 ```bash
-# Chip-agnostic
+# ESP32 — esptool handles ELF and binary natively
 eabctl flash firmware.bin --chip esp32s3 --port /dev/cu.usbserial-0001
+
+# STM32 — ELF files auto-converted to binary via arm-none-eabi-objcopy
+eabctl flash firmware.elf --chip stm32l4
+eabctl flash firmware.bin --chip stm32l4 --address 0x08004000
 
 # ESP-IDF projects (handles daemon pause/resume automatically)
 eab-flash -p /dev/cu.usbmodem1101
-
-# STM32 via ST-Link
-eabctl flash app.bin --chip stm32l4 --address 0x08004000
 ```
 
 ### Agent uses GDB
@@ -122,47 +125,55 @@ eabctl openocd stop
 - [x] ESP-IDF flash integration
 - [x] OpenOCD + GDB bridge (batch commands)
 - [x] Chip-agnostic flash/erase/reset
-- [ ] GDB MI protocol wrapper (persistent debugging sessions)
+- [x] Automatic ELF-to-binary conversion for STM32
+- [x] Claude Code agent skill (`.claude/skills/eab/SKILL.md`)
+- [ ] Zephyr RTOS support ([#60](https://github.com/shanemmattner/embedded-agent-bridge/issues/60))
 - [ ] Multiple simultaneous port support
+- [ ] GDB MI protocol wrapper (persistent debugging sessions)
 - [ ] MCP server (for agents that support it)
 - [ ] Cross-tool event correlation
 - [ ] Power profiling integration
 
 ## Documentation
 
+- [Agent Skill](.claude/skills/eab/SKILL.md) — Drop-in skill for Claude Code (follows [Agent Skills](https://agentskills.io) standard)
 - [Agent Guide](AGENT_GUIDE.md) — Detailed instructions for LLM agents (also serves as `llms.txt`)
 - [Protocol](PROTOCOL.md) — Binary framing format for high-speed streaming
 - [CLI Reference](#cli-reference) — Full command documentation
 
 ## CLI Reference
 
-### Daemon
+### All commands use `eabctl`
 
 ```bash
-eab --port auto                # Start daemon (auto-detect port)
-eab --port auto --force        # Kill existing daemon and start fresh
-eab --status                   # Check if daemon is running
-eab --stop                     # Stop daemon
-eab --pause 60                 # Pause daemon for 60s (release port)
-eab --logs 50                  # View last 50 log lines
-eab --alerts 20                # View last 20 alerts
-eab --wait-for "BOOT" --wait-timeout 30   # Wait for pattern
-```
+# Daemon lifecycle
+eabctl start --port auto             # Start daemon (auto-detect port)
+eabctl start --port /dev/cu.usbmodem101  # Start on specific port
+eabctl stop                          # Stop daemon
+eabctl status --json                 # Connection + health status
 
-### Controller (eabctl)
+# Serial output and commands
+eabctl tail 50 --json                # Recent serial output
+eabctl send "command" --json         # Send command to device
+eabctl alerts 20 --json              # Recent crashes/errors
+eabctl events 50 --json              # Recent events
+eabctl diagnose --json               # Full diagnostic report
 
-```bash
-eabctl status --json           # Connection + health status
-eabctl tail -n 50 --json       # Recent serial output
-eabctl send "command" --json   # Send command to device
-eabctl events -n 50 --json     # Recent events
-eabctl diagnose --json         # Full diagnostic report
-eabctl flash fw.bin --chip esp32s3   # Flash firmware
-eabctl erase --chip stm32l4         # Erase flash
-eabctl reset --chip stm32l4         # Hardware reset
-eabctl chip-info --chip esp32s3     # Chip information
+# Port control
+eabctl pause 60                      # Pause daemon for 60s (release port)
+eabctl resume                        # Resume early
+
+# Flash, erase, reset
+eabctl flash fw.elf --chip stm32l4   # Flash (ELF auto-converted to .bin)
+eabctl flash fw.bin --chip esp32s3   # Flash binary
+eabctl erase --chip stm32l4          # Erase flash
+eabctl reset --chip stm32l4          # Hardware reset
+eabctl chip-info --chip esp32s3      # Chip information
+
+# Debug bridge
 eabctl openocd start --chip esp32s3  # Start OpenOCD
 eabctl gdb --chip esp32s3 --cmd "bt" # Run GDB commands
+eabctl openocd stop                  # Stop OpenOCD
 ```
 
 ## Related Projects

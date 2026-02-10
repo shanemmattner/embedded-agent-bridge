@@ -11,6 +11,16 @@ description: >
 EAB runs a background daemon that manages the serial port, so you never need to hold open
 an interactive session. All interaction is through `eabctl` CLI commands and session files.
 
+## Quick Start
+
+```bash
+# Ensure eabctl is in PATH (install if needed: pip install -e /path/to/embedded-agent-bridge)
+which eabctl || pip install -e .
+
+# One-liner: start daemon and see what the device is printing
+eabctl start --port auto && eabctl tail 20 --json
+```
+
 ## Architecture
 
 ```
@@ -107,11 +117,11 @@ eabctl stream stop
 
 ## Common Workflows
 
-### 1. Start fresh session
+### 1. Start fresh session (recommended: `--port auto`)
 
 ```bash
-eabctl start --port auto
-eabctl status --json        # Verify connected
+eabctl start --port auto    # Auto-detect is the easiest default
+eabctl status --json        # Verify connected — check health.status and connection.status
 eabctl tail 20 --json       # See what device is printing
 ```
 
@@ -149,7 +159,7 @@ eabctl openocd stop
 
 ## Critical Rules
 
-1. **Always use `--json`** — Parse structured output, don't regex human-readable text
+1. **Always use `--json`** — Parse structured output, don't regex human-readable text. Key fields: `health.status`, `connection.status`, `daemon.is_alive`
 2. **Pause before chip-info** — `eabctl pause 30 && eabctl chip-info --chip esp32c6 && eabctl resume`
 3. **Don't hold serial ports open** — Never use `minicom`, `screen`, or `pyserial` directly; use eabctl
 4. **Check status first** — Before any operation, run `eabctl status --json` to verify daemon is running
@@ -161,6 +171,7 @@ eabctl openocd stop
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| `eabctl: command not found` | Not in PATH | `pip install -e /path/to/embedded-agent-bridge` or activate venv |
 | "Daemon not running" | No daemon started | `eabctl start --port auto` |
 | "Port busy" / "Resource busy" | Another process has serial port | `eabctl pause 60` or kill conflicting process |
 | Boot loop (WATCHDOG in alerts) | Corrupted firmware | `eabctl erase --chip <chip> && eabctl flash firmware.bin --chip <chip>` |

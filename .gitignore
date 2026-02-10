@@ -46,3 +46,6 @@ env/
 
 # Logs
 *.log
+
+# Temp files
+tmp/

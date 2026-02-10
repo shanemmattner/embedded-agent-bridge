@@ -357,7 +357,7 @@ class TestEabctlSTM32Commands:
             ["./eabctl", "flash", "--help"],
             capture_output=True,
             text=True,
-            cwd="/Users/shanemattner/Desktop/personal-assistant/tools/embedded-agent-bridge",
+            cwd="/tmp/test-eab",
         )
         assert result.returncode == 0
         assert "--chip" in result.stdout
@@ -369,7 +369,7 @@ class TestEabctlSTM32Commands:
             ["./eabctl", "erase", "--help"],
             capture_output=True,
             text=True,
-            cwd="/Users/shanemattner/Desktop/personal-assistant/tools/embedded-agent-bridge",
+            cwd="/tmp/test-eab",
         )
         assert result.returncode == 0
         assert "--chip" in result.stdout
@@ -380,7 +380,7 @@ class TestEabctlSTM32Commands:
             ["./eabctl", "chip-info", "--help"],
             capture_output=True,
             text=True,
-            cwd="/Users/shanemattner/Desktop/personal-assistant/tools/embedded-agent-bridge",
+            cwd="/tmp/test-eab",
         )
         assert result.returncode == 0
         assert "--chip" in result.stdout
@@ -391,7 +391,7 @@ class TestEabctlSTM32Commands:
             ["./eabctl", "reset", "--help"],
             capture_output=True,
             text=True,
-            cwd="/Users/shanemattner/Desktop/personal-assistant/tools/embedded-agent-bridge",
+            cwd="/tmp/test-eab",
         )
         assert result.returncode == 0
         assert "--chip" in result.stdout
@@ -407,7 +407,7 @@ class TestEabctlSTM32Commands:
                 ["./eabctl", "flash", firmware_path, "--chip", "invalid_chip", "--json"],
                 capture_output=True,
                 text=True,
-                cwd="/Users/shanemattner/Desktop/personal-assistant/tools/embedded-agent-bridge",
+                cwd="/tmp/test-eab",
             )
             assert result.returncode != 0
             data = json.loads(result.stdout)
@@ -423,7 +423,7 @@ class TestEabctlSTM32Commands:
             ["./eabctl", "flash", "/nonexistent/firmware.bin", "--chip", "stm32l4", "--json"],
             capture_output=True,
             text=True,
-            cwd="/Users/shanemattner/Desktop/personal-assistant/tools/embedded-agent-bridge",
+            cwd="/tmp/test-eab",
         )
         assert result.returncode != 0
         data = json.loads(result.stdout)

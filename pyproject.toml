@@ -41,8 +41,8 @@ eab = "eab.daemon:main"
 eab-control = "eab.control:main"
 
 [project.urls]
-Homepage = "https://github.com/shanemattner/embedded-agent-bridge"
-Repository = "https://github.com/shanemattner/embedded-agent-bridge"
+Homepage = "https://github.com/shanemmattner/embedded-agent-bridge"
+Repository = "https://github.com/shanemmattner/embedded-agent-bridge"
 
 [tool.setuptools.packages.find]
 where = ["."]

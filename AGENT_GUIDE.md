@@ -6,40 +6,40 @@ A daemon and command-line interface for LLM agents to interact with ESP32 device
 
 ```bash
 # Check device status
-~/tools/embedded-agent-bridge/eab-control status
+./eab-control status
 
 # Machine-parseable status (for agents)
-~/tools/embedded-agent-bridge/eab-control status --json
+./eab-control status --json
 
 # View serial output
-~/tools/embedded-agent-bridge/eab-control tail 50
+./eab-control tail 50
 
 # Machine-parseable tail (for agents)
-~/tools/embedded-agent-bridge/eab-control tail 50 --json
+./eab-control tail 50 --json
 
 # View recent system events (daemon lifecycle, pause/resume, flash, alerts)
-~/tools/embedded-agent-bridge/eab-control events 50
+./eab-control events 50
 
 # Send command to device
-~/tools/embedded-agent-bridge/eab-control send "help"
+./eab-control send "help"
 
 # Start high-speed data streaming (arm on marker)
-~/tools/embedded-agent-bridge/eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
+./eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
 
 # Stop high-speed streaming
-~/tools/embedded-agent-bridge/eab-control stream stop
+./eab-control stream stop
 
 # Fetch last 64KB of streamed data
-~/tools/embedded-agent-bridge/eab-control recv-latest --bytes 65536 --out latest.bin
+./eab-control recv-latest --bytes 65536 --out latest.bin
 
 # Reset device
-~/tools/embedded-agent-bridge/eab-control reset
+./eab-control reset
 
 # Flash firmware (auto-detects chip, handles everything)
-~/tools/embedded-agent-bridge/eab-control flash /path/to/project
+./eab-control flash /path/to/project
 
 # Erase flash (for corrupted firmware)
-~/tools/embedded-agent-bridge/eab-control erase
+./eab-control erase
 ```
 
 ## The eab-control Script
@@ -103,26 +103,26 @@ Data Streaming (high-speed):
 
 ```bash
 # Get daemon and device status
-~/tools/embedded-agent-bridge/eab-control status
+./eab-control status
 
 # View recent serial output
-~/tools/embedded-agent-bridge/eab-control tail 30
+./eab-control tail 30
 ```
 
 ### 2. Send Commands to Device
 
 ```bash
 # Send a single character command
-~/tools/embedded-agent-bridge/eab-control send "i"
+./eab-control send "i"
 
 # Send longer text
-~/tools/embedded-agent-bridge/eab-control send "help"
+./eab-control send "help"
 
 # Wait for specific output pattern
-~/tools/embedded-agent-bridge/eab-control wait "Ready" 30
+./eab-control wait "Ready" 30
 
 # Wait for a system event (example: command sent)
-~/tools/embedded-agent-bridge/eab-control wait-event --type command_sent --timeout 10
+./eab-control wait-event --type command_sent --timeout 10
 ```
 
 ### 3. Fix Boot Loop / Corrupted Firmware
@@ -131,21 +131,21 @@ If the device is stuck in a boot loop (showing watchdog resets, "invalid header"
 
 ```bash
 # Option 1: Flash a known-good ESP-IDF project
-~/tools/embedded-agent-bridge/eab-control flash /path/to/working/project
+./eab-control flash /path/to/working/project
 
 # Option 2: Erase and start fresh
-~/tools/embedded-agent-bridge/eab-control erase
-~/tools/embedded-agent-bridge/eab-control flash /path/to/project
+./eab-control erase
+./eab-control flash /path/to/project
 
 # Option 3: Restore from backup
-~/tools/embedded-agent-bridge/eab-control restore backup.bin
+./eab-control restore backup.bin
 ```
 
 ### 4. Flash New Firmware
 
 ```bash
 # Flash an ESP-IDF project (auto-detects everything)
-~/tools/embedded-agent-bridge/eab-control flash /path/to/esp-idf-project
+./eab-control flash /path/to/esp-idf-project
 
 # The command will:
 # 1. Auto-detect serial port from daemon
@@ -161,37 +161,37 @@ If the device is stuck in a boot loop (showing watchdog resets, "invalid header"
 
 ```bash
 # Build the project first, then flash
-~/tools/embedded-agent-bridge/eab-control build-flash /path/to/project
+./eab-control build-flash /path/to/project
 ```
 
 ### 6. Backup Before Risky Operations
 
 ```bash
 # Create backup of current flash
-~/tools/embedded-agent-bridge/eab-control backup my_backup.bin
+./eab-control backup my_backup.bin
 
 # Later, restore if needed
-~/tools/embedded-agent-bridge/eab-control restore my_backup.bin
+./eab-control restore my_backup.bin
 ```
 
 ### 7. Debug Connection Issues
 
 ```bash
 # Check chip info
-~/tools/embedded-agent-bridge/eab-control chip-info
+./eab-control chip-info
 
 # Read MAC address
-~/tools/embedded-agent-bridge/eab-control read-mac
+./eab-control read-mac
 
 # Check alerts for crashes/errors
-~/tools/embedded-agent-bridge/eab-control alerts 20
+./eab-control alerts 20
 
 # Check daemon events for reconnect/pause/flash
-~/tools/embedded-agent-bridge/eab-control events 20
+./eab-control events 20
 
 # Run automated diagnostics (human or JSON)
-~/tools/embedded-agent-bridge/eab-control diagnose
-~/tools/embedded-agent-bridge/eab-control diagnose --json
+./eab-control diagnose
+./eab-control diagnose --json
 
 ## Event Stream (Non-Blocking IPC)
 
@@ -211,8 +211,8 @@ Each line is a JSON object with:
 Agents can tail this file or use:
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control events 50
-~/tools/embedded-agent-bridge/eab-control wait-event --type command_sent --timeout 10
+./eab-control events 50
+./eab-control wait-event --type command_sent --timeout 10
 ```
 
 ## High-Speed Data Stream
@@ -226,19 +226,19 @@ When enabled, the daemon writes raw bytes to:
 Enable streaming (armed on marker):
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
+./eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
 ```
 
 Stop streaming:
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control stream stop
+./eab-control stream stop
 ```
 
 Fetch recent bytes:
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control recv-latest --bytes 65536 --out latest.bin
+./eab-control recv-latest --bytes 65536 --out latest.bin
 ```
 
 ### Compatibility Notes
@@ -254,10 +254,10 @@ use `capture-between` to extract *clean* payload data without timestamps or daem
 
 ```bash
 # Capture base64 text payload to a file
-~/tools/embedded-agent-bridge/eab-control capture-between "===WAV_START===" "===WAV_END===" out.b64
+./eab-control capture-between "===WAV_START===" "===WAV_END===" out.b64
 
 # Or decode base64 directly to bytes (e.g. WAV)
-~/tools/embedded-agent-bridge/eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
+./eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 ```
 
 ## Understanding Device State
@@ -356,25 +356,25 @@ printf '!ERASE' > /tmp/eab-session/cmd.txt
 ### Start Daemon Manually
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control start
+./eab-control start
 ```
 
 ### Auto-Start at Login
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control enable
+./eab-control enable
 ```
 
 ### Check Daemon Status
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control status
+./eab-control status
 ```
 
 ### View Daemon Logs
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control logs
+./eab-control logs
 ```
 
 ## Troubleshooting
@@ -383,18 +383,18 @@ printf '!ERASE' > /tmp/eab-session/cmd.txt
 
 The daemon isn't running or isn't connected:
 ```bash
-~/tools/embedded-agent-bridge/eab-control start
-~/tools/embedded-agent-bridge/eab-control status
+./eab-control start
+./eab-control status
 ```
 
 ### Device Not Responding
 
 ```bash
 # Reset the device
-~/tools/embedded-agent-bridge/eab-control reset
+./eab-control reset
 
 # Check for output
-~/tools/embedded-agent-bridge/eab-control tail 30
+./eab-control tail 30
 ```
 
 ### Flash Operation Failed
@@ -404,13 +404,13 @@ The daemon isn't running or isn't connected:
 lsof /dev/cu.usbmodem*
 
 # Force daemon pause
-~/tools/embedded-agent-bridge/eab-control pause 120
+./eab-control pause 120
 
 # Try flashing manually
 esptool --port /dev/cu.usbmodem* write-flash 0x0 firmware.bin
 
 # Resume daemon
-~/tools/embedded-agent-bridge/eab-control resume
+./eab-control resume
 ```
 
 ### Boot Loop After Flash
@@ -418,8 +418,8 @@ esptool --port /dev/cu.usbmodem* write-flash 0x0 firmware.bin
 The flash may have been partial or wrong addresses:
 ```bash
 # Erase and reflash
-~/tools/embedded-agent-bridge/eab-control erase
-~/tools/embedded-agent-bridge/eab-control flash /path/to/project
+./eab-control erase
+./eab-control flash /path/to/project
 ```
 
 ## Log Format

@@ -400,7 +400,7 @@ NOTES:
     - Press Ctrl+C to abort; EAB pause timer continues independently
     - The script requires bash (not sh) due to use of arrays and [[ ]]
 
-For more information, see: https://github.com/circuit-synth/embedded-agent-bridge
+For more information, see: https://github.com/shanemmattner/embedded-agent-bridge
 EOF
 }
 

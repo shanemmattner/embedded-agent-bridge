@@ -13,21 +13,21 @@ ESP32 serial communication daemon. **ALWAYS use eab-control for ALL ESP32 operat
 
 ```bash
 # Check status (ALWAYS do this first)
-~/tools/embedded-agent-bridge/eab-control status
-~/tools/embedded-agent-bridge/eab-control status --json   # machine-parseable
+./eab-control status
+./eab-control status --json   # machine-parseable
 
 # View serial output
-~/tools/embedded-agent-bridge/eab-control tail 50
-~/tools/embedded-agent-bridge/eab-control tail 50 --json  # machine-parseable
+./eab-control tail 50
+./eab-control tail 50 --json  # machine-parseable
 
 # Send command to device
-~/tools/embedded-agent-bridge/eab-control send "i"
+./eab-control send "i"
 
 # Flash firmware (handles EVERYTHING automatically)
-~/tools/embedded-agent-bridge/eab-control flash /path/to/project
+./eab-control flash /path/to/project
 
 # Reset device
-~/tools/embedded-agent-bridge/eab-control reset
+./eab-control reset
 ```
 
 ## Flashing Firmware
@@ -36,11 +36,11 @@ ESP32 serial communication daemon. **ALWAYS use eab-control for ALL ESP32 operat
 
 ```bash
 # Flash ESP-IDF project (auto-detects chip, pauses daemon, flashes, resumes)
-~/tools/embedded-agent-bridge/eab-control flash /path/to/esp-idf-project
+./eab-control flash /path/to/esp-idf-project
 
 # Erase flash first if corrupted
-~/tools/embedded-agent-bridge/eab-control erase
-~/tools/embedded-agent-bridge/eab-control flash /path/to/project
+./eab-control erase
+./eab-control flash /path/to/project
 ```
 
 The flash command:
@@ -56,21 +56,21 @@ The flash command:
 If device shows `invalid header: 0xffffffff` or watchdog resets:
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control flash /path/to/working/project
+./eab-control flash /path/to/working/project
 ```
 
 ## Monitoring Device
 
 ```bash
 # Last N lines of output
-~/tools/embedded-agent-bridge/eab-control tail 50
+./eab-control tail 50
 
 # Watch for specific pattern (blocks until found or timeout)
-~/tools/embedded-agent-bridge/eab-control wait "Ready" 30
+./eab-control wait "Ready" 30
 
 # View crash/error alerts only
-~/tools/embedded-agent-bridge/eab-control alerts
-~/tools/embedded-agent-bridge/eab-control alerts --json   # machine-parseable
+./eab-control alerts
+./eab-control alerts --json   # machine-parseable
 ```
 
 ## Payload Capture (Base64/WAV/etc.)
@@ -78,14 +78,14 @@ If device shows `invalid header: 0xffffffff` or watchdog resets:
 If the device outputs base64 between markers and you need a clean extract:
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
+./eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 ```
 
 ## Diagnostics
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control diagnose
-~/tools/embedded-agent-bridge/eab-control diagnose --json
+./eab-control diagnose
+./eab-control diagnose --json
 ```
 
 ## Status JSON
@@ -109,7 +109,7 @@ Check `/tmp/eab-session/events.jsonl` for non-blocking system events:
 Before flashing, run preflight to verify everything is ready:
 
 ```bash
-~/tools/embedded-agent-bridge/eab-control preflight
+./eab-control preflight
 ```
 
 This checks:

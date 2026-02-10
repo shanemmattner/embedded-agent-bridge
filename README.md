@@ -3,11 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-green.svg)](https://python.org)
 
-**Let AI agents debug your embedded hardware.**
-
-AI coding agents (Claude Code, Cursor, Copilot) are great at writing firmware — but they can't use your debugger. They can't hold open a serial monitor, step through GDB, or flash your board. They get stuck, timeout, or just guess.
-
-EAB fixes this. It runs background daemons that manage serial ports, GDB, and OpenOCD, then exposes everything through simple CLI calls and files that any agent can read and write. Your agent reads `latest.log` instead of trying to hold open minicom. It writes to `cmd.txt` instead of fighting for the serial port.
+Background daemons that manage serial ports, GDB, and OpenOCD so LLM agents (Claude Code, Cursor, Copilot, etc.) can interact with embedded hardware without hanging or wasting context tokens. The agent pings the daemon for data through a simple CLI and file interface instead of trying to hold open interactive sessions directly.
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
@@ -37,16 +33,11 @@ eabctl flash fw.bin --chip esp32s3   # Flash firmware
 
 That's it. Your agent reads files and calls CLI commands. No MCP server, no custom protocol, no interactive sessions.
 
-## The Problem
+## Why
 
-LLM-based coding agents operate in a **read file / write file / run command** loop. Embedded debugging requires **persistent interactive sessions** — a serial monitor that stays open, a GDB session you step through, an OpenOCD connection managing JTAG.
+LLM agents work in a read/write/run loop. Embedded dev requires persistent sessions — a serial monitor that stays open, a GDB connection, a JTAG interface. When an agent tries to run `minicom` or `screen` directly, it either blocks forever, loses state when it closes the session to read output, or fights another tool for the port.
 
-These two models are fundamentally incompatible. When an agent tries to run `minicom` or `screen`, it either:
-- Blocks forever (can't read output while session is open)
-- Loses context (closes the session to read, loses state)
-- Fights for the port (another tool already has it open)
-
-EAB bridges this gap by turning interactive sessions into file I/O and CLI calls.
+EAB turns these interactive sessions into file I/O and CLI calls. The agent reads `latest.log` instead of holding open minicom, and writes to `cmd.txt` instead of fighting for the serial port.
 
 ## Features
 
@@ -117,18 +108,6 @@ eabctl openocd stop
 | `events.jsonl` | Structured event stream |
 | `status.json` | Connection and health status |
 | `data.bin` | High-speed raw data (optional) |
-
-## Comparison
-
-| Feature | ChatDBG | MCP GDB Server | EAB |
-|---------|---------|----------------|-----|
-| Serial/UART monitoring | No | No | Yes |
-| GDB integration | Yes | Yes | Yes |
-| OpenOCD/JTAG | No | No | Yes |
-| Flash firmware | No | No | Yes |
-| ESP-IDF integration | No | No | Yes |
-| Pattern/crash detection | No | No | Yes |
-| Works with any LLM agent | No | Claude only | Yes |
 
 ## Supported Hardware
 

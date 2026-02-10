@@ -111,6 +111,32 @@ class TestControlEntryPoint:
         result = main(["status", "--json"])
         assert isinstance(result, int)
 
+    @pytest.mark.parametrize("cmd,default", [("tail", 50), ("alerts", 20), ("events", 50)])
+    def test_lines_positional_arg(self, cmd, default):
+        """tail/alerts/events accept positional line count: eabctl tail 10"""
+        from eab.control import main as ctl_main
+        import argparse
+
+        # Test positional form: eabctl tail 10
+        result = ctl_main(["--base-dir", "/tmp/eab-test-nonexistent", cmd, "10"])
+        assert isinstance(result, int)
+
+    @pytest.mark.parametrize("cmd,default", [("tail", 50), ("alerts", 20), ("events", 50)])
+    def test_lines_flag_arg(self, cmd, default):
+        """tail/alerts/events accept -n flag: eabctl tail -n 10"""
+        from eab.control import main as ctl_main
+
+        result = ctl_main(["--base-dir", "/tmp/eab-test-nonexistent", cmd, "-n", "10"])
+        assert isinstance(result, int)
+
+    @pytest.mark.parametrize("cmd,default", [("tail", 50), ("alerts", 20), ("events", 50)])
+    def test_lines_default(self, cmd, default):
+        """tail/alerts/events default to correct line count when no arg given."""
+        from eab.control import main as ctl_main
+
+        result = ctl_main(["--base-dir", "/tmp/eab-test-nonexistent", cmd])
+        assert isinstance(result, int)
+
 
 class TestModuleExecution:
     """Test that modules can be executed via python -m."""

@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 import subprocess
 import base64
@@ -880,12 +881,74 @@ def cmd_flash(
 ) -> int:
     """Flash firmware to device using chip-specific tool."""
     started = time.time()
+    temp_bin_path = None
+    converted_from_elf = False
+    original_firmware_path = firmware  # Track original path for reporting
 
     try:
         profile = get_chip_profile(chip)
     except ValueError as e:
         _print({"error": str(e)}, json_mode=json_mode)
         return 2
+
+    # Check if firmware is an ELF file and convert if needed
+    try:
+        with open(firmware, 'rb') as f:
+            magic = f.read(4)
+            if magic == b'\x7fELF':
+                # ELF file detected
+                chip_lower = chip.lower()
+                is_stm32 = chip_lower.startswith('stm32') or chip_lower == 'stm32'
+                
+                if is_stm32:
+                    # STM32 requires binary conversion - st-flash doesn't handle ELF
+                    # Use arm-none-eabi-objcopy to convert ELF to binary
+                    try:
+                        # Create temp file for the binary
+                        temp_fd = tempfile.NamedTemporaryFile(suffix='.bin', delete=False)
+                        temp_bin_path = temp_fd.name
+                        temp_fd.close()
+                        
+                        # Convert ELF to binary
+                        objcopy_cmd = ['arm-none-eabi-objcopy', '-O', 'binary', firmware, temp_bin_path]
+                        result = subprocess.run(
+                            objcopy_cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=30.0,
+                        )
+                        
+                        if result.returncode != 0:
+                            _print({
+                                "error": "Failed to convert ELF to binary",
+                                "command": objcopy_cmd,
+                                "stderr": result.stderr,
+                            }, json_mode=json_mode)
+                            return 1
+                        
+                        # Update firmware path to use the converted binary
+                        firmware = temp_bin_path
+                        converted_from_elf = True
+                        
+                    except FileNotFoundError:
+                        _print({
+                            "error": "arm-none-eabi-objcopy not found",
+                            "hint": "Install ARM GCC toolchain: brew install --cask gcc-arm-embedded",
+                        }, json_mode=json_mode)
+                        return 1
+                    except subprocess.TimeoutExpired:
+                        _print({
+                            "error": "ELF to binary conversion timed out",
+                        }, json_mode=json_mode)
+                        return 1
+                # else: ESP32 - esptool handles ELF natively, skip conversion
+                
+    except FileNotFoundError:
+        _print({"error": f"Firmware file not found: {firmware}"}, json_mode=json_mode)
+        return 1
+    except Exception as e:
+        _print({"error": f"Failed to read firmware file: {e}"}, json_mode=json_mode)
+        return 1
 
     # Build flash command from chip profile
     kwargs = {"baud": baud, "connect_under_reset": connect_under_reset}
@@ -962,12 +1025,19 @@ def cmd_flash(
 
     duration_ms = int((time.time() - started) * 1000)
 
+    # Clean up temp file if created
+    if temp_bin_path and os.path.exists(temp_bin_path):
+        try:
+            os.unlink(temp_bin_path)
+        except Exception:
+            pass  # Best effort cleanup
+
     payload = {
         "schema_version": 1,
         "timestamp": _now_iso(),
         "success": success,
         "chip": chip,
-        "firmware": firmware,
+        "firmware": original_firmware_path,  # Show original path, not temp file
         "address": address,
         "tool": flash_cmd.tool,
         "command": cmd_list,
@@ -976,6 +1046,11 @@ def cmd_flash(
         "stderr": stderr,
         "duration_ms": duration_ms,
     }
+    
+    # Add converted_from field if ELF conversion happened
+    if converted_from_elf:
+        payload["converted_from"] = "elf"
+    
     _print(payload, json_mode=json_mode)
     return 0 if success else 1
 
@@ -1514,10 +1589,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     sub.add_parser("status", help="Show daemon + device status")
 
     p_tail = sub.add_parser("tail", help="Show last N lines of latest.log")
-    p_tail.add_argument("-n", "--lines", type=int, default=50)
+    p_tail.add_argument("lines_pos", type=int, nargs="?", default=None, help="Number of lines (positional)")
+    p_tail.add_argument("-n", "--lines", type=int, default=None, dest="lines_flag")
 
     p_alerts = sub.add_parser("alerts", help="Show last N lines of alerts.log")
-    p_alerts.add_argument("-n", "--lines", type=int, default=20)
+    p_alerts.add_argument("lines_pos", type=int, nargs="?", default=None, help="Number of lines (positional)")
+    p_alerts.add_argument("-n", "--lines", type=int, default=None, dest="lines_flag")
 
     p_send = sub.add_parser("send", help="Queue a command to the device")
     p_send.add_argument("text")
@@ -1534,7 +1611,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_wait.add_argument("--timeout", type=float, default=30.0)
 
     p_events = sub.add_parser("events", help="Show last N events from events.jsonl")
-    p_events.add_argument("-n", "--lines", type=int, default=50)
+    p_events.add_argument("lines_pos", type=int, nargs="?", default=None, help="Number of lines (positional)")
+    p_events.add_argument("-n", "--lines", type=int, default=None, dest="lines_flag")
 
     p_wait_event = sub.add_parser("wait-event", help="Wait for an event in events.jsonl")
     p_wait_event.add_argument("--type", dest="event_type", help="Event type to match")
@@ -1673,11 +1751,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.cmd == "status":
         return cmd_status(base_dir=base_dir, json_mode=args.json)
     if args.cmd == "tail":
-        return cmd_tail(base_dir=base_dir, lines=args.lines, json_mode=args.json)
+        lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 50)
+        return cmd_tail(base_dir=base_dir, lines=lines, json_mode=args.json)
     if args.cmd == "alerts":
-        return cmd_alerts(base_dir=base_dir, lines=args.lines, json_mode=args.json)
+        lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 20)
+        return cmd_alerts(base_dir=base_dir, lines=lines, json_mode=args.json)
     if args.cmd == "events":
-        return cmd_events(base_dir=base_dir, lines=args.lines, json_mode=args.json)
+        lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 50)
+        return cmd_events(base_dir=base_dir, lines=lines, json_mode=args.json)
     if args.cmd == "send":
         return cmd_send(
             base_dir=base_dir,

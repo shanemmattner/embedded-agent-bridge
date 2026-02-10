@@ -12,7 +12,7 @@ Background daemons that manage serial ports, GDB, and OpenOCD so LLM agents (Cla
 │   Cursor, etc.) │     │  Serial Daemon  │     │  ESP32 / STM32  │
 │                 │     │  GDB Bridge     │     │  nRF52 / RP2040 │
 │  Read files  ◄──┼─────┤  OpenOCD Bridge ├─────┤  Any UART/JTAG  │
-│  Write cmds  ───┼─────►               │     │  device         │
+│  Write cmds  ───┼─────►                 │     │  device         │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 

@@ -1,5 +1,5 @@
 """
-Tests for CLI entry points (eab and eab-control).
+Tests for CLI entry points (eab and eabctl).
 
 These tests verify that the entry points are properly configured and
 that basic CLI functionality works (--help, --version, argument parsing).
@@ -68,7 +68,7 @@ class TestDaemonEntryPoint:
 
 
 class TestControlEntryPoint:
-    """Tests for the 'eab-control' CLI entry point."""
+    """Tests for the 'eabctl' CLI entry point."""
 
     def test_control_main_accepts_argv(self):
         """The main() function should accept an optional argv parameter."""
@@ -155,7 +155,7 @@ class TestPackageStructure:
 
         assert "[project.scripts]" in content
         assert "eab = " in content
-        assert "eab-control = " in content
+        assert "eabctl = " in content
 
     def test_control_module_exists(self):
         """eab/control.py should exist."""

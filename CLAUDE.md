@@ -1,46 +1,46 @@
 # Embedded Agent Bridge (EAB)
 
-ESP32 serial communication daemon. **ALWAYS use eab-control for ALL ESP32 operations.**
+ESP32 serial communication daemon. **ALWAYS use eabctl for ALL ESP32 operations.**
 
 ## CRITICAL RULES FOR AGENTS
 
-1. **NEVER use esptool directly** - Use `eab-control flash` instead
-2. **NEVER use pio device monitor** - Use `eab-control tail` instead
+1. **NEVER use esptool directly** - Use `eabctl flash` instead
+2. **NEVER use pio device monitor** - Use `eabctl tail` instead
 3. **NEVER access the serial port directly** - EAB manages the port
-4. **Port busy errors?** Run `eab-control flash` - it handles port release automatically
+4. **Port busy errors?** Run `eabctl flash` - it handles port release automatically
 
 ## Quick Reference
 
 ```bash
 # Check status (ALWAYS do this first)
-./eab-control status
-./eab-control status --json   # machine-parseable
+eabctl status
+eabctl status --json   # machine-parseable
 
 # View serial output
-./eab-control tail 50
-./eab-control tail 50 --json  # machine-parseable
+eabctl tail 50
+eabctl tail 50 --json  # machine-parseable
 
 # Send command to device
-./eab-control send "i"
+eabctl send "i"
 
 # Flash firmware (handles EVERYTHING automatically)
-./eab-control flash /path/to/project
+eabctl flash /path/to/project
 
 # Reset device
-./eab-control reset
+eabctl reset
 ```
 
 ## Flashing Firmware
 
-**ONLY use eab-control flash:**
+**ONLY use eabctl flash:**
 
 ```bash
 # Flash ESP-IDF project (auto-detects chip, pauses daemon, flashes, resumes)
-./eab-control flash /path/to/esp-idf-project
+eabctl flash /path/to/esp-idf-project
 
 # Erase flash first if corrupted
-./eab-control erase
-./eab-control flash /path/to/project
+eabctl erase
+eabctl flash /path/to/project
 ```
 
 The flash command:
@@ -49,28 +49,28 @@ The flash command:
 3. Flashes bootloader, partition table, and app
 4. Resumes daemon and shows boot output
 
-**If you see "port is busy" anywhere, you did something wrong. Use eab-control.**
+**If you see "port is busy" anywhere, you did something wrong. Use eabctl.**
 
 ## Fixing Boot Loops
 
 If device shows `invalid header: 0xffffffff` or watchdog resets:
 
 ```bash
-./eab-control flash /path/to/working/project
+eabctl flash /path/to/working/project
 ```
 
 ## Monitoring Device
 
 ```bash
 # Last N lines of output
-./eab-control tail 50
+eabctl tail 50
 
 # Watch for specific pattern (blocks until found or timeout)
-./eab-control wait "Ready" 30
+eabctl wait "Ready" 30
 
 # View crash/error alerts only
-./eab-control alerts
-./eab-control alerts --json   # machine-parseable
+eabctl alerts
+eabctl alerts --json   # machine-parseable
 ```
 
 ## Payload Capture (Base64/WAV/etc.)
@@ -78,14 +78,14 @@ If device shows `invalid header: 0xffffffff` or watchdog resets:
 If the device outputs base64 between markers and you need a clean extract:
 
 ```bash
-./eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
+eabctl capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 ```
 
 ## Diagnostics
 
 ```bash
-./eab-control diagnose
-./eab-control diagnose --json
+eabctl diagnose
+eabctl diagnose --json
 ```
 
 ## Status JSON
@@ -109,7 +109,7 @@ Check `/tmp/eab-session/events.jsonl` for non-blocking system events:
 Before flashing, run preflight to verify everything is ready:
 
 ```bash
-./eab-control preflight
+eabctl preflight
 ```
 
 This checks:
@@ -121,19 +121,19 @@ This checks:
 ## All Commands
 
 ```
-eab-control status      # Check daemon and device status
-eab-control preflight   # Verify ready to flash (run before flashing!)
-eab-control tail [N]    # Show last N lines (default 50)
-eab-control alerts [N]  # Show last N alerts (default 20)
-eab-control events [N]  # Show last N JSON events (default 50)
-eab-control send <text> # Send text to device
-eab-control reset       # Reset ESP32
-eab-control flash <dir> # Flash ESP-IDF project
-eab-control erase       # Erase entire flash
-eab-control wait <pat>  # Wait for pattern in output
-eab-control wait-event  # Wait for event in events.jsonl
-eab-control stream ...  # High-speed data stream (data.bin)
-eab-control recv ...    # Read bytes from data.bin
+eabctl status      # Check daemon and device status
+eabctl preflight   # Verify ready to flash (run before flashing!)
+eabctl tail [N]    # Show last N lines (default 50)
+eabctl alerts [N]  # Show last N alerts (default 20)
+eabctl events [N]  # Show last N JSON events (default 50)
+eabctl send <text> # Send text to device
+eabctl reset       # Reset ESP32
+eabctl flash <dir> # Flash ESP-IDF project
+eabctl erase       # Erase entire flash
+eabctl wait <pat>  # Wait for pattern in output
+eabctl wait-event  # Wait for event in events.jsonl
+eabctl stream ...  # High-speed data stream (data.bin)
+eabctl recv ...    # Read bytes from data.bin
 ```
 
 ## Binary Framing (Optional)
@@ -146,41 +146,41 @@ compatible with line‑based logs.
 
 | Problem | Solution |
 |---------|----------|
-| "port is busy" | Use `eab-control flash` instead of esptool |
-| No output | Run `eab-control status` then `eab-control reset` |
-| Boot loop | Run `eab-control flash /path/to/working/project` |
-| Daemon not running | Run `eab-control start` |
-| Flash failed | Run `eab-control preflight` to diagnose |
-| USB disconnected | Check cable, run `eab-control status` |
+| "port is busy" | Use `eabctl flash` instead of esptool |
+| No output | Run `eabctl status` then `eabctl reset` |
+| Boot loop | Run `eabctl flash /path/to/working/project` |
+| Daemon not running | Run `eabctl start` |
+| Flash failed | Run `eabctl preflight` to diagnose |
+| USB disconnected | Check cable, run `eabctl status` |
 
 ## ESPTool Wrapper (System Protection)
 
 An esptool wrapper script is included that intercepts direct esptool calls and
-redirects agents to use eab-control instead. This prevents "port busy" errors.
+redirects agents to use eabctl instead. This prevents "port busy" errors.
 
 To enable system-wide protection, add to PATH before the real esptool:
 ```bash
-export PATH="$HOME/tools/embedded-agent-bridge:$PATH"
+export PATH="/path/to/embedded-agent-bridge:$PATH"
 ```
 
 The wrapper will:
 1. Detect if EAB daemon is managing the port
 2. Block write operations that would conflict
-3. Display helpful instructions pointing to eab-control
+3. Display helpful instructions pointing to eabctl
 4. Pass through non-conflicting operations to real esptool
 
 ## Typical Workflow
 
 ```bash
 # 1. Check status first
-eab-control status
+eabctl status
 
 # 2. Run preflight before flashing
-eab-control preflight
+eabctl preflight
 
 # 3. Flash your project
-eab-control flash /path/to/project
+eabctl flash /path/to/project
 
 # 4. Monitor output
-eab-control tail 50
+eabctl tail 50
 ```

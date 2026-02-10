@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -354,10 +355,9 @@ class TestEabctlSTM32Commands:
     def test_eabctl_flash_help(self):
         """Verify flash subcommand exists and accepts --chip."""
         result = subprocess.run(
-            ["./eabctl", "flash", "--help"],
+            [sys.executable, "-m", "eab.control", "flash", "--help"],
             capture_output=True,
             text=True,
-            cwd="/tmp/test-eab",
         )
         assert result.returncode == 0
         assert "--chip" in result.stdout
@@ -366,10 +366,9 @@ class TestEabctlSTM32Commands:
     def test_eabctl_erase_help(self):
         """Verify erase subcommand exists."""
         result = subprocess.run(
-            ["./eabctl", "erase", "--help"],
+            [sys.executable, "-m", "eab.control", "erase", "--help"],
             capture_output=True,
             text=True,
-            cwd="/tmp/test-eab",
         )
         assert result.returncode == 0
         assert "--chip" in result.stdout
@@ -377,10 +376,9 @@ class TestEabctlSTM32Commands:
     def test_eabctl_chip_info_help(self):
         """Verify chip-info subcommand exists."""
         result = subprocess.run(
-            ["./eabctl", "chip-info", "--help"],
+            [sys.executable, "-m", "eab.control", "chip-info", "--help"],
             capture_output=True,
             text=True,
-            cwd="/tmp/test-eab",
         )
         assert result.returncode == 0
         assert "--chip" in result.stdout
@@ -388,10 +386,9 @@ class TestEabctlSTM32Commands:
     def test_eabctl_reset_help(self):
         """Verify reset subcommand exists."""
         result = subprocess.run(
-            ["./eabctl", "reset", "--help"],
+            [sys.executable, "-m", "eab.control", "reset", "--help"],
             capture_output=True,
             text=True,
-            cwd="/tmp/test-eab",
         )
         assert result.returncode == 0
         assert "--chip" in result.stdout
@@ -404,11 +401,10 @@ class TestEabctlSTM32Commands:
 
         try:
             result = subprocess.run(
-                ["./eabctl", "flash", firmware_path, "--chip", "invalid_chip", "--json"],
+                [sys.executable, "-m", "eab.control", "flash", firmware_path, "--chip", "invalid_chip", "--json"],
                 capture_output=True,
                 text=True,
-                cwd="/tmp/test-eab",
-            )
+                )
             assert result.returncode != 0
             data = json.loads(result.stdout)
             # Invalid chip returns {"error": "..."} without success field
@@ -420,10 +416,9 @@ class TestEabctlSTM32Commands:
     def test_eabctl_flash_missing_file(self):
         """Verify flash fails gracefully with missing firmware file."""
         result = subprocess.run(
-            ["./eabctl", "flash", "/nonexistent/firmware.bin", "--chip", "stm32l4", "--json"],
+            [sys.executable, "-m", "eab.control", "flash", "/nonexistent/firmware.bin", "--chip", "stm32l4", "--json"],
             capture_output=True,
             text=True,
-            cwd="/tmp/test-eab",
         )
         assert result.returncode != 0
         data = json.loads(result.stdout)

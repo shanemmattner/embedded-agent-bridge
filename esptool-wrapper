@@ -2,10 +2,10 @@
 # ESPTool Wrapper for EAB
 #
 # AGENTS: This wrapper intercepts direct esptool calls and redirects you
-# to use eab-control instead, which properly manages the serial port.
+# to use eabctl instead, which properly manages the serial port.
 #
 # If you're seeing this message, you should be using:
-#   eab-control flash <project_dir>
+#   eabctl flash <project_dir>
 # instead of calling esptool directly.
 
 # Find the real esptool (not this wrapper)
@@ -64,7 +64,7 @@ done
 if [ "$EAB_RUNNING" = true ] && [ "$IS_WRITE_OP" = true ] && [ "$USING_EAB_PORT" = true ]; then
     echo ""
     echo "=========================================="
-    echo "STOP! Use eab-control instead of esptool"
+    echo "STOP! Use eabctl instead of esptool"
     echo "=========================================="
     echo ""
     echo "The EAB daemon is managing port: $EAB_PORT"
@@ -73,19 +73,19 @@ if [ "$EAB_RUNNING" = true ] && [ "$IS_WRITE_OP" = true ] && [ "$USING_EAB_PORT"
     echo "  esptool $@"
     echo ""
     echo "Instead, use:"
-    echo "  eab-control flash <project_dir>     # For ESP-IDF projects"
-    echo "  eab-control erase                   # To erase flash"
+    echo "  eabctl flash <project_dir>     # For ESP-IDF projects"
+    echo "  eabctl erase                   # To erase flash"
     echo ""
-    echo "The eab-control command automatically:"
+    echo "The eabctl command automatically:"
     echo "  1. Pauses the daemon to release the port"
     echo "  2. Performs the flash operation"
     echo "  3. Resumes the daemon"
     echo "  4. Shows boot output"
     echo ""
     echo "Quick reference:"
-    echo "  eab-control status    # Check daemon status"
-    echo "  eab-control preflight # Verify ready to flash"
-    echo "  eab-control flash .   # Flash current project"
+    echo "  eabctl status    # Check daemon status"
+    echo "  eabctl preflight # Verify ready to flash"
+    echo "  eabctl flash .   # Flash current project"
     echo ""
     exit 1
 fi

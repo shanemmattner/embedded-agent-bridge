@@ -6,45 +6,45 @@ A daemon and command-line interface for LLM agents to interact with ESP32 device
 
 ```bash
 # Check device status
-./eab-control status
+eabctl status
 
 # Machine-parseable status (for agents)
-./eab-control status --json
+eabctl status --json
 
 # View serial output
-./eab-control tail 50
+eabctl tail 50
 
 # Machine-parseable tail (for agents)
-./eab-control tail 50 --json
+eabctl tail 50 --json
 
 # View recent system events (daemon lifecycle, pause/resume, flash, alerts)
-./eab-control events 50
+eabctl events 50
 
 # Send command to device
-./eab-control send "help"
+eabctl send "help"
 
 # Start high-speed data streaming (arm on marker)
-./eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
+eabctl stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
 
 # Stop high-speed streaming
-./eab-control stream stop
+eabctl stream stop
 
 # Fetch last 64KB of streamed data
-./eab-control recv-latest --bytes 65536 --out latest.bin
+eabctl recv-latest --bytes 65536 --out latest.bin
 
 # Reset device
-./eab-control reset
+eabctl reset
 
 # Flash firmware (auto-detects chip, handles everything)
-./eab-control flash /path/to/project
+eabctl flash /path/to/project
 
 # Erase flash (for corrupted firmware)
-./eab-control erase
+eabctl erase
 ```
 
-## The eab-control Script
+## The eabctl Script
 
-The `eab-control` script is the primary interface. It handles serial port management, daemon control, and all ESP32 operations automatically.
+The `eabctl` script is the primary interface. It handles serial port management, daemon control, and all ESP32 operations automatically.
 
 ### All Available Commands
 
@@ -103,26 +103,26 @@ Data Streaming (high-speed):
 
 ```bash
 # Get daemon and device status
-./eab-control status
+eabctl status
 
 # View recent serial output
-./eab-control tail 30
+eabctl tail 30
 ```
 
 ### 2. Send Commands to Device
 
 ```bash
 # Send a single character command
-./eab-control send "i"
+eabctl send "i"
 
 # Send longer text
-./eab-control send "help"
+eabctl send "help"
 
 # Wait for specific output pattern
-./eab-control wait "Ready" 30
+eabctl wait "Ready" 30
 
 # Wait for a system event (example: command sent)
-./eab-control wait-event --type command_sent --timeout 10
+eabctl wait-event --type command_sent --timeout 10
 ```
 
 ### 3. Fix Boot Loop / Corrupted Firmware
@@ -131,21 +131,21 @@ If the device is stuck in a boot loop (showing watchdog resets, "invalid header"
 
 ```bash
 # Option 1: Flash a known-good ESP-IDF project
-./eab-control flash /path/to/working/project
+eabctl flash /path/to/working/project
 
 # Option 2: Erase and start fresh
-./eab-control erase
-./eab-control flash /path/to/project
+eabctl erase
+eabctl flash /path/to/project
 
 # Option 3: Restore from backup
-./eab-control restore backup.bin
+eabctl restore backup.bin
 ```
 
 ### 4. Flash New Firmware
 
 ```bash
 # Flash an ESP-IDF project (auto-detects everything)
-./eab-control flash /path/to/esp-idf-project
+eabctl flash /path/to/esp-idf-project
 
 # The command will:
 # 1. Auto-detect serial port from daemon
@@ -161,37 +161,37 @@ If the device is stuck in a boot loop (showing watchdog resets, "invalid header"
 
 ```bash
 # Build the project first, then flash
-./eab-control build-flash /path/to/project
+eabctl build-flash /path/to/project
 ```
 
 ### 6. Backup Before Risky Operations
 
 ```bash
 # Create backup of current flash
-./eab-control backup my_backup.bin
+eabctl backup my_backup.bin
 
 # Later, restore if needed
-./eab-control restore my_backup.bin
+eabctl restore my_backup.bin
 ```
 
 ### 7. Debug Connection Issues
 
 ```bash
 # Check chip info
-./eab-control chip-info
+eabctl chip-info
 
 # Read MAC address
-./eab-control read-mac
+eabctl read-mac
 
 # Check alerts for crashes/errors
-./eab-control alerts 20
+eabctl alerts 20
 
 # Check daemon events for reconnect/pause/flash
-./eab-control events 20
+eabctl events 20
 
 # Run automated diagnostics (human or JSON)
-./eab-control diagnose
-./eab-control diagnose --json
+eabctl diagnose
+eabctl diagnose --json
 
 ## Event Stream (Non-Blocking IPC)
 
@@ -211,8 +211,8 @@ Each line is a JSON object with:
 Agents can tail this file or use:
 
 ```bash
-./eab-control events 50
-./eab-control wait-event --type command_sent --timeout 10
+eabctl events 50
+eabctl wait-event --type command_sent --timeout 10
 ```
 
 ## High-Speed Data Stream
@@ -226,19 +226,19 @@ When enabled, the daemon writes raw bytes to:
 Enable streaming (armed on marker):
 
 ```bash
-./eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
+eabctl stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
 ```
 
 Stop streaming:
 
 ```bash
-./eab-control stream stop
+eabctl stream stop
 ```
 
 Fetch recent bytes:
 
 ```bash
-./eab-control recv-latest --bytes 65536 --out latest.bin
+eabctl recv-latest --bytes 65536 --out latest.bin
 ```
 
 ### Compatibility Notes
@@ -254,10 +254,10 @@ use `capture-between` to extract *clean* payload data without timestamps or daem
 
 ```bash
 # Capture base64 text payload to a file
-./eab-control capture-between "===WAV_START===" "===WAV_END===" out.b64
+eabctl capture-between "===WAV_START===" "===WAV_END===" out.b64
 
 # Or decode base64 directly to bytes (e.g. WAV)
-./eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
+eabctl capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 ```
 
 ## Understanding Device State
@@ -277,7 +277,7 @@ Example output:
     "uptime_seconds": 120
   },
   "connection": {
-    "port": "/dev/cu.usbmodem5B140841231",
+    "port": "/dev/cu.usbmodem101",
     "baud": 115200,
     "status": "connected",
     "reconnects": 0
@@ -322,7 +322,7 @@ rst:0x7 (TG0WDT_SYS_RST)
 rst:0x10 (RTCWDT_RTC_RST)
 ```
 
-Solution: `eab-control flash /path/to/working/project`
+Solution: `eabctl flash /path/to/working/project`
 
 ## File Interface (Advanced)
 
@@ -356,25 +356,25 @@ printf '!ERASE' > /tmp/eab-session/cmd.txt
 ### Start Daemon Manually
 
 ```bash
-./eab-control start
+eabctl start
 ```
 
 ### Auto-Start at Login
 
 ```bash
-./eab-control enable
+eabctl enable
 ```
 
 ### Check Daemon Status
 
 ```bash
-./eab-control status
+eabctl status
 ```
 
 ### View Daemon Logs
 
 ```bash
-./eab-control logs
+eabctl logs
 ```
 
 ## Troubleshooting
@@ -383,18 +383,18 @@ printf '!ERASE' > /tmp/eab-session/cmd.txt
 
 The daemon isn't running or isn't connected:
 ```bash
-./eab-control start
-./eab-control status
+eabctl start
+eabctl status
 ```
 
 ### Device Not Responding
 
 ```bash
 # Reset the device
-./eab-control reset
+eabctl reset
 
 # Check for output
-./eab-control tail 30
+eabctl tail 30
 ```
 
 ### Flash Operation Failed
@@ -404,13 +404,13 @@ The daemon isn't running or isn't connected:
 lsof /dev/cu.usbmodem*
 
 # Force daemon pause
-./eab-control pause 120
+eabctl pause 120
 
 # Try flashing manually
 esptool --port /dev/cu.usbmodem* write-flash 0x0 firmware.bin
 
 # Resume daemon
-./eab-control resume
+eabctl resume
 ```
 
 ### Boot Loop After Flash
@@ -418,8 +418,8 @@ esptool --port /dev/cu.usbmodem* write-flash 0x0 firmware.bin
 The flash may have been partial or wrong addresses:
 ```bash
 # Erase and reflash
-./eab-control erase
-./eab-control flash /path/to/project
+eabctl erase
+eabctl flash /path/to/project
 ```
 
 ## Log Format

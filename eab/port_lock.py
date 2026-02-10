@@ -43,7 +43,7 @@ class PortLock:
             print(f"Port in use by: {lock.get_owner()}")
     """
 
-    LOCK_DIR = "/tmp/eab-locks"
+    LOCK_DIR = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-locks")
 
     def __init__(self, port: str, logger=None):
         self._port = port

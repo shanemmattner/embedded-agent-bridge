@@ -48,8 +48,8 @@ class SingletonDaemon:
         # Cleanup on exit (automatic via atexit)
     """
 
-    PID_FILE = "/tmp/eab-daemon.pid"
-    INFO_FILE = "/tmp/eab-daemon.info"
+    PID_FILE = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-daemon.pid")
+    INFO_FILE = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-daemon.info")
 
     def __init__(self, logger=None):
         self._logger = logger

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-eab-control: Agent-friendly CLI for Embedded Agent Bridge (EAB).
+eabctl: Agent-friendly CLI for Embedded Agent Bridge (EAB).
 
 This module provides a comprehensive command-line interface for managing
 the EAB daemon and interacting with embedded devices through serial connections.
@@ -19,7 +19,7 @@ Main commands:
 - gdb: Run GDB commands through EAB
 
 Entry points:
-- eab-control: Main CLI entry point (installed via pip)
+- eabctl: Main CLI entry point (installed via pip)
 - Can also be imported and called programmatically via main(argv)
 """
 
@@ -1400,7 +1400,7 @@ def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
         checks.append({"name": "daemon", "status": "ok", "message": f"Running PID {existing.pid}"})
     else:
         checks.append({"name": "daemon", "status": "error", "message": "Daemon not running"})
-        recommendations.append("Run: eab-control start")
+        recommendations.append("Run: eabctl start")
 
     status: Optional[dict[str, Any]] = None
     try:
@@ -1408,7 +1408,7 @@ def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
         checks.append({"name": "status_json", "status": "ok", "message": f"Readable: {status_path}"})
     except FileNotFoundError:
         checks.append({"name": "status_json", "status": "error", "message": f"Missing: {status_path}"})
-        recommendations.append("Run: eab-control start")
+        recommendations.append("Run: eabctl start")
     except json.JSONDecodeError:
         checks.append({"name": "status_json", "status": "error", "message": f"Invalid JSON: {status_path}"})
 
@@ -1419,7 +1419,7 @@ def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
             checks.append({"name": "connection", "status": "ok", "message": f"Connected: {conn.get('port')}"})
         elif conn_status:
             checks.append({"name": "connection", "status": "warn", "message": f"{conn_status}: {conn.get('port')}"})
-            recommendations.append("Try: eab-control reset")
+            recommendations.append("Try: eabctl reset")
         else:
             checks.append({"name": "connection", "status": "warn", "message": "Unknown connection status"})
 
@@ -1430,7 +1430,7 @@ def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
             checks.append({"name": "health", "status": "ok", "message": f"{health_status} (idle={idle_seconds}s)"})
         elif health_status:
             checks.append({"name": "health", "status": "warn", "message": f"{health_status} (idle={idle_seconds}s)"})
-            recommendations.append("Check cable; then run: eab-control reset")
+            recommendations.append("Check cable; then run: eabctl reset")
         else:
             checks.append({"name": "health", "status": "warn", "message": "Missing health.status"})
 
@@ -1445,7 +1445,7 @@ def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
                     "message": f"High boot indicators (WATCHDOG={watchdog}, BOOT={boot})",
                 }
             )
-            recommendations.append("Device may be in a boot loop. Consider: eab-control flash <project_dir>")
+            recommendations.append("Device may be in a boot loop. Consider: eabctl flash <project_dir>")
         else:
             checks.append({"name": "boot_loop", "status": "ok", "message": f"WATCHDOG={watchdog}, BOOT={boot}"})
 

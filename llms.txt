@@ -1,6 +1,6 @@
 # Embedded Agent Bridge (EAB)
 
-> ESP32 serial communication daemon. ALWAYS use eab-control for ALL ESP32 operations.
+> ESP32 serial communication daemon. ALWAYS use eabctl for ALL ESP32 operations.
 
 ## CRITICAL: DO NOT USE THESE DIRECTLY
 - esptool
@@ -10,54 +10,54 @@
 ## USE THESE INSTEAD
 
 Check status:
-    ./eab-control status
-    ./eab-control status --json
+    eabctl status
+    eabctl status --json
 
 View serial output:
-    ./eab-control tail 50
-    ./eab-control tail 50 --json
+    eabctl tail 50
+    eabctl tail 50 --json
 
 View daemon events (non-blocking JSONL):
-    ./eab-control events 50
-    ./eab-control events 50 --json
+    eabctl events 50
+    eabctl events 50 --json
 
 Flash firmware:
-    ./eab-control flash /path/to/project
+    eabctl flash /path/to/project
 
 Reset device:
-    ./eab-control reset
+    eabctl reset
 
 Send command:
-    ./eab-control send "text"
-    ./eab-control wait-event --type command_sent --timeout 10
+    eabctl send "text"
+    eabctl wait-event --type command_sent --timeout 10
 
 High-speed data stream:
-    ./eab-control stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
-    ./eab-control recv-latest --bytes 65536 --out latest.bin
-    ./eab-control stream stop
+    eabctl stream start --mode raw --chunk 16384 --marker "===DATA_START===" --no-patterns --truncate
+    eabctl recv-latest --bytes 65536 --out latest.bin
+    eabctl stream stop
 
 Run diagnostics:
-    ./eab-control diagnose
-    ./eab-control diagnose --json
+    eabctl diagnose
+    eabctl diagnose --json
 
 Extract base64 payload between markers:
-    ./eab-control capture-between "===WAV_START===" "===WAV_END===" out.b64
-    ./eab-control capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
+    eabctl capture-between "===WAV_START===" "===WAV_END===" out.b64
+    eabctl capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 
 Pre-flight check (run before flashing):
-    ./eab-control preflight
+    eabctl preflight
 
 ## WHY
 
 The EAB daemon manages the serial port. If you access it directly, you get "port busy" errors.
-eab-control automatically pauses the daemon, does the operation, and resumes.
+eabctl automatically pauses the daemon, does the operation, and resumes.
 
 ## TROUBLESHOOTING
 
-Port busy error     -> Use eab-control flash instead of esptool
-No output           -> eab-control status && eab-control reset
-Boot loop           -> eab-control flash /path/to/working/project
-Flash failed        -> eab-control preflight (diagnose issues)
+Port busy error     -> Use eabctl flash instead of esptool
+No output           -> eabctl status && eabctl reset
+Boot loop           -> eabctl flash /path/to/working/project
+Flash failed        -> eabctl preflight (diagnose issues)
 
 ## STATUS FILE
 

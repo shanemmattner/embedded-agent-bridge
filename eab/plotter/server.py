@@ -235,7 +235,7 @@ async def _broadcast(data: dict):
             await asyncio.wait_for(ws.send(msg), timeout=_CLIENT_SEND_TIMEOUT)
         except Exception:
             dead.add(ws)
-    _clients -= dead
+    _clients.difference_update(dead)
 
 
 async def _broadcaster(queue: asyncio.Queue):

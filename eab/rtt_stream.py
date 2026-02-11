@@ -4,6 +4,7 @@ RTT stream processor for Embedded Agent Bridge.
 Sits between raw RTT bytes (from pylink rtt_read()) and clean outputs:
 - rtt.log: sanitized text, rotated
 - rtt.jsonl: structured records
+- rtt.csv: DATA records as CSV (timestamp, key=value columns)
 - asyncio.Queue: for real-time plotter
 
 Handles ANSI stripping, line framing, log format auto-detection,
@@ -18,9 +19,10 @@ import asyncio
 import json
 import os
 import re
+import time
 from enum import Enum, auto
 from pathlib import Path
-from typing import Optional
+from typing import IO, Optional
 
 from .device_control import strip_ansi
 
@@ -178,6 +180,7 @@ class RTTStreamProcessor:
         self,
         log_path: Path | None = None,
         jsonl_path: Path | None = None,
+        csv_path: Path | None = None,
         queue: Optional[asyncio.Queue] = None,
         max_log_bytes: int = 5_000_000,
         max_line_chars: int = 1024,
@@ -185,6 +188,7 @@ class RTTStreamProcessor:
     ):
         self._log_path = log_path
         self._jsonl_path = jsonl_path
+        self._csv_path = csv_path
         self._queue = queue
         self._max_log_bytes = max_log_bytes
         self._max_line_chars = max_line_chars
@@ -193,6 +197,13 @@ class RTTStreamProcessor:
         self._buf = ""
         self._format: LogFormat = LogFormat.UNKNOWN
         self._detect_count = 0  # Lines seen for format detection
+
+        # Persistent file handles (opened lazily, flushed on write)
+        self._log_f: Optional[IO] = None
+        self._jsonl_f: Optional[IO] = None
+        self._csv_f: Optional[IO] = None
+        self._csv_columns: list[str] = []  # Learned from first DATA record
+        self._log_bytes_written = 0
 
     def feed(self, raw: bytes) -> list[dict]:
         """Feed raw bytes from pylink rtt_read(). Returns parsed records."""
@@ -218,16 +229,32 @@ class RTTStreamProcessor:
         return results
 
     def flush(self) -> list[dict]:
-        """Force-emit whatever is in the line buffer."""
+        """Force-emit whatever is in the line buffer. Flush file handles."""
         results: list[dict] = []
         if self._buf.strip():
             self._process_line(self._buf, results)
         self._buf = ""
+        # Flush all open handles
+        for f in (self._log_f, self._jsonl_f, self._csv_f):
+            if f and not f.closed:
+                try:
+                    f.flush()
+                except OSError:
+                    pass
         return results
+
+    def close(self) -> None:
+        """Close all file handles."""
+        for f in (self._log_f, self._jsonl_f, self._csv_f):
+            if f and not f.closed:
+                try:
+                    f.close()
+                except OSError:
+                    pass
+        self._log_f = self._jsonl_f = self._csv_f = None
 
     def drain_initial(self, raw: bytes) -> None:
         """Discard stale ring buffer content on connect."""
-        # Just throw it away — don't process, don't log
         pass
 
     def reset(self) -> None:
@@ -277,6 +304,10 @@ class RTTStreamProcessor:
         if record and self._jsonl_path:
             self._write_jsonl(record)
 
+        # Write DATA records to CSV
+        if record and record.get("type") == "data" and self._csv_path:
+            self._write_csv(record)
+
         # Enqueue for plotter
         if record and self._queue is not None:
             try:
@@ -294,54 +325,98 @@ class RTTStreamProcessor:
         if record:
             results.append(record)
 
+    def _open_log(self) -> IO:
+        """Open or reopen log file handle."""
+        if self._log_f and not self._log_f.closed:
+            return self._log_f
+        self._log_f = open(self._log_path, "a", encoding="utf-8", buffering=1)
+        try:
+            self._log_bytes_written = os.path.getsize(self._log_path)
+        except OSError:
+            self._log_bytes_written = 0
+        return self._log_f
+
     def _write_log(self, line: str) -> None:
         """Append a clean line to rtt.log, rotating if needed."""
-        path = self._log_path
-        if path is None:
+        if self._log_path is None:
             return
 
-        # Check rotation
-        try:
-            size = os.path.getsize(path)
-        except OSError:
-            size = 0
-
-        if size >= self._max_log_bytes:
+        if self._log_bytes_written >= self._max_log_bytes:
             self._rotate_log()
 
         try:
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(line + "\n")
+            f = self._open_log()
+            encoded = line + "\n"
+            f.write(encoded)
+            self._log_bytes_written += len(encoded.encode("utf-8"))
         except OSError:
             pass
 
     def _rotate_log(self) -> None:
         """Rotate rtt.log → rtt.log.1 → rtt.log.2 etc."""
-        path = self._log_path
-        if path is None:
-            return
+        # Close current handle
+        if self._log_f and not self._log_f.closed:
+            self._log_f.close()
+            self._log_f = None
 
-        p = Path(path)
-        # Delete oldest
+        p = Path(self._log_path)
         oldest = p.parent / f"{p.name}.{self._max_backups}"
         if oldest.exists():
             oldest.unlink(missing_ok=True)
-
-        # Shift existing backups
         for i in range(self._max_backups - 1, 0, -1):
             src = p.parent / f"{p.name}.{i}"
             dst = p.parent / f"{p.name}.{i + 1}"
             if src.exists():
                 src.rename(dst)
-
-        # Rename current to .1
         if p.exists():
             p.rename(p.parent / f"{p.name}.1")
 
+        self._log_bytes_written = 0
+
     def _write_jsonl(self, record: dict) -> None:
         """Append a structured record to rtt.jsonl."""
+        if self._jsonl_path is None:
+            return
         try:
-            with open(self._jsonl_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(record, separators=(",", ":")) + "\n")
+            if self._jsonl_f is None or self._jsonl_f.closed:
+                self._jsonl_f = open(self._jsonl_path, "a", encoding="utf-8", buffering=1)
+            self._jsonl_f.write(json.dumps(record, separators=(",", ":")) + "\n")
+        except OSError:
+            pass
+
+    def _write_csv(self, record: dict) -> None:
+        """Append a DATA record to rtt.csv. Auto-discovers columns."""
+        if self._csv_path is None:
+            return
+        values = record.get("values", {})
+        if not values:
+            return
+
+        try:
+            need_header = False
+            if self._csv_f is None or self._csv_f.closed:
+                exists = os.path.exists(self._csv_path) and os.path.getsize(self._csv_path) > 0
+                self._csv_f = open(self._csv_path, "a", encoding="utf-8", buffering=1)
+                if not exists:
+                    need_header = True
+
+            # Learn columns from first record or expand if new keys appear
+            new_keys = [k for k in values if k not in self._csv_columns]
+            if new_keys:
+                self._csv_columns.extend(new_keys)
+                need_header = True
+                # Rewrite header by reopening
+                if self._csv_f and not self._csv_f.closed:
+                    self._csv_f.close()
+                self._csv_f = open(self._csv_path, "w", encoding="utf-8", buffering=1)
+                self._csv_f.write("timestamp," + ",".join(self._csv_columns) + "\n")
+
+            if need_header and not new_keys:
+                self._csv_f.write("timestamp," + ",".join(self._csv_columns) + "\n")
+
+            # Write row
+            ts = record.get("ts") or f"{time.time():.3f}"
+            row = [ts] + [str(values.get(c, "")) for c in self._csv_columns]
+            self._csv_f.write(",".join(row) + "\n")
         except OSError:
             pass

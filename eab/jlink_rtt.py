@@ -46,6 +46,7 @@ class JLinkRTTManager:
     def __init__(self, base_dir: Path):
         self.rtt_log_path = base_dir / "rtt.log"
         self.rtt_jsonl_path = base_dir / "rtt.jsonl"
+        self.rtt_csv_path = base_dir / "rtt.csv"
         self.rtt_status_path = base_dir / "jlink_rtt.status.json"
 
         self._jlink = None
@@ -109,6 +110,7 @@ class JLinkRTTManager:
         self._processor = RTTStreamProcessor(
             log_path=self.rtt_log_path,
             jsonl_path=self.rtt_jsonl_path,
+            csv_path=self.rtt_csv_path,
             queue=queue,
         )
 
@@ -193,6 +195,7 @@ class JLinkRTTManager:
 
         if self._processor:
             self._processor.flush()
+            self._processor.close()
 
         if self._jlink:
             try:

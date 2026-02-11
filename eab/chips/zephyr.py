@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
 
 from .base import (
     ChipFamily,
@@ -40,6 +39,14 @@ class ZephyrProfile(ChipProfile):
         super().__init__(variant)
         self.board = board
         self.runner = runner
+
+    # Default board names for known Zephyr variants (used by get_chip_profile registry)
+    BOARD_DEFAULTS: dict[str, dict[str, str | None]] = {
+        "nrf5340": {"board": "nrf5340dk/nrf5340/cpuapp", "runner": "jlink"},
+        "nrf52840": {"board": "nrf52840dk/nrf52840", "runner": "jlink"},
+        "nrf52833": {"board": "nrf52833dk/nrf52833", "runner": "jlink"},
+        "rp2040": {"board": "rpi_pico", "runner": None},
+    }
 
     @property
     def family(self) -> ChipFamily:
@@ -356,11 +363,11 @@ class ZephyrProfile(ChipProfile):
         variant_lower = (self.variant or "").lower()
         
         # nRF52/nRF53: Use J-Link with SWD
+        # OpenOCD uses nrf52.cfg for both nRF52 and nRF53 targets (shared Cortex-M33 debug)
         if "nrf52" in variant_lower or "nrf53" in variant_lower:
-            target_cfg = "target/nrf52.cfg" if "nrf52" in variant_lower else "target/nrf52.cfg"
             return OpenOCDConfig(
                 interface_cfg="interface/jlink.cfg",
-                target_cfg=target_cfg,
+                target_cfg="target/nrf52.cfg",
                 transport="swd",
             )
         

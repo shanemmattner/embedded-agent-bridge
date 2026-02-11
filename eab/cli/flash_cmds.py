@@ -82,9 +82,9 @@ def cmd_flash(
 
     # Execute flash command
     cmd_list = [flash_cmd.tool] + flash_cmd.args
-    run_env = None
-    if flash_cmd.env:
-        run_env = {**os.environ, **flash_cmd.env}
+    # Merge profile env (e.g. ZEPHYR_BASE) into parent env when present.
+    # None inherits parent env; explicit dict overrides specific keys.
+    run_env = {**os.environ, **flash_cmd.env} if flash_cmd.env else None
     try:
         result = subprocess.run(
             cmd_list,

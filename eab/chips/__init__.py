@@ -74,16 +74,11 @@ def get_chip_profile(chip: str, variant: str | None = None) -> ChipProfile:
     # Special handling for Zephyr profiles
     if chip_lower.startswith("zephyr_"):
         variant_part = chip_lower[len("zephyr_"):]  # e.g., "nrf5340"
-        board_map = {
-            "nrf5340": "nrf5340dk/nrf5340/cpuapp",
-            "nrf52840": "nrf52840dk/nrf52840",
-            "nrf52833": "nrf52833dk/nrf52833",
-            "rp2040": "rpi_pico",
-        }
+        defaults = ZephyrProfile.BOARD_DEFAULTS.get(variant_part, {})
         return ZephyrProfile(
             variant=variant_part,
-            board=board_map.get(variant_part),
-            runner="jlink" if "nrf" in variant_part else None
+            board=defaults.get("board"),
+            runner=defaults.get("runner"),
         )
     elif chip_lower == "zephyr":
         return ZephyrProfile(variant=variant)
@@ -109,9 +104,12 @@ def detect_chip_family(line: str) -> ChipFamily | None:
     line_lower = line.lower()
 
     # Zephyr detection (before chip-specific checks)
+    # TODO: Zephyr is cross-platform — this defaults to NRF52 but a Zephyr ESP32
+    # or RP2040 target would be misclassified. Needs ChipFamily.ZEPHYR or parsing
+    # the board name from surrounding boot output to disambiguate.
     zephyr_indicators = ["booting zephyr", "zephyr version", "zephyr fatal error"]
     if any(ind in line_lower for ind in zephyr_indicators):
-        return ChipFamily.NRF52  # Default to NRF52 for Zephyr
+        return ChipFamily.NRF52
 
     # ESP32 detection patterns
     esp32_indicators = [

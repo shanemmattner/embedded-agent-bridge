@@ -331,6 +331,83 @@ def test_zephyr_reset_sequences():
     """Test reset sequences are defined."""
     profile = ZephyrProfile(variant="nrf5340")
     sequences = profile.reset_sequences
-    
+
     assert "hard_reset" in sequences
     assert len(sequences["hard_reset"]) == 2
+
+
+def test_zephyr_find_workspace_found():
+    """Test _find_workspace returns workspace root when .west/ exists."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+        (workspace / ".west").mkdir()
+        build_dir = workspace / "app" / "build"
+        build_dir.mkdir(parents=True)
+
+        result = ZephyrProfile._find_workspace(build_dir)
+        assert result == workspace.resolve()
+
+
+def test_zephyr_find_workspace_not_found():
+    """Test _find_workspace returns None when no .west/ exists."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = ZephyrProfile._find_workspace(Path(tmpdir))
+        assert result is None
+
+
+def test_zephyr_find_workspace_safety_limit():
+    """Test _find_workspace stops at filesystem root without infinite loop."""
+    result = ZephyrProfile._find_workspace(Path("/tmp/nonexistent/deep/path"))
+    assert result is None
+
+
+def test_zephyr_get_flash_command_explicit_build_dir():
+    """Test get_flash_command uses explicit build_dir when provided."""
+    profile = ZephyrProfile(variant="nrf5340")
+    cmd = profile.get_flash_command(
+        firmware_path="/some/firmware.bin",
+        port="",
+        build_dir="/explicit/build/path",
+    )
+
+    build_dir_index = cmd.args.index("--build-dir") + 1
+    assert cmd.args[build_dir_index] == "/explicit/build/path"
+
+
+def test_zephyr_get_flash_command_env_zephyr_base():
+    """Test get_flash_command sets ZEPHYR_BASE env when workspace found."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+        (workspace / ".west").mkdir()
+        (workspace / "zephyr").mkdir()
+        build_dir = workspace / "app" / "build"
+        build_dir.mkdir(parents=True)
+
+        profile = ZephyrProfile(variant="nrf5340")
+        cmd = profile.get_flash_command(
+            firmware_path=str(build_dir),
+            port="",
+        )
+
+        assert "ZEPHYR_BASE" in cmd.env
+        assert cmd.env["ZEPHYR_BASE"] == str(workspace.resolve() / "zephyr")
+
+
+def test_zephyr_get_flash_command_env_empty_without_workspace():
+    """Test get_flash_command has empty env when no workspace found."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        profile = ZephyrProfile(variant="nrf5340")
+        cmd = profile.get_flash_command(
+            firmware_path=tmpdir,
+            port="",
+        )
+
+        assert cmd.env == {}
+
+
+def test_zephyr_board_defaults_class_var():
+    """Test BOARD_DEFAULTS class variable contains expected entries."""
+    assert "nrf5340" in ZephyrProfile.BOARD_DEFAULTS
+    assert ZephyrProfile.BOARD_DEFAULTS["nrf5340"]["board"] == "nrf5340dk/nrf5340/cpuapp"
+    assert ZephyrProfile.BOARD_DEFAULTS["nrf5340"]["runner"] == "jlink"
+    assert ZephyrProfile.BOARD_DEFAULTS["rp2040"]["runner"] is None

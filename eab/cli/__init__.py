@@ -459,8 +459,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             tool=args.tool,
             baud=args.baud,
             connect_under_reset=getattr(args, "connect_under_reset", False),
-            board=getattr(args, "board", None),
-            runner=getattr(args, "runner", None),
+            board=args.board,
+            runner=args.runner,
             json_mode=args.json,
         )
     if args.cmd == "erase":
@@ -469,7 +469,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             port=args.port,
             tool=args.tool,
             connect_under_reset=getattr(args, "connect_under_reset", False),
-            runner=getattr(args, "runner", None),
+            runner=args.runner,
             json_mode=args.json,
         )
     if args.cmd == "chip-info":

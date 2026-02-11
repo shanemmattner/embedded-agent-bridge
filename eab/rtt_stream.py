@@ -1,16 +1,16 @@
-"""
-RTT stream processor for Embedded Agent Bridge.
+"""RTT stream processor for Embedded Agent Bridge.
 
-Sits between raw RTT bytes (from pylink rtt_read()) and clean outputs:
-- rtt.log: sanitized text, rotated
-- rtt.jsonl: structured records
-- rtt.csv: DATA records as CSV (timestamp, key=value columns)
+Sits between raw RTT data and clean structured outputs:
+- rtt.log:   sanitized text with log rotation
+- rtt.jsonl: structured JSON records (one per line)
+- rtt.csv:   DATA key=value records as CSV columns
 - asyncio.Queue: for real-time plotter
 
-Handles ANSI stripping, line framing, log format auto-detection,
-log rotation, and boot-reset detection.
+Data sources: JLinkRTTLogger file output, pylink rtt_read() bytes,
+or any text stream containing embedded log lines.
 
-Does NOT strip arbitrary byte values — filters structurally, not by content.
+Handles ANSI stripping, line framing, log format auto-detection
+(Zephyr, ESP-IDF, nRF SDK), log rotation, and boot-reset detection.
 """
 
 from __future__ import annotations
@@ -206,8 +206,15 @@ class RTTStreamProcessor:
         self._log_bytes_written = 0
 
     def feed(self, raw: bytes) -> list[dict]:
-        """Feed raw bytes from pylink rtt_read(). Returns parsed records."""
-        text = raw.decode("utf-8", errors="replace")
+        """Feed raw bytes (e.g. from pylink rtt_read()). Returns parsed records."""
+        return self.feed_text(raw.decode("utf-8", errors="replace"))
+
+    def feed_text(self, text: str) -> list[dict]:
+        """Feed decoded text. Returns parsed records.
+
+        Accepts text from any source: decoded RTT bytes, file reads, etc.
+        Handles line framing, ANSI stripping, and structured parsing.
+        """
         self._buf += text
 
         # Normalize line endings

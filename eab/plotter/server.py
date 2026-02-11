@@ -1,9 +1,9 @@
 """Minimal real-time plotter for EAB RTT/SWO data.
 
 Single-file async server:
-- Serves an HTML page with Plotly.js (CDN) on HTTP GET /
+- Serves an HTML page with uPlot (CDN) on HTTP GET /
 - Pushes parsed log data to all connected browsers via WebSocket
-- Primary data source: pylink RTT via JLinkBridge
+- Primary data source: JLinkRTTLogger subprocess via JLinkBridge
 - Fallback: file-tailing mode via --log-path (reads clean rtt.log)
 
 Only dependency beyond stdlib: `websockets`
@@ -48,7 +48,7 @@ async def rtt_processor_reader(
     interface: str = "SWD",
     speed: int = 4000,
 ):
-    """Start RTT via pylink (through JLinkBridge) and feed parsed data to queue.
+    """Start RTT via JLinkRTTLogger (through JLinkBridge) and feed parsed data to queue.
 
     The bridge's reader thread feeds RTTStreamProcessor which feeds the queue.
     This function monitors health and handles reconnection.
@@ -296,7 +296,7 @@ def run_plotter(
         ):
             if use_direct_rtt:
                 print(f"EAB Plotter running at http://{host}:{port}")
-                print(f"Data source: RTT via pylink ({device})")
+                print(f"Data source: RTT via JLinkRTTLogger ({device})")
             else:
                 print(f"EAB Plotter running at http://{host}:{port}")
                 print(f"Data source: file tail {log_path}")

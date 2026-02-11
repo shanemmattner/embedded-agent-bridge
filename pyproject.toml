@@ -32,9 +32,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-jlink = [
-    "pylink-square>=1.7",
-]
 plotter = [
     "websockets>=14",
 ]

@@ -1,27 +1,61 @@
-"""J-Link RTT management via pylink-square.
+"""J-Link RTT management via JLinkRTTLogger subprocess.
 
-Direct Python access to SEGGER RTT ring buffers with proper initialization
-handshake. No GDB server or JLinkRTTClient subprocess needed.
+Spawns SEGGER's native JLinkRTTLogger binary to read RTT data at full
+J-Link DLL speed. A background thread tails the raw output file and
+feeds lines through RTTStreamProcessor for structured logging (log,
+JSONL, CSV).
+
+This avoids the pylink-square dependency and its ctypes FFI overhead.
+JLinkRTTLogger must be on PATH (ships with J-Link Software Pack).
+
+Architecture:
+    JLinkRTTLogger (C binary)
+        └─ writes raw RTT text to rtt-raw.log
+    _tailer_loop (Python thread)
+        └─ tails rtt-raw.log, feeds lines to RTTStreamProcessor
+    RTTStreamProcessor
+        ├─ rtt.log   (cleaned text)
+        ├─ rtt.jsonl (structured records)
+        └─ rtt.csv   (DATA key=value rows)
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
+import subprocess
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-try:
-    import pylink
-except ImportError:
-    pylink = None  # type: ignore[assignment]
-
 from .rtt_stream import RTTStreamProcessor
 
 logger = logging.getLogger(__name__)
+
+# Stderr patterns from JLinkRTTLogger
+_CONNECTED_MARKER = "Connected to:"
+_RTT_FOUND_MARKER = "up-channels found:"
+_TRANSFER_RATE_PREFIX = "Transfer rate:"
+
+
+def _find_rtt_logger() -> Optional[str]:
+    """Find JLinkRTTLogger binary on PATH or known install locations."""
+    found = shutil.which("JLinkRTTLogger")
+    if found:
+        return found
+    # macOS default install locations
+    for candidate in [
+        "/Applications/SEGGER/JLink/JLinkRTTLoggerExe",
+        "/Applications/SEGGER/JLink/JLinkRTTLogger",
+        "/usr/local/bin/JLinkRTTLogger",
+    ]:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
 
 
 @dataclass(frozen=True)
@@ -37,20 +71,22 @@ class JLinkRTTStatus:
 
 
 class JLinkRTTManager:
-    """Manages RTT streaming via pylink-square.
+    """Manages RTT streaming via JLinkRTTLogger subprocess.
 
-    Connects directly to J-Link probe, starts RTT, and polls
-    rtt_read() in a background thread. No GDB server needed.
+    Spawns JLinkRTTLogger to capture raw RTT data to a file, then tails
+    that file in a background thread to feed RTTStreamProcessor.
     """
 
     def __init__(self, base_dir: Path):
+        self.rtt_raw_path = base_dir / "rtt-raw.log"
         self.rtt_log_path = base_dir / "rtt.log"
         self.rtt_jsonl_path = base_dir / "rtt.jsonl"
         self.rtt_csv_path = base_dir / "rtt.csv"
         self.rtt_status_path = base_dir / "jlink_rtt.status.json"
 
-        self._jlink = None
-        self._thread: Optional[threading.Thread] = None
+        self._proc: Optional[subprocess.Popen] = None
+        self._tailer: Optional[threading.Thread] = None
+        self._stderr_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._processor: Optional[RTTStreamProcessor] = None
         self._bytes_read = 0
@@ -60,7 +96,7 @@ class JLinkRTTManager:
         self._last_error: Optional[str] = None
 
     def status(self) -> JLinkRTTStatus:
-        running = self._thread is not None and self._thread.is_alive()
+        running = self._proc is not None and self._proc.poll() is None
         return JLinkRTTStatus(
             running=running,
             device=self._device,
@@ -81,7 +117,7 @@ class JLinkRTTManager:
         block_address: Optional[int] = None,
         queue=None,
     ) -> JLinkRTTStatus:
-        """Start RTT streaming.
+        """Start RTT streaming via JLinkRTTLogger subprocess.
 
         Args:
             device: J-Link device string (e.g., NRF5340_XXAA_APP)
@@ -91,10 +127,11 @@ class JLinkRTTManager:
             block_address: Optional RTT control block address from .map file
             queue: Optional asyncio.Queue for plotter integration
         """
-        if pylink is None:
+        rtt_logger = _find_rtt_logger()
+        if rtt_logger is None:
             self._last_error = (
-                "pylink-square not installed. "
-                "Install with: pip install pylink-square"
+                "JLinkRTTLogger not found. "
+                "Install J-Link Software Pack from segger.com"
             )
             return self.status()
 
@@ -114,61 +151,68 @@ class JLinkRTTManager:
             queue=queue,
         )
 
+        # Build JLinkRTTLogger command
+        cmd = [
+            rtt_logger,
+            "-Device", device,
+            "-If", interface.upper(),
+            "-Speed", str(speed),
+            "-RTTChannel", str(rtt_channel),
+        ]
+        if block_address is not None:
+            cmd.extend(["-RTTAddress", f"0x{block_address:X}"])
+        cmd.append(str(self.rtt_raw_path))
+
+        logger.info("Starting JLinkRTTLogger: %s", " ".join(cmd))
+
         try:
-            jlink = pylink.JLink()
-            jlink.open()
+            # Truncate raw log to avoid tailing stale data
+            self.rtt_raw_path.write_bytes(b"")
 
-            iface = pylink.enums.JLinkInterfaces.SWD
-            if interface.upper() == "JTAG":
-                iface = pylink.enums.JLinkInterfaces.JTAG
-            jlink.set_tif(iface)
-            jlink.connect(device, speed)
+            # JLinkRTTLogger writes status/progress to stdout, data to file.
+            # stdin must be PIPE (not DEVNULL) because JLinkRTTLogger
+            # reads stdin for "press any key to quit" — DEVNULL gives
+            # immediate EOF which kills the process.
+            self._proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.PIPE,
+            )
+        except Exception as e:
+            self._last_error = f"Failed to start JLinkRTTLogger: {e}"
+            self._write_status({"running": False, "device": device,
+                                "last_error": self._last_error})
+            return self.status()
 
-            # Start RTT — does NOT wait for control block
-            jlink.rtt_start(block_address)
+        # Thread to parse JLinkRTTLogger stdout for status info
+        self._stderr_thread = threading.Thread(
+            target=self._stdout_reader,
+            daemon=True,
+            name="eab-rtt-stdout",
+        )
+        self._stderr_thread.start()
 
-            # Poll until control block found (up to 10 seconds)
-            deadline = time.time() + 10.0
-            while time.time() < deadline:
-                try:
-                    num_up = jlink.rtt_get_num_up_buffers()
-                    num_down = jlink.rtt_get_num_down_buffers()
-                    self._num_up = num_up
-                    self._num_down = num_down
-                    break
-                except Exception:
-                    time.sleep(0.1)
-            else:
-                jlink.close()
-                self._last_error = "RTT control block not found within 10s"
+        # Wait briefly for JLinkRTTLogger to connect and start writing
+        deadline = time.time() + 10.0
+        while time.time() < deadline:
+            if self._proc.poll() is not None:
+                # Process exited early — read stderr for error
+                self._last_error = f"JLinkRTTLogger exited with code {self._proc.returncode}"
                 self._write_status({"running": False, "device": device,
                                     "last_error": self._last_error})
                 return self.status()
+            if self._num_up > 0:
+                break
+            time.sleep(0.2)
 
-            # First-read flush: drain stale buffer content
-            try:
-                stale = jlink.rtt_read(rtt_channel, 4096)
-                if stale:
-                    self._processor.drain_initial(bytes(stale))
-            except Exception:
-                pass
-
-            self._jlink = jlink
-
-        except Exception as e:
-            self._last_error = str(e)
-            self._write_status({"running": False, "device": device,
-                                "last_error": str(e)})
-            return self.status()
-
-        # Start reader thread
-        self._thread = threading.Thread(
-            target=self._reader_loop,
-            args=(jlink, self._processor, rtt_channel),
+        # Start file tailer thread
+        self._tailer = threading.Thread(
+            target=self._tailer_loop,
             daemon=True,
-            name="eab-rtt-reader",
+            name="eab-rtt-tailer",
         )
-        self._thread.start()
+        self._tailer.start()
 
         self._write_status({
             "running": True,
@@ -181,34 +225,36 @@ class JLinkRTTManager:
         })
 
         logger.info(
-            "RTT started: %s, %d up / %d down channels",
-            device, self._num_up, self._num_down,
+            "RTT started: %s, %d up channels (via JLinkRTTLogger)",
+            device, self._num_up,
         )
         return self.status()
 
     def stop(self, timeout_s: float = 5.0) -> JLinkRTTStatus:
-        """Stop RTT streaming and close pylink connection."""
+        """Stop RTT streaming and kill JLinkRTTLogger subprocess."""
         self._stop_event.set()
 
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=timeout_s)
+        if self._proc and self._proc.poll() is None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait(timeout=2)
+
+        if self._tailer and self._tailer.is_alive():
+            self._tailer.join(timeout=timeout_s)
+
+        if self._stderr_thread and self._stderr_thread.is_alive():
+            self._stderr_thread.join(timeout=2)
 
         if self._processor:
             self._processor.flush()
             self._processor.close()
 
-        if self._jlink:
-            try:
-                self._jlink.rtt_stop()
-            except Exception:
-                pass
-            try:
-                self._jlink.close()
-            except Exception:
-                pass
-            self._jlink = None
-
-        self._thread = None
+        self._proc = None
+        self._tailer = None
+        self._stderr_thread = None
         self._processor = None
         self._device = None
         self._last_error = None
@@ -216,46 +262,92 @@ class JLinkRTTManager:
         self._write_status({"running": False})
         return self.status()
 
-    def _reader_loop(
-        self,
-        jlink,
-        processor: RTTStreamProcessor,
-        channel: int,
-    ) -> None:
-        """Poll rtt_read() and feed into stream processor. Runs in thread."""
+    def _stdout_reader(self) -> None:
+        """Parse JLinkRTTLogger stdout for connection status and errors.
+
+        JLinkRTTLogger writes all status/progress to stdout:
+        - "3 up-channels found:" — RTT ready
+        - "RTT Control Block not found" — connection failed
+        - "Transfer rate: XX KB/s" — periodic throughput
+        """
+        if not self._proc or not self._proc.stdout:
+            return
+
+        try:
+            for raw_line in self._proc.stdout:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+
+                # Parse channel count: "3 up-channels found:"
+                if _RTT_FOUND_MARKER in line:
+                    try:
+                        self._num_up = int(line.split()[0])
+                    except (ValueError, IndexError):
+                        pass
+
+                # Detect failure
+                if "Control Block not found" in line:
+                    self._last_error = "RTT control block not found"
+                    logger.error("JLinkRTTLogger: %s", line)
+
+                # Log transfer rate updates for debugging
+                if _TRANSFER_RATE_PREFIX in line:
+                    logger.debug("JLinkRTTLogger: %s", line)
+
+                if self._stop_event.is_set():
+                    break
+        except Exception:
+            pass
+
+    def _tailer_loop(self) -> None:
+        """Tail rtt-raw.log and feed lines to RTTStreamProcessor.
+
+        Opens the raw log file and reads new data as JLinkRTTLogger
+        appends to it. Uses a poll-based approach with short sleeps.
+        """
+        processor = self._processor
+        if processor is None:
+            return
+
+        # Wait for the raw file to appear
+        deadline = time.time() + 10.0
+        while not self.rtt_raw_path.exists() and time.time() < deadline:
+            if self._stop_event.is_set():
+                return
+            time.sleep(0.1)
+
         last_data_time = time.monotonic()
 
-        while not self._stop_event.is_set():
-            try:
-                if not jlink.connected():
-                    self._last_error = "J-Link disconnected"
-                    logger.warning("J-Link disconnected during RTT read")
-                    break
+        try:
+            with open(self.rtt_raw_path, "r", encoding="utf-8", errors="replace") as f:
+                while not self._stop_event.is_set():
+                    # Check if JLinkRTTLogger process died
+                    if self._proc and self._proc.poll() is not None:
+                        # Read any remaining data
+                        remaining = f.read()
+                        if remaining:
+                            self._bytes_read += len(remaining)
+                            processor.feed_text(remaining)
+                        self._last_error = f"JLinkRTTLogger exited (code {self._proc.returncode})"
+                        logger.warning(self._last_error)
+                        break
 
-                raw_list = jlink.rtt_read(channel, 1024)
-                if raw_list:
-                    raw = bytes(raw_list)
-                    self._bytes_read += len(raw)
-                    processor.feed(raw)
-                    last_data_time = time.monotonic()
-                else:
-                    # No data — check if we should flush partial line buffer
-                    if time.monotonic() - last_data_time > 0.2:
-                        processor.flush()
+                    data = f.read(8192)
+                    if data:
+                        self._bytes_read += len(data)
+                        processor.feed_text(data)
                         last_data_time = time.monotonic()
+                    else:
+                        # No new data — flush if idle for >200ms
+                        if time.monotonic() - last_data_time > 0.2:
+                            processor.flush()
+                            last_data_time = time.monotonic()
+                        time.sleep(0.01)  # 100Hz tail poll
 
-            except Exception as e:
-                err_str = str(e)
-                if "-11" in err_str:
-                    self._last_error = "Device disconnected (error -11)"
-                    logger.warning("RTT read error -11, device disconnected")
-                    break
-                else:
-                    self._last_error = f"RTT read error: {err_str}"
-                    logger.error("RTT read error: %s", err_str)
-                    break
-
-            time.sleep(0.1)  # 10Hz poll
+        except Exception as e:
+            self._last_error = f"Tailer error: {e}"
+            logger.error("RTT tailer error: %s", e)
 
         # Final flush
         try:

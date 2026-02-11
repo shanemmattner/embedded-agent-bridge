@@ -24,12 +24,14 @@ eabctl tail 50
 ```
 
 ### RTT (nRF5340)
+
+Requires J-Link Software Pack installed (provides `JLinkRTTLogger`).
+
 ```bash
-pip install pylink-square
 west build -b nrf5340dk/nrf5340/cpuapp examples/nrf5340-test-firmware
 west flash
 
-# Start RTT bridge
+# Start RTT bridge (uses JLinkRTTLogger subprocess)
 python -c "
 from eab.jlink_bridge import JLinkBridge
 bridge = JLinkBridge('/tmp/eab-session')
@@ -39,7 +41,8 @@ input('Press Enter to stop...')
 bridge.stop_rtt()
 "
 
-# Or use the real-time plotter
-pip install websockets
-python -m eab.plotter.server --device NRF5340_XXAA_APP
+# Output files:
+#   /tmp/eab-session/rtt.log   — cleaned text log
+#   /tmp/eab-session/rtt.csv   — DATA records as CSV
+#   /tmp/eab-session/rtt.jsonl — structured JSON records
 ```

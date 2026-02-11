@@ -1,7 +1,7 @@
 """J-Link bridge utilities for EAB.
 
 Manages J-Link services:
-- RTT (SEGGER Real-Time Transfer) via pylink-square — delegated to JLinkRTTManager
+- RTT (SEGGER Real-Time Transfer) via JLinkRTTLogger subprocess — delegated to JLinkRTTManager
 - SWO Viewer (Serial Wire Output / ITM trace) via subprocess
 - GDB Server (J-Link GDB Server) via subprocess
 
@@ -54,13 +54,13 @@ class JLinkGDBStatus:
 
 
 class JLinkBridge:
-    """Manages J-Link services (RTT via pylink, SWO/GDB via subprocess)."""
+    """Manages J-Link services (RTT via JLinkRTTLogger, SWO/GDB via subprocess)."""
 
     def __init__(self, base_dir: str):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
-        # RTT manager (pylink-based)
+        # RTT manager (JLinkRTTLogger subprocess)
         self._rtt = JLinkRTTManager(self.base_dir)
 
         # SWO paths
@@ -103,7 +103,7 @@ class JLinkBridge:
         block_address: Optional[int] = None,
         queue=None,
     ) -> JLinkRTTStatus:
-        """Start RTT streaming via pylink-square.
+        """Start RTT streaming via JLinkRTTLogger subprocess.
 
         Args:
             device: J-Link device string (e.g., NRF5340_XXAA_APP)

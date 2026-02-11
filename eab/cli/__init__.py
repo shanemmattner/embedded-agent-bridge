@@ -268,6 +268,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_flash.add_argument("--baud", type=int, default=921600, help="Baud rate (ESP32 only)")
     p_flash.add_argument("--connect-under-reset", action="store_true",
                         help="STM32: Connect while holding reset (for crashed chips)")
+    p_flash.add_argument("--board", default=None, help="Zephyr board name (e.g., nrf5340dk/nrf5340/cpuapp)")
+    p_flash.add_argument("--runner", default=None, help="Flash runner override (jlink, openocd, nrfjprog)")
 
     p_erase = sub.add_parser("erase", help="Erase flash memory")
     p_erase.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
@@ -275,6 +277,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_erase.add_argument("--tool", default=None, help="Erase tool override")
     p_erase.add_argument("--connect-under-reset", action="store_true",
                         help="STM32: Connect while holding reset (for crashed chips)")
+    p_erase.add_argument("--runner", default=None, help="Flash runner override (jlink, openocd, nrfjprog)")
 
     p_chip_info = sub.add_parser("chip-info", help="Get chip information")
     p_chip_info.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
@@ -456,6 +459,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             tool=args.tool,
             baud=args.baud,
             connect_under_reset=getattr(args, "connect_under_reset", False),
+            board=getattr(args, "board", None),
+            runner=getattr(args, "runner", None),
             json_mode=args.json,
         )
     if args.cmd == "erase":
@@ -464,6 +469,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             port=args.port,
             tool=args.tool,
             connect_under_reset=getattr(args, "connect_under_reset", False),
+            runner=getattr(args, "runner", None),
             json_mode=args.json,
         )
     if args.cmd == "chip-info":

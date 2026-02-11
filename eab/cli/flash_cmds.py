@@ -27,6 +27,8 @@ def cmd_flash(
     tool: Optional[str],
     baud: int,
     connect_under_reset: bool,
+    board: Optional[str] = None,
+    runner: Optional[str] = None,
     json_mode: bool,
 ) -> int:
     """Flash firmware to device using chip-specific tool."""
@@ -60,6 +62,10 @@ def cmd_flash(
     kwargs = {"baud": baud, "connect_under_reset": connect_under_reset}
     if tool:
         kwargs["tool"] = tool
+    if board:
+        kwargs["board"] = board
+    if runner:
+        kwargs["runner"] = runner
 
     # Use chip-appropriate default address when none specified
     if not address and chip.lower().startswith("stm32"):
@@ -76,12 +82,16 @@ def cmd_flash(
 
     # Execute flash command
     cmd_list = [flash_cmd.tool] + flash_cmd.args
+    run_env = None
+    if flash_cmd.env:
+        run_env = {**os.environ, **flash_cmd.env}
     try:
         result = subprocess.run(
             cmd_list,
             capture_output=True,
             text=True,
             timeout=flash_cmd.timeout,
+            env=run_env,
         )
         success = result.returncode == 0
         stdout = result.stdout
@@ -352,6 +362,7 @@ def cmd_erase(
     port: Optional[str],
     tool: Optional[str],
     connect_under_reset: bool,
+    runner: Optional[str] = None,
     json_mode: bool,
 ) -> int:
     """Erase flash memory using chip-specific tool."""
@@ -366,6 +377,8 @@ def cmd_erase(
     kwargs = {"connect_under_reset": connect_under_reset}
     if tool:
         kwargs["tool"] = tool
+    if runner:
+        kwargs["runner"] = runner
 
     erase_cmd = profile.get_erase_command(port=port or "", **kwargs)
 

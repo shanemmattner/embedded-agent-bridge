@@ -43,6 +43,12 @@ def _default_gdb_for_chip(chip: str) -> Optional[str]:
             p = shutil.which(name)
             if p:
                 return p
+    # nRF / Zephyr ARM Cortex-M
+    if chip.startswith("nrf") or chip.startswith("zephyr"):
+        for name in ("arm-none-eabi-gdb", "gdb-multiarch"):
+            p = shutil.which(name)
+            if p:
+                return p
     # Fall back to system gdb if present.
     return shutil.which("gdb")
 

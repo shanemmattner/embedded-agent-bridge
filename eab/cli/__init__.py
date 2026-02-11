@@ -68,6 +68,7 @@ from eab.cli.debug_cmds import (
     cmd_openocd_cmd,
     cmd_gdb,
 )
+from eab.cli.fault_cmds import cmd_fault_analyze
 from eab.cli.stream_cmds import (
     cmd_stream_start,
     cmd_stream_stop,
@@ -191,6 +192,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_gdb.add_argument("--gdb", dest="gdb_path", default=None)
     p_gdb.add_argument("--timeout", type=float, default=60.0)
     p_gdb.add_argument("--cmd", dest="commands", action="append", default=[], help="GDB command (repeatable)")
+
+    p_fault = sub.add_parser("fault-analyze", help="Analyze Cortex-M33 fault registers via J-Link GDB")
+    p_fault.add_argument("--device", default="NRF5340_XXAA_APP", help="J-Link device string")
+    p_fault.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_fault.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
 
     p_stream = sub.add_parser("stream", help="Configure high-speed data stream mode")
     p_stream.add_argument("action", choices=["start", "stop"])
@@ -394,6 +400,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             gdb_path=args.gdb_path,
             commands=args.commands,
             timeout_s=args.timeout,
+            json_mode=args.json,
+        )
+    if args.cmd == "fault-analyze":
+        return cmd_fault_analyze(
+            base_dir=base_dir,
+            device=args.device,
+            elf=args.elf,
+            chip=args.chip,
             json_mode=args.json,
         )
     if args.cmd == "stream":

@@ -265,7 +265,12 @@ class ZephyrProfile(ChipProfile):
 
     @staticmethod
     def _find_workspace(start: Path) -> Path | None:
-        """Walk up from *start* looking for a directory containing ``.west/``."""
+        """Walk up from *start* looking for a directory containing ``.west/``.
+        
+        WHY 20: Safety limit to prevent infinite loops if start path is malformed
+        or filesystem has unusual structure. 20 levels is deeper than any reasonable
+        Zephyr workspace nesting (typical depth is 2-4 from build dir to workspace root).
+        """
         current = start.resolve()
         for _ in range(20):  # safety limit
             if (current / ".west").is_dir():

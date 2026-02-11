@@ -21,6 +21,7 @@ Architecture:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -37,7 +38,6 @@ from .rtt_stream import RTTStreamProcessor
 logger = logging.getLogger(__name__)
 
 # Stderr patterns from JLinkRTTLogger
-_CONNECTED_MARKER = "Connected to:"
 _RTT_FOUND_MARKER = "up-channels found:"
 _TRANSFER_RATE_PREFIX = "Transfer rate:"
 
@@ -65,7 +65,6 @@ class JLinkRTTStatus:
     log_path: str
     channel: int = 0
     num_up_channels: int = 0
-    num_down_channels: int = 0
     bytes_read: int = 0
     last_error: Optional[str] = None
 
@@ -92,7 +91,6 @@ class JLinkRTTManager:
         self._bytes_read = 0
         self._device: Optional[str] = None
         self._num_up: int = 0
-        self._num_down: int = 0
         self._last_error: Optional[str] = None
 
     def status(self) -> JLinkRTTStatus:
@@ -103,7 +101,6 @@ class JLinkRTTManager:
             log_path=str(self.rtt_log_path),
             channel=0,
             num_up_channels=self._num_up,
-            num_down_channels=self._num_down,
             bytes_read=self._bytes_read,
             last_error=self._last_error,
         )
@@ -115,7 +112,7 @@ class JLinkRTTManager:
         speed: int = 4000,
         rtt_channel: int = 0,
         block_address: Optional[int] = None,
-        queue=None,
+        queue: Optional[asyncio.Queue] = None,
     ) -> JLinkRTTStatus:
         """Start RTT streaming via JLinkRTTLogger subprocess.
 
@@ -219,7 +216,6 @@ class JLinkRTTManager:
             "device": device,
             "channel": rtt_channel,
             "num_up_channels": self._num_up,
-            "num_down_channels": self._num_down,
             "block_address": block_address,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         })

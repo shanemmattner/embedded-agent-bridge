@@ -162,7 +162,7 @@ def _parse_line(line: str, fmt: LogFormat) -> Optional[dict]:
 
 def _is_printable_line(line: str) -> bool:
     """Check if a line contains at least some printable content."""
-    return any(ch.isprintable() or ch in ("\t", " ") for ch in line)
+    return any(ch.isprintable() for ch in line)
 
 
 # ---------------------------------------------------------------------------
@@ -260,10 +260,6 @@ class RTTStreamProcessor:
                     pass
         self._log_f = self._jsonl_f = self._csv_f = None
 
-    def drain_initial(self, raw: bytes) -> None:
-        """Discard stale ring buffer content on connect."""
-        pass
-
     def reset(self) -> None:
         """Clear state on target reset. Re-enables format detection."""
         self._buf = ""
@@ -289,6 +285,10 @@ class RTTStreamProcessor:
                 break
 
         # Auto-detect format from first few valid lines
+        # WHY 10: Balance between fast detection and avoiding false positives.
+        # Most firmware outputs log lines within the first 10 printable lines.
+        # This limit prevents indefinite scanning in case of malformed or
+        # non-standard output.
         if self._format == LogFormat.UNKNOWN and self._detect_count < 10:
             detected = _detect_format(cleaned)
             if detected != LogFormat.GENERIC:

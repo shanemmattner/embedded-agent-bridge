@@ -52,6 +52,14 @@ async def rtt_processor_reader(
 
     The bridge's reader thread feeds RTTStreamProcessor which feeds the queue.
     This function monitors health and handles reconnection.
+    
+    Args:
+        bridge: JLinkBridge instance
+        device: J-Link device string (e.g., NRF5340_XXAA_APP)
+        queue: asyncio.Queue to receive parsed RTT records
+        block_address: Optional RTT control block address
+        interface: Debug interface (SWD or JTAG)
+        speed: Interface speed in kHz
     """
     while True:
         st = bridge.start_rtt(
@@ -89,6 +97,11 @@ async def tail_log(path: str, queue: asyncio.Queue, poll_interval: float = 0.1):
     Fallback mode: reads the clean log produced by RTTStreamProcessor
     (no ANSI codes, bounded line length). Uses a processor instance
     without file outputs to parse and enqueue records.
+    
+    Args:
+        path: Path to rtt.log file to tail
+        queue: asyncio.Queue to receive parsed records
+        poll_interval: Polling interval in seconds (default 0.1)
     """
     from eab.rtt_stream import RTTStreamProcessor
 
@@ -124,7 +137,7 @@ async def tail_log(path: str, queue: asyncio.Queue, poll_interval: float = 0.1):
             if len(chunk) > _BUFFER_CAP:
                 chunk = chunk[-_BUFFER_CAP:]
 
-            processor.feed(chunk.encode("utf-8"))
+            processor.feed_text(chunk)
         else:
             await asyncio.sleep(poll_interval)
 
@@ -156,7 +169,12 @@ def _enqueue_status(queue: asyncio.Queue, message: str):
 
 
 async def health_monitor(bridge, queue: asyncio.Queue):
-    """Periodically check RTT health, push status on change."""
+    """Periodically check RTT health, push status on change.
+    
+    Args:
+        bridge: JLinkBridge instance
+        queue: asyncio.Queue to receive status messages
+    """
     was_healthy = True
 
     while True:
@@ -193,7 +211,7 @@ async def heartbeat(queue: asyncio.Queue):
 # ---------------------------------------------------------------------------
 
 _HTML_PATH = Path(__file__).parent / "page.html"
-_clients: set = set()
+_clients: set[object] = set()
 
 
 def _make_response(status: int, content_type: str, body: bytes) -> Response:
@@ -205,7 +223,7 @@ def _make_response(status: int, content_type: str, body: bytes) -> Response:
     )
 
 
-def _process_request(connection, request):
+def _process_request(connection: object, request: object):
     """Serve HTML page on GET /, health on /health. Return None for WS upgrade."""
     # If it's a WebSocket upgrade request, let websockets handle it
     if request.headers.get("Upgrade", "").lower() == "websocket":
@@ -256,7 +274,7 @@ def run_plotter(
     open_browser: bool = True,
     interface: str = "SWD",
     speed: int = 4000,
-):
+) -> None:
     """Start the real-time plotter server (blocking).
 
     Args:

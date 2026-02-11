@@ -104,7 +104,7 @@ def detect_chip_family(line: str) -> ChipFamily | None:
     line_lower = line.lower()
 
     # Zephyr detection (before chip-specific checks)
-    # TODO: Zephyr is cross-platform — this defaults to NRF52 but a Zephyr ESP32
+    # TODO(#63): Zephyr is cross-platform — this defaults to NRF52 but a Zephyr ESP32
     # or RP2040 target would be misclassified. Needs ChipFamily.ZEPHYR or parsing
     # the board name from surrounding boot output to disambiguate.
     zephyr_indicators = ["booting zephyr", "zephyr version", "zephyr fatal error"]

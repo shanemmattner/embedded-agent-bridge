@@ -10,6 +10,7 @@ JLinkBridge is the unified facade. RTT logic lives in jlink_rtt.py.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -18,7 +19,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from .jlink_rtt import JLinkRTTManager, JLinkRTTStatus
 
@@ -56,7 +57,7 @@ class JLinkGDBStatus:
 class JLinkBridge:
     """Manages J-Link services (RTT via JLinkRTTLogger, SWO/GDB via subprocess)."""
 
-    def __init__(self, base_dir: str):
+    def __init__(self, base_dir: str | Path):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -101,7 +102,7 @@ class JLinkBridge:
         speed: int = 4000,
         rtt_channel: int = 0,
         block_address: Optional[int] = None,
-        queue=None,
+        queue: Optional[asyncio.Queue] = None,
     ) -> JLinkRTTStatus:
         """Start RTT streaming via JLinkRTTLogger subprocess.
 
@@ -155,7 +156,17 @@ class JLinkBridge:
         cpu_freq: int = 128000000,
         itm_port: int = 0,
     ) -> JLinkSWOStatus:
-        """Start JLinkSWOViewerCLExe as a background process."""
+        """Start JLinkSWOViewerCLExe as a background process.
+        
+        Args:
+            device: J-Link device string (e.g., NRF5340_XXAA_APP)
+            swo_freq: SWO frequency in Hz
+            cpu_freq: CPU frequency in Hz
+            itm_port: ITM port number (default 0)
+            
+        Returns:
+            JLinkSWOStatus with running state and process info
+        """
         cur = self.swo_status()
         if cur.running:
             return cur
@@ -231,7 +242,19 @@ class JLinkBridge:
         speed: int = 4000,
         interface: str = "SWD",
     ) -> JLinkGDBStatus:
-        """Start JLinkGDBServer as a background process."""
+        """Start JLinkGDBServer as a background process.
+        
+        Args:
+            device: J-Link device string (e.g., NRF5340_XXAA_APP)
+            port: GDB server port (default 2331)
+            swo_port: SWO port (default 2332)
+            telnet_port: Telnet port (default 2333)
+            speed: Interface speed in kHz (default 4000)
+            interface: Debug interface (SWD or JTAG)
+            
+        Returns:
+            JLinkGDBStatus with running state and process info
+        """
         cur = self.gdb_status()
         if cur.running:
             return cur
@@ -281,8 +304,26 @@ class JLinkBridge:
     # Internal Helpers (for subprocess-based services: SWO, GDB)
     # =========================================================================
 
-    def _start_process(self, *, cmd, pid_path, log_path, err_path, status_path, extra_status, status_factory):
-        """Generic background process launcher."""
+    def _start_process(
+        self,
+        *,
+        cmd: list[str],
+        pid_path: Path,
+        log_path: Path,
+        err_path: Path,
+        status_path: Path,
+        extra_status: dict[str, object],
+        status_factory: Callable[..., object],
+    ):
+        """Generic background process launcher.
+        
+        Opens output files, launches subprocess, closes files immediately.
+        
+        WHY immediate file close: File handles are passed to Popen for stdout/stderr.
+        The subprocess inherits these handles and keeps them open. We close our
+        references immediately after Popen to avoid holding extra file descriptors.
+        The subprocess continues writing to the files via its inherited handles.
+        """
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_f = open(log_path, "w", encoding="utf-8")
         err_f = open(err_path, "w", encoding="utf-8")
@@ -352,6 +393,7 @@ class JLinkBridge:
         self._cleanup_pid(pid_path)
 
     def _read_pid(self, path: Path) -> Optional[int]:
+        """Read PID from a file, return None if missing or invalid."""
         if not path.exists():
             return None
         try:
@@ -360,12 +402,14 @@ class JLinkBridge:
             return None
 
     def _cleanup_pid(self, path: Path) -> None:
+        """Remove a PID file if it exists."""
         try:
             path.unlink(missing_ok=True)
         except OSError:
             pass
 
     def _read_status_file(self, path: Path) -> Optional[dict]:
+        """Read JSON status file, return None if missing or invalid."""
         if not path.exists():
             return None
         try:
@@ -374,4 +418,5 @@ class JLinkBridge:
             return None
 
     def _write_status_file(self, path: Path, data: dict) -> None:
+        """Write JSON status file."""
         path.write_text(json.dumps(data, indent=2, sort_keys=True))

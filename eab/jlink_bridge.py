@@ -1,0 +1,377 @@
+"""J-Link bridge utilities for EAB.
+
+Manages J-Link services:
+- RTT (SEGGER Real-Time Transfer) via pylink-square — delegated to JLinkRTTManager
+- SWO Viewer (Serial Wire Output / ITM trace) via subprocess
+- GDB Server (J-Link GDB Server) via subprocess
+
+JLinkBridge is the unified facade. RTT logic lives in jlink_rtt.py.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import signal
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+from .jlink_rtt import JLinkRTTManager, JLinkRTTStatus
+
+logger = logging.getLogger(__name__)
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+@dataclass(frozen=True)
+class JLinkSWOStatus:
+    running: bool
+    pid: Optional[int]
+    device: Optional[str]
+    log_path: str
+    last_error: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class JLinkGDBStatus:
+    running: bool
+    pid: Optional[int]
+    device: Optional[str]
+    port: int = 2331
+    swo_port: int = 2332
+    telnet_port: int = 2333
+    last_error: Optional[str] = None
+
+
+class JLinkBridge:
+    """Manages J-Link services (RTT via pylink, SWO/GDB via subprocess)."""
+
+    def __init__(self, base_dir: str):
+        self.base_dir = Path(base_dir)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+
+        # RTT manager (pylink-based)
+        self._rtt = JLinkRTTManager(self.base_dir)
+
+        # SWO paths
+        self.swo_pid_path = self.base_dir / "jlink_swo.pid"
+        self.swo_log_path = self.base_dir / "swo.log"
+        self.swo_err_path = self.base_dir / "jlink_swo.err"
+        self.swo_status_path = self.base_dir / "jlink_swo.status.json"
+
+        # GDB Server paths
+        self.gdb_pid_path = self.base_dir / "jlink_gdb.pid"
+        self.gdb_log_path = self.base_dir / "jlink_gdb.log"
+        self.gdb_err_path = self.base_dir / "jlink_gdb.err"
+        self.gdb_status_path = self.base_dir / "jlink_gdb.status.json"
+
+    # =========================================================================
+    # RTT — delegated to JLinkRTTManager
+    # =========================================================================
+
+    @property
+    def rtt_log_path(self) -> Path:
+        return self._rtt.rtt_log_path
+
+    @property
+    def rtt_jsonl_path(self) -> Path:
+        return self._rtt.rtt_jsonl_path
+
+    @property
+    def rtt_status_path(self) -> Path:
+        return self._rtt.rtt_status_path
+
+    def rtt_status(self) -> JLinkRTTStatus:
+        return self._rtt.status()
+
+    def start_rtt(
+        self,
+        device: str,
+        interface: str = "SWD",
+        speed: int = 4000,
+        rtt_channel: int = 0,
+        block_address: Optional[int] = None,
+        queue=None,
+    ) -> JLinkRTTStatus:
+        """Start RTT streaming via pylink-square.
+
+        Args:
+            device: J-Link device string (e.g., NRF5340_XXAA_APP)
+            interface: Debug interface (SWD or JTAG)
+            speed: Interface speed in kHz
+            rtt_channel: RTT channel number (default 0)
+            block_address: Optional RTT control block address from .map file
+            queue: Optional asyncio.Queue for plotter integration
+        """
+        return self._rtt.start(
+            device=device,
+            interface=interface,
+            speed=speed,
+            rtt_channel=rtt_channel,
+            block_address=block_address,
+            queue=queue,
+        )
+
+    def stop_rtt(self, timeout_s: float = 5.0) -> JLinkRTTStatus:
+        return self._rtt.stop(timeout_s)
+
+    # =========================================================================
+    # SWO Viewer (subprocess)
+    # =========================================================================
+
+    def swo_status(self) -> JLinkSWOStatus:
+        pid = self._read_pid(self.swo_pid_path)
+        running = bool(pid) and _pid_alive(pid)
+        if pid and not running:
+            self._cleanup_pid(self.swo_pid_path)
+            pid = None
+
+        device = None
+        status_data = self._read_status_file(self.swo_status_path)
+        if status_data:
+            device = status_data.get("device")
+
+        return JLinkSWOStatus(
+            running=running,
+            pid=pid,
+            device=device,
+            log_path=str(self.swo_log_path),
+        )
+
+    def start_swo(
+        self,
+        device: str,
+        swo_freq: int = 4000000,
+        cpu_freq: int = 128000000,
+        itm_port: int = 0,
+    ) -> JLinkSWOStatus:
+        """Start JLinkSWOViewerCLExe as a background process."""
+        cur = self.swo_status()
+        if cur.running:
+            return cur
+
+        cmd = [
+            "JLinkSWOViewerCLExe",
+            "-device", device,
+            "-itmport", str(itm_port),
+            "-swofreq", str(swo_freq),
+            "-cpufreq", str(cpu_freq),
+        ]
+
+        return self._start_process(
+            cmd=cmd,
+            pid_path=self.swo_pid_path,
+            log_path=self.swo_log_path,
+            err_path=self.swo_err_path,
+            status_path=self.swo_status_path,
+            extra_status={"device": device, "swo_freq": swo_freq, "cpu_freq": cpu_freq},
+            status_factory=lambda running, pid, last_error: JLinkSWOStatus(
+                running=running,
+                pid=pid,
+                device=device,
+                log_path=str(self.swo_log_path),
+                last_error=last_error,
+            ),
+        )
+
+    def stop_swo(self, timeout_s: float = 5.0) -> JLinkSWOStatus:
+        self._stop_process(self.swo_pid_path, timeout_s)
+        status = JLinkSWOStatus(
+            running=False,
+            pid=None,
+            device=None,
+            log_path=str(self.swo_log_path),
+        )
+        self._write_status_file(self.swo_status_path, {
+            "running": False, "pid": None,
+        })
+        return status
+
+    # =========================================================================
+    # GDB Server (subprocess)
+    # =========================================================================
+
+    def gdb_status(self) -> JLinkGDBStatus:
+        pid = self._read_pid(self.gdb_pid_path)
+        running = bool(pid) and _pid_alive(pid)
+        if pid and not running:
+            self._cleanup_pid(self.gdb_pid_path)
+            pid = None
+
+        device = None
+        port = 2331
+        status_data = self._read_status_file(self.gdb_status_path)
+        if status_data:
+            device = status_data.get("device")
+            port = status_data.get("port", 2331)
+
+        return JLinkGDBStatus(
+            running=running,
+            pid=pid,
+            device=device,
+            port=port,
+        )
+
+    def start_gdb_server(
+        self,
+        device: str,
+        port: int = 2331,
+        swo_port: int = 2332,
+        telnet_port: int = 2333,
+        speed: int = 4000,
+        interface: str = "SWD",
+    ) -> JLinkGDBStatus:
+        """Start JLinkGDBServer as a background process."""
+        cur = self.gdb_status()
+        if cur.running:
+            return cur
+
+        cmd = [
+            "JLinkGDBServer",
+            "-device", device,
+            "-if", interface,
+            "-speed", str(speed),
+            "-port", str(port),
+            "-SWOPort", str(swo_port),
+            "-TelnetPort", str(telnet_port),
+            "-noir",
+        ]
+
+        return self._start_process(
+            cmd=cmd,
+            pid_path=self.gdb_pid_path,
+            log_path=self.gdb_log_path,
+            err_path=self.gdb_err_path,
+            status_path=self.gdb_status_path,
+            extra_status={"device": device, "port": port, "swo_port": swo_port, "telnet_port": telnet_port},
+            status_factory=lambda running, pid, last_error: JLinkGDBStatus(
+                running=running,
+                pid=pid,
+                device=device,
+                port=port,
+                swo_port=swo_port,
+                telnet_port=telnet_port,
+                last_error=last_error,
+            ),
+        )
+
+    def stop_gdb_server(self, timeout_s: float = 5.0) -> JLinkGDBStatus:
+        self._stop_process(self.gdb_pid_path, timeout_s)
+        status = JLinkGDBStatus(
+            running=False,
+            pid=None,
+            device=None,
+        )
+        self._write_status_file(self.gdb_status_path, {
+            "running": False, "pid": None,
+        })
+        return status
+
+    # =========================================================================
+    # Internal Helpers (for subprocess-based services: SWO, GDB)
+    # =========================================================================
+
+    def _start_process(self, *, cmd, pid_path, log_path, err_path, status_path, extra_status, status_factory):
+        """Generic background process launcher."""
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_f = open(log_path, "w", encoding="utf-8")
+        err_f = open(err_path, "w", encoding="utf-8")
+
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=log_f,
+                stderr=err_f,
+                cwd=str(self.base_dir),
+            )
+        finally:
+            log_f.close()
+            err_f.close()
+        pid_path.write_text(str(proc.pid))
+
+        time.sleep(0.5)
+        alive = _pid_alive(proc.pid) and (proc.poll() is None)
+        last_error: Optional[str] = None
+
+        if not alive:
+            try:
+                err_lines = err_path.read_text(encoding="utf-8", errors="replace").splitlines()[-20:]
+                last_error = "\n".join(err_lines).strip() or None
+            except Exception:
+                last_error = None
+            self._cleanup_pid(pid_path)
+
+        status = status_factory(alive, proc.pid if alive else None, last_error)
+
+        payload = {
+            **extra_status,
+            "running": alive,
+            "pid": proc.pid if alive else None,
+            "last_error": last_error,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
+        }
+        self._write_status_file(status_path, payload)
+
+        return status
+
+    def _stop_process(self, pid_path: Path, timeout_s: float = 5.0) -> None:
+        """Generic background process stopper."""
+        pid = self._read_pid(pid_path)
+        if not pid or not _pid_alive(pid):
+            self._cleanup_pid(pid_path)
+            return
+
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if not _pid_alive(pid):
+                break
+            time.sleep(0.1)
+
+        if _pid_alive(pid):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+
+        self._cleanup_pid(pid_path)
+
+    def _read_pid(self, path: Path) -> Optional[int]:
+        if not path.exists():
+            return None
+        try:
+            return int(path.read_text().strip())
+        except (ValueError, OSError):
+            return None
+
+    def _cleanup_pid(self, path: Path) -> None:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _read_status_file(self, path: Path) -> Optional[dict]:
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _write_status_file(self, path: Path, data: dict) -> None:
+        path.write_text(json.dumps(data, indent=2, sort_keys=True))

@@ -32,9 +32,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+jlink = [
+    "pylink-square>=1.7",
+]
+plotter = [
+    "websockets>=14",
+]
 dev = [
     "pytest>=9",
     "pytest-cov>=6",
+    "pytest-asyncio>=1",
 ]
 
 [project.scripts]

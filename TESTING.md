@@ -8,6 +8,7 @@ Run these tests before merging any change to the EAB codebase. Unit tests run wi
 |-------|-----------|----------------|
 | ESP32-C6 DevKit | USB Serial/JTAG | `/dev/cu.usbmodem101` |
 | STM32L4 + ST-Link | USB ST-Link | `/dev/cu.usbmodem21403` |
+| nRF5340 DK | J-Link OB (SWD) | `/dev/cu.usbmodemXXXX` |
 
 Adjust port paths to match your setup. Run `eabctl start --port auto` or `ls /dev/cu.usb*` to discover ports.
 
@@ -40,10 +41,10 @@ For STM32, use any valid ELF or binary targeting the chip. A minimal blinky work
 ## 1. Unit Tests (no hardware)
 
 ```bash
-python3 -m pytest tests/ -v
+python3 -m pytest tests/ eab/tests/ -v
 ```
 
-**Expected:** All tests pass (27/27). If `test_daemon_main_accepts_argv` fails on annotation checking, that's a known issue — verify the other 26 pass.
+**Expected:** All tests pass (263 total: 197 unit + 66 integration). If `test_daemon_main_accepts_argv` fails on annotation checking, that's a known issue — verify the others pass.
 
 ### What the unit tests cover
 
@@ -51,6 +52,11 @@ python3 -m pytest tests/ -v
 - Argument parsing: positional, flag, and default forms for `tail`, `alerts`, `events`
 - Package structure (pyproject.toml, entry points, module existence)
 - Module importability (`eab.control`, `eab.daemon`)
+- RTTStreamProcessor: ANSI stripping, line framing, format detection (Zephyr, ESP-IDF, nRF SDK), CSV/JSONL output
+- JLinkRTTManager: subprocess lifecycle, file tailing, status tracking
+- JLinkBridge: facade delegation, SWO/GDB server management
+- Zephyr chip profile: board detection, flash commands, boot/crash patterns
+- RTTStreamProcessor: CSV/JSONL/log output, log rotation
 
 ---
 
@@ -437,23 +443,66 @@ eabctl recv-latest --bytes 1024 --out /tmp/test-recv.bin --json
 
 ---
 
-## 10. Regression Checks
+## 10. E2E Tests — RTT (nRF5340)
+
+Requires nRF5340 DK with J-Link. Firmware must output RTT data.
+
+### 10.1 Start RTT
+
+```python
+from eab.jlink_bridge import JLinkBridge
+bridge = JLinkBridge('/tmp/eab-rtt-test')
+status = bridge.start_rtt(device='NRF5340_XXAA_APP')
+```
+
+**Verify:**
+- `status.running == True`
+- `status.num_up_channels > 0`
+- `rtt-raw.log` exists and is growing
+
+### 10.2 Verify processed output
+
+```bash
+sleep 5
+cat /tmp/eab-rtt-test/rtt.log | head -20
+cat /tmp/eab-rtt-test/rtt.jsonl | head -5
+cat /tmp/eab-rtt-test/rtt.csv | head -5
+```
+
+**Verify:**
+- `rtt.log` has cleaned text lines (no ANSI escape codes)
+- `rtt.jsonl` has valid JSON records with `type`, `ts` fields
+- `rtt.csv` has header row and data rows (if firmware outputs DATA: lines)
+
+### 10.3 Stop RTT
+
+```python
+status = bridge.stop_rtt()
+```
+
+**Verify:**
+- `status.running == False`
+- All files are flushed and closed
+
+---
+
+## 11. Regression Checks
 
 These verify specific bugs that were fixed. If any regress, the fix was lost.
 
-### 10.1 ELF-to-binary conversion (BUG-2)
+### 11.1 ELF-to-binary conversion (BUG-2)
 
 Flash an ELF file to STM32 and verify via GDB that 0x08000000 contains a valid vector table, NOT `0x464c457f` (ELF magic bytes).
 
 See test 6.1 and 6.3.
 
-### 10.2 ESP32 default flash address (was defaulting to "esptool.py")
+### 11.2 ESP32 default flash address (was defaulting to "esptool.py")
 
 Flash to ESP32 without `--address` flag and verify the command uses `0x10000`, not `esptool.py`.
 
 See test 5.1 — check the `"command"` array.
 
-### 10.3 Positional args for tail/alerts/events
+### 11.3 Positional args for tail/alerts/events
 
 ```bash
 eabctl tail 10 --json      # Must work (positional)
@@ -465,7 +514,7 @@ eabctl events 5 --json     # Positional
 
 See test 3.2.
 
-### 10.4 ESP32-C6 USB Serial/JTAG console
+### 11.4 ESP32-C6 USB Serial/JTAG console
 
 Flash the test firmware and verify serial output appears. If no output, check that `sdkconfig.defaults` has `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y`.
 
@@ -477,7 +526,7 @@ Minimum viable test for a quick PR check (5 minutes):
 
 ```bash
 # 1. Unit tests
-python3 -m pytest tests/ -v
+python3 -m pytest tests/ eab/tests/ -v
 
 # 2. ESP32 flash + serial
 eabctl flash examples/esp32c6-test-firmware/build/eab-test-firmware.elf \
@@ -496,6 +545,17 @@ eabctl flash <stm32>.elf --chip stm32l4 --json
 # - ESP32 flash command has "0x10000" address (not "esptool.py")
 # - STM32 flash command has temp .bin path (not .elf)
 # - tail/alerts/events accept positional args
+
+# 5. RTT (requires nRF5340 DK)
+python3 -c "
+from eab.jlink_bridge import JLinkBridge
+b = JLinkBridge('/tmp/eab-smoke')
+s = b.start_rtt(device='NRF5340_XXAA_APP')
+print(f'RTT: running={s.running}, channels={s.num_up_channels}')
+import time; time.sleep(3)
+b.stop_rtt()
+print('RTT stopped OK')
+"
 ```
 
 ---

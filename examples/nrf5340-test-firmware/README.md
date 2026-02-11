@@ -1,6 +1,6 @@
 # nRF5340 Test Firmware (Zephyr RTT)
 
-Fake sensor data over SEGGER RTT. Exercises the EAB RTT bridge and real-time plotter.
+Fake sensor data over SEGGER RTT. Exercises the EAB RTT bridge and CSV/JSONL logging pipeline.
 
 ## What it does
 

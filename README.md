@@ -6,14 +6,15 @@
 Background daemons that manage serial ports, GDB, and OpenOCD so LLM agents (Claude Code, Cursor, Copilot, etc.) can interact with embedded hardware without hanging or wasting context tokens. The agent pings the daemon for data through a simple CLI and file interface instead of trying to hold open interactive sessions directly.
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   AI Agent      │     │  Agent Bridge   │     │   Hardware      │
-│  (Claude Code,  │     │                 │     │                 │
-│   Cursor, etc.) │     │  Serial Daemon  │     │  ESP32 / STM32  │
-│                 │     │  GDB Bridge     │     │  nRF52 / RP2040 │
-│  Read files  ◄──┼─────┤  OpenOCD Bridge ├─────┤  Any UART/JTAG  │
-│  Write cmds  ───┼─────►                 │     │  device         │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+┌─────────────────┐     ┌─────────────────────┐     ┌─────────────────┐
+│   AI Agent      │     │   Agent Bridge       │     │   Hardware      │
+│  (Claude Code,  │     │                      │     │                 │
+│   Cursor, etc.) │     │  Serial Daemon ──────┼────►│  ESP32 / STM32  │
+│                 │     │  GDB + OpenOCD ──────┼────►│  (UART / JTAG)  │
+│  Read files  ◄──┼─────┤                      │     │                 │
+│  Write cmds  ───┼─────►  JLinkBridge ────────┼────►│  nRF5340 /      │
+│  Python API  ───┼─────►  (RTT + SWO + GDB)   │     │  Zephyr (SWD)   │
+└─────────────────┘     └─────────────────────┘     └─────────────────┘
 ```
 
 ## Quick Start
@@ -57,6 +58,14 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 - Chip-agnostic flash, erase, reset, chip-info commands
 - Automatic ELF-to-binary conversion for STM32 (st-flash requires .bin)
 - ESP32 and STM32 (ST-Link) support built-in
+
+**RTT (Real-Time Transfer) via J-Link**
+- JLinkRTTLogger subprocess for native J-Link DLL speed (no pylink dependency)
+- RTTStreamProcessor: ANSI stripping, line framing, log format auto-detection (Zephyr, ESP-IDF, nRF SDK)
+- Multi-format output: `rtt.log` (cleaned text), `rtt.jsonl` (structured records), `rtt.csv` (DATA key=value rows)
+- Log rotation (5MB cap, 3 backups)
+- Boot/reset detection across all platforms
+- JLinkBridge facade managing RTT, SWO, and GDB Server subprocesses
 
 **ESP-IDF Integration**
 - `eab-flash` wrapper: auto-pauses daemon, flashes, daemon resumes
@@ -111,6 +120,10 @@ eabctl openocd stop
 | `events.jsonl` | Structured event stream |
 | `status.json` | Connection and health status |
 | `data.bin` | High-speed raw data (optional) |
+| `rtt-raw.log` | Raw JLinkRTTLogger output (unprocessed) |
+| `rtt.log` | Cleaned RTT text with ANSI stripped |
+| `rtt.csv` | DATA key=value records as CSV columns |
+| `rtt.jsonl` | Structured RTT records (one JSON per line) |
 
 ## Platform Support
 
@@ -124,6 +137,8 @@ eabctl openocd stop
 
 - **ESP32** family (S3, C3, C6) — serial + USB-JTAG + ESP-IDF flash
 - **STM32** family (H7, F4, G4, L4, MP1) — serial + ST-Link + OpenOCD
+- **nRF5340** (nRF Connect SDK / Zephyr) — J-Link SWD + RTT
+- **Zephyr RTOS targets** — any board with J-Link support (nRF, STM32, ESP32, RP2040)
 - **Any UART device** — the serial daemon works with anything that shows up as `/dev/tty*` or `/dev/cu.*`
 
 ## Roadmap
@@ -135,7 +150,7 @@ eabctl openocd stop
 - [x] Chip-agnostic flash/erase/reset
 - [x] Automatic ELF-to-binary conversion for STM32
 - [x] Claude Code agent skill (`.claude/skills/eab/SKILL.md`)
-- [ ] Zephyr RTOS support ([#60](https://github.com/shanemmattner/embedded-agent-bridge/issues/60))
+- [x] Zephyr RTOS support ([#62](https://github.com/shanemmattner/embedded-agent-bridge/pull/62))
 - [ ] Multiple simultaneous port support
 - [ ] GDB MI protocol wrapper (persistent debugging sessions)
 - [ ] MCP server (for agents that support it)
@@ -184,6 +199,19 @@ eabctl gdb --chip esp32s3 --cmd "bt" # Run GDB commands
 eabctl openocd stop                  # Stop OpenOCD
 ```
 
+## RTT (Python API)
+
+RTT features use the Python API directly (no eabctl CLI commands yet):
+
+```python
+from eab.jlink_bridge import JLinkBridge
+
+bridge = JLinkBridge('/tmp/eab-session')
+bridge.start_rtt(device='NRF5340_XXAA_APP')
+# Data streams to: rtt.log, rtt.jsonl, rtt.csv
+bridge.stop_rtt()
+```
+
 ## Related Projects
 
 - [ChatDBG](https://github.com/plasma-umass/ChatDBG) — AI debugging for GDB/LLDB (75K+ downloads)
@@ -202,7 +230,8 @@ git clone https://github.com/shanemmattner/embedded-agent-bridge.git
 cd embedded-agent-bridge
 pip install -e .
 
-# Dependencies: just pyserial
+# Dependencies: pyserial, portalocker
+# Optional: J-Link Software Pack (for RTT features)
 # Optional: openocd, gdb (for debug bridge features)
 ```
 

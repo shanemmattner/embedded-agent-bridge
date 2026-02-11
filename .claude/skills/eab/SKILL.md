@@ -1,7 +1,7 @@
 ---
 name: embedded-agent-bridge
 description: >
-  Managing embedded hardware (ESP32, STM32) through the EAB daemon and eabctl CLI.
+  Managing embedded hardware (ESP32, STM32, nRF5340/Zephyr) through the EAB daemon, eabctl CLI, and JLinkBridge Python API.
   Use when the user asks to interact with microcontrollers, flash firmware, read serial
   output, debug crashes, send commands to devices, or manage hardware daemons.
 ---
@@ -33,6 +33,16 @@ You (agent) ──eabctl──► EAB Daemon ──serial──► Hardware (ESP
                     ├── events.jsonl   (structured events)
                     ├── status.json    (connection state)
                     └── cmd.txt        (command queue)
+
+RTT path (Python API):
+Agent ──JLinkBridge──► JLinkRTTLogger ──SWD──► nRF5340/Zephyr
+                              │
+                              ▼
+                    /tmp/eab-session/
+                    ├── rtt-raw.log  (raw JLinkRTTLogger output)
+                    ├── rtt.log      (cleaned text)
+                    ├── rtt.jsonl    (structured records)
+                    └── rtt.csv      (DATA key=value rows)
 ```
 
 ## Essential Commands
@@ -114,6 +124,8 @@ eabctl stream stop
 |--------|----------|-----------|-------|
 | ESP32 | esp32, esp32s3, esp32c3, esp32c6 | esptool | OpenOCD (ESP build) |
 | STM32 | stm32l4, stm32f4, stm32h7, stm32g4, stm32mp1 | st-flash | OpenOCD + ST-Link |
+| nRF (Zephyr) | nrf5340, nrf52840 | west flash / J-Link | J-Link SWD + RTT |
+| RP2040 (Zephyr) | rp2040 | west flash / picotool | — |
 
 ## Common Workflows
 
@@ -157,6 +169,16 @@ eabctl gdb --chip stm32l4 --cmd "monitor reset halt" --cmd "bt" --cmd "info regi
 eabctl openocd stop
 ```
 
+### 6. RTT streaming (nRF5340 / Zephyr)
+
+```python
+from eab.jlink_bridge import JLinkBridge
+bridge = JLinkBridge('/tmp/eab-session')
+bridge.start_rtt(device='NRF5340_XXAA_APP')
+# Read: rtt.log, rtt.jsonl, rtt.csv
+bridge.stop_rtt()
+```
+
 ## Critical Rules
 
 1. **Always use `--json`** — Parse structured output, don't regex human-readable text. Key fields: `health.status`, `connection.status`, `daemon.is_alive`
@@ -192,6 +214,10 @@ Default: `/tmp/eab-session/` (override with `--base-dir`)
 | `status.json` | JSON | Connection state, counters, patterns |
 | `cmd.txt` | Text | Command queue (append to send) |
 | `data.bin` | Binary | High-speed stream data |
+| `rtt-raw.log` | Text | Raw JLinkRTTLogger output |
+| `rtt.log` | Text | Cleaned RTT text, ANSI stripped |
+| `rtt.jsonl` | JSONL | Structured RTT records |
+| `rtt.csv` | CSV | DATA key=value rows |
 
 ## Reference
 

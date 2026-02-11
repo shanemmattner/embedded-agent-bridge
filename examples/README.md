@@ -6,7 +6,7 @@ Test firmware for verifying EAB with real hardware. Each example targets a diffe
 |---------|----------|-----------|----------|
 | [esp32c6-test-firmware](esp32c6-test-firmware/) | ESP32-C6 | USB Serial | Interactive shell, heartbeat, simulated crashes |
 | [stm32l4-test-firmware](stm32l4-test-firmware/) | STM32L476RG | UART (ST-Link VCP) | Bare-metal blinky + heartbeat |
-| [nrf5340-test-firmware](nrf5340-test-firmware/) | nRF5340 DK | SEGGER RTT | Sine wave data, state machine, real-time plotter |
+| [nrf5340-test-firmware](nrf5340-test-firmware/) | nRF5340 DK | SEGGER RTT | Sine wave data, state machine, CSV/JSONL logging |
 
 ## Quick start
 

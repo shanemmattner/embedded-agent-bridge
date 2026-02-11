@@ -1,4 +1,4 @@
-"""EAB real-time plotter — lightweight Plotly dashboard for RTT/SWO data."""
+"""EAB real-time plotter — lightweight uPlot dashboard for RTT/SWO data."""
 
 from .server import run_plotter
 

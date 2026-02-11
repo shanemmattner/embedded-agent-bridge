@@ -1,6 +1,6 @@
 # Embedded Agent Bridge (EAB) - Agent Guide
 
-A daemon and command-line interface for LLM agents to interact with ESP32 devices reliably.
+A daemon and Python API for LLM agents to interact with embedded devices (ESP32, STM32, nRF5340/Zephyr) reliably.
 
 ## Quick Reference (TL;DR)
 
@@ -192,6 +192,26 @@ eabctl events 20
 # Run automated diagnostics (human or JSON)
 eabctl diagnose
 eabctl diagnose --json
+```
+
+### 8. RTT Streaming (nRF5340 / Zephyr)
+
+RTT uses Python API (no eabctl commands yet):
+
+```python
+from eab.jlink_bridge import JLinkBridge
+
+bridge = JLinkBridge('/tmp/eab-session')
+status = bridge.start_rtt(device='NRF5340_XXAA_APP')
+# Check status.running, status.num_up_channels
+
+# Read processed output
+# /tmp/eab-session/rtt.log — cleaned text
+# /tmp/eab-session/rtt.jsonl — structured records
+# /tmp/eab-session/rtt.csv — DATA records
+
+bridge.stop_rtt()
+```
 
 ## Event Stream (Non-Blocking IPC)
 

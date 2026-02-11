@@ -23,6 +23,7 @@ ioreg -p IOUSB -l | grep "USB Product Name"
 |-------|---------------|----------------|
 | ESP32-C6 DevKit | USB JTAG_serial debug unit | `/dev/cu.usbmodem1101` |
 | STM32L4 + ST-Link | STM32 STLink | `/dev/cu.usbmodem21403` |
+| nRF5340 DK | J-Link OB | `/dev/cu.usbmodemXXXX` |
 
 Set these variables for the test run:
 
@@ -51,13 +52,23 @@ Run tests in this exact order. Each section depends on the previous.
 ## 1. Unit Tests (no hardware)
 
 ```bash
-python3 -m pytest eab/tests/ -v --tb=short
+python3 -m pytest eab/tests/ tests/ -v --tb=short
 ```
 
 **Pass criteria:**
-- 115+ tests pass
+- 260+ tests pass (197 unit + 66 integration)
 - `test___main___executes_daemon_main` may fail (known pre-existing issue — ignore it)
 - Zero NEW failures
+
+---
+
+## 1b. RTT / J-Link Tests (no hardware)
+
+```bash
+python3 -m pytest tests/test_jlink_bridge.py tests/test_jlink_rtt.py tests/test_rtt_stream.py -v --tb=short
+```
+
+**Pass criteria:** All tests pass. These test JLinkBridge, JLinkRTTManager, and RTTStreamProcessor with mocked subprocesses.
 
 ---
 
@@ -364,6 +375,16 @@ eabctl stop
 # STM32: flash + verify
 eabctl flash <stm32>.elf --chip stm32l4 --json
 # Check: "converted_from": "elf" present
+
+# RTT: start + verify output (requires nRF5340 DK)
+python3 -c "
+from eab.jlink_bridge import JLinkBridge
+b = JLinkBridge('/tmp/eab-rtt-test')
+s = b.start_rtt(device='NRF5340_XXAA_APP')
+print(f'RTT running: {s.running}, channels: {s.num_up_channels}')
+import time; time.sleep(3)
+b.stop_rtt()
+"
 
 # Regressions: ESP32 address has "0x10000", STM32 has temp .bin, positional args work
 ```

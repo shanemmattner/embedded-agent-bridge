@@ -1,6 +1,6 @@
 # Embedded Agent Bridge (EAB)
 
-ESP32 serial communication daemon. **ALWAYS use eabctl for ALL ESP32 operations.**
+Embedded hardware daemon for serial, JTAG, and RTT. **ALWAYS use eabctl for serial/flash operations. Use JLinkBridge Python API for RTT.**
 
 ## CRITICAL RULES FOR AGENTS
 
@@ -80,6 +80,27 @@ If the device outputs base64 between markers and you need a clean extract:
 ```bash
 eabctl capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 ```
+
+## RTT (J-Link Real-Time Transfer)
+
+RTT uses the Python API directly (no eabctl commands):
+
+```python
+from eab.jlink_bridge import JLinkBridge
+
+bridge = JLinkBridge('/tmp/eab-session')
+bridge.start_rtt(device='NRF5340_XXAA_APP')
+# Outputs: rtt.log (cleaned text), rtt.jsonl (structured), rtt.csv (data)
+bridge.stop_rtt()
+```
+
+RTT session files in `/tmp/eab-session/`:
+- `rtt-raw.log` — raw JLinkRTTLogger output
+- `rtt.log` — cleaned text, ANSI stripped
+- `rtt.csv` — DATA key=value records as CSV
+- `rtt.jsonl` — structured JSON records
+
+Requires: J-Link Software Pack (JLinkRTTLogger must be on PATH or in /Applications/SEGGER/JLink/)
 
 ## Diagnostics
 

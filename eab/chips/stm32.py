@@ -15,6 +15,8 @@ from __future__ import annotations
 import glob
 import re
 import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -333,6 +335,59 @@ class STM32Profile(ChipProfile):
     @property
     def flash_tool(self) -> str:
         return "st-flash"
+
+    def prepare_firmware(self, firmware_path: str) -> tuple[str, bool]:
+        """
+        Prepare firmware for STM32 flashing.
+
+        If the firmware is an ELF file, convert it to binary using
+        ``arm-none-eabi-objcopy`` since st-flash doesn't handle ELF natively.
+
+        Returns:
+            Tuple of (path, converted). When *converted* is True the caller
+            is responsible for cleaning up the temporary binary file.
+
+        Raises:
+            FileNotFoundError: firmware missing or objcopy not installed
+            RuntimeError: objcopy conversion failed or timed out
+        """
+        try:
+            with open(firmware_path, 'rb') as f:
+                magic = f.read(4)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Firmware file not found: {firmware_path}")
+
+        if magic != b'\x7fELF':
+            return (firmware_path, False)
+
+        # ELF file detected — STM32 requires binary conversion
+        try:
+            temp_fd = tempfile.NamedTemporaryFile(suffix='.bin', delete=False)
+            temp_bin_path = temp_fd.name
+            temp_fd.close()
+
+            objcopy_cmd = ['arm-none-eabi-objcopy', '-O', 'binary', firmware_path, temp_bin_path]
+            result = subprocess.run(
+                objcopy_cmd,
+                capture_output=True,
+                text=True,
+                timeout=30.0,
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Failed to convert ELF to binary: {result.stderr}"
+                )
+
+            return (temp_bin_path, True)
+
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                "arm-none-eabi-objcopy not found. "
+                "Install ARM GCC toolchain: brew install --cask gcc-arm-embedded"
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("ELF to binary conversion timed out")
 
     def get_flash_command(
         self,

@@ -28,6 +28,7 @@ classifiers = [
 
 dependencies = [
     "pyserial>=3.5",
+    "portalocker>=2.7",
 ]
 
 [project.optional-dependencies]

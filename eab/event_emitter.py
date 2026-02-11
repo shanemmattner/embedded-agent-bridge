@@ -11,7 +11,7 @@ import json
 import os
 from typing import Any, Optional
 
-import fcntl
+import portalocker
 
 from .interfaces import FileSystemInterface, ClockInterface
 
@@ -49,14 +49,14 @@ class EventEmitter:
 
     def _append_line(self, content: str) -> None:
         with open(self._events_path, "a", encoding="utf-8") as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            portalocker.lock(f, portalocker.LOCK_EX)
             try:
                 f.write(content)
                 if not content.endswith("\n"):
                     f.write("\n")
                 f.flush()
             finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                portalocker.unlock(f)
 
     def _load_last_sequence(self) -> int:
         if not os.path.exists(self._events_path):

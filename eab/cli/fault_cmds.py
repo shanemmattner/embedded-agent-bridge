@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Optional
 
 from eab.jlink_bridge import JLinkBridge
-from eab.fault_analyzer import analyze_fault, format_report, FaultReport
+from eab.fault_analyzer import analyze_fault, format_report
+from eab.fault_decoders import FaultReport
 from eab.cli.helpers import _print
 
 
@@ -17,16 +18,16 @@ def cmd_fault_analyze(
     chip: str,
     json_mode: bool,
 ) -> int:
-    """Analyze Cortex-M33 fault registers via J-Link GDB.
+    """Analyze fault registers via J-Link GDB.
 
-    Reads CFSR/HFSR/MMFAR/BFAR/SFSR/SFAR, decodes bitfields, and
-    prints a structured fault diagnosis.
+    Uses the pluggable decoder for the given chip to read and decode
+    architecture-specific fault registers.
 
     Args:
         base_dir: Session directory for J-Link state files.
         device: J-Link device string (e.g., NRF5340_XXAA_APP).
         elf: Optional path to ELF file for GDB symbols.
-        chip: Chip type for GDB executable selection.
+        chip: Chip type for GDB executable selection and decoder lookup.
         json_mode: Emit machine-parseable JSON output.
 
     Returns:
@@ -37,21 +38,18 @@ def cmd_fault_analyze(
     report = analyze_fault(bridge, device, elf=elf, chip=chip)
 
     if json_mode:
-        _print(
-            {
-                "cfsr": f"0x{report.cfsr:08X}",
-                "hfsr": f"0x{report.hfsr:08X}",
-                "mmfar": f"0x{report.mmfar:08X}",
-                "bfar": f"0x{report.bfar:08X}",
-                "sfsr": f"0x{report.sfsr:08X}",
-                "sfar": f"0x{report.sfar:08X}",
-                "faults": report.faults,
-                "suggestions": report.suggestions,
-                "core_regs": {k: f"0x{v:08X}" for k, v in report.core_regs.items()},
-                "backtrace": report.backtrace,
-            },
-            json_mode=True,
-        )
+        json_out: dict = {
+            "fault_registers": {k: f"0x{v:08X}" for k, v in report.fault_registers.items()},
+            "faults": report.faults,
+            "suggestions": report.suggestions,
+            "core_regs": {k: f"0x{v:08X}" for k, v in report.core_regs.items()},
+            "backtrace": report.backtrace,
+        }
+        if report.stacked_pc is not None:
+            json_out["stacked_pc"] = f"0x{report.stacked_pc:08X}"
+        if report.arch:
+            json_out["arch"] = report.arch
+        _print(json_out, json_mode=True)
     else:
         _print(format_report(report), json_mode=False)
 

@@ -17,12 +17,14 @@ Usage:
 from .base import ChipProfile, ChipFamily
 from .esp32 import ESP32Profile
 from .stm32 import STM32Profile
+from .zephyr import ZephyrProfile
 
 __all__ = [
     "ChipProfile",
     "ChipFamily",
     "ESP32Profile",
     "STM32Profile",
+    "ZephyrProfile",
     "get_chip_profile",
     "detect_chip_family",
 ]
@@ -41,6 +43,11 @@ _PROFILES: dict[str, type[ChipProfile]] = {
     "stm32h7": STM32Profile,
     "stm32f1": STM32Profile,
     "stm32f3": STM32Profile,
+    "zephyr_nrf5340": ZephyrProfile,
+    "zephyr_nrf52840": ZephyrProfile,
+    "zephyr_nrf52833": ZephyrProfile,
+    "zephyr_rp2040": ZephyrProfile,
+    "zephyr": ZephyrProfile,
 }
 
 
@@ -64,6 +71,18 @@ def get_chip_profile(chip: str, variant: str | None = None) -> ChipProfile:
         # Return ESP32 as default for now - detection happens via serial output
         return ESP32Profile(variant=variant)
 
+    # Special handling for Zephyr profiles
+    if chip_lower.startswith("zephyr_"):
+        variant_part = chip_lower[len("zephyr_"):]  # e.g., "nrf5340"
+        defaults = ZephyrProfile.BOARD_DEFAULTS.get(variant_part, {})
+        return ZephyrProfile(
+            variant=variant_part,
+            board=defaults.get("board"),
+            runner=defaults.get("runner"),
+        )
+    elif chip_lower == "zephyr":
+        return ZephyrProfile(variant=variant)
+
     if chip_lower not in _PROFILES:
         supported = ", ".join(sorted(set(k.split("_")[0] for k in _PROFILES.keys())))
         raise ValueError(f"Unsupported chip: {chip}. Supported: {supported}")
@@ -83,6 +102,14 @@ def detect_chip_family(line: str) -> ChipFamily | None:
         ChipFamily enum or None if not detected
     """
     line_lower = line.lower()
+
+    # Zephyr detection (before chip-specific checks)
+    # TODO(#63): Zephyr is cross-platform — this defaults to NRF52 but a Zephyr ESP32
+    # or RP2040 target would be misclassified. Needs ChipFamily.ZEPHYR or parsing
+    # the board name from surrounding boot output to disambiguate.
+    zephyr_indicators = ["booting zephyr", "zephyr version", "zephyr fatal error"]
+    if any(ind in line_lower for ind in zephyr_indicators):
+        return ChipFamily.NRF52
 
     # ESP32 detection patterns
     esp32_indicators = [
@@ -110,8 +137,8 @@ def detect_chip_family(line: str) -> ChipFamily | None:
     if any(ind in line_lower for ind in stm32_indicators):
         return ChipFamily.STM32
 
-    # nRF52 detection (future)
-    nrf_indicators = ["nrf52", "softdevice", "nordic"]
+    # nRF52 detection
+    nrf_indicators = ["nrf52", "nrf5340", "softdevice", "nordic"]
     if any(ind in line_lower for ind in nrf_indicators):
         return ChipFamily.NRF52
 

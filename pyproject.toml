@@ -32,9 +32,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+plotter = [
+    "websockets>=14",
+]
 dev = [
     "pytest>=9",
     "pytest-cov>=6",
+    "pytest-asyncio>=1",
 ]
 
 [project.scripts]

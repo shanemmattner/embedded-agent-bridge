@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EAB RTT Plotter</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+  }
+  header h1 { font-size: 14px; font-weight: 600; color: #e94560; }
+  #status { font-size: 12px; padding: 2px 8px; border-radius: 3px; }
+  .connected { background: #1b4332; color: #95d5b2; }
+  .disconnected { background: #5c1a1a; color: #f4a0a0; }
+  #bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 16px; background: #16213e;
+    border-bottom: 1px solid #0f3460; font-size: 12px;
+  }
+  #state-value { font-weight: 700; color: #00d2ff; font-size: 14px; }
+  .stat { color: #888; }
+  .stat b { color: #ccc; }
+  #banner {
+    display: none; padding: 6px 16px; font-size: 12px;
+    border-bottom: 1px solid;
+  }
+  #banner.info  { background: #1b3a4b; color: #7ec8e3; border-color: #2a5a6b; }
+  #banner.error { background: #4a1a1a; color: #f4a0a0; border-color: #6a2a2a; }
+  #banner.warn  { background: #4a3a1a; color: #f4d08f; border-color: #6a5a2a; }
+  #chart { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .u-wrap { background: #1a1a2e !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>EAB RTT Plotter</h1>
+  <span id="status" class="disconnected">disconnected</span>
+</header>
+<div id="banner"></div>
+<div id="bar">
+  <span>State: <span id="state-value">--</span></span>
+  <span class="stat">Points: <b id="pts">0</b></span>
+  <span class="stat">Rate: <b id="rate">0</b>/s</span>
+</div>
+<div id="chart"></div>
+
+<script>
+// --- Config ---
+const MAX_PTS  = 1000;
+const WS_URL   = `ws://${location.host}`;
+const COLORS   = ['#e94560','#00d2ff','#53d769','#ff9f43','#a29bfe','#fd79a8','#ffeaa7','#74b9ff'];
+
+// --- State ---
+let names    = [];          // series names in order
+let data     = [[]];        // data[0] = x, data[1..N] = y per series
+let plot     = null;
+let ptCount  = 0;
+let rateCnt  = 0;
+let dirty    = false;       // new data arrived since last render
+let lastHb   = 0;
+let bannerTm = null;
+
+// --- Banner ---
+function showBanner(msg, sev) {
+  const el = document.getElementById('banner');
+  el.textContent = msg;
+  el.className = sev || 'info';
+  el.style.display = 'block';
+  if (bannerTm) clearTimeout(bannerTm);
+  if (sev !== 'error') bannerTm = setTimeout(() => el.style.display = 'none', 8000);
+}
+
+// --- uPlot setup ---
+function makeOpts(w, h) {
+  const series = [{}]; // x-axis stub
+  for (let i = 0; i < names.length; i++) {
+    const isTemp = names[i].toLowerCase().includes('temp');
+    series.push({
+      label: names[i],
+      stroke: COLORS[i % COLORS.length],
+      width: isTemp ? 1.5 : 2,
+      scale: isTemp ? 'temp' : 'y',
+    });
+  }
+  return {
+    width: w,
+    height: h,
+    cursor: { show: true, drag: { x: true, y: true } },
+    scales: {
+      x: { time: false },
+      y: { auto: true },
+      temp: { auto: true },
+    },
+    axes: [
+      { stroke: '#666', grid: { stroke: '#2a2a4a', width: 1 } },
+      { stroke: '#666', grid: { stroke: '#2a2a4a', width: 1 }, scale: 'y' },
+      { stroke: '#666', grid: { show: false }, side: 1, scale: 'temp' },
+    ],
+    series: series,
+    legend: { show: true },
+  };
+}
+
+function rebuildPlot() {
+  const el = document.getElementById('chart');
+  if (plot) { plot.destroy(); plot = null; }
+  const w = el.clientWidth;
+  const h = el.clientHeight;
+  if (w < 10 || h < 10) return;
+  plot = new uPlot(makeOpts(w, h), data, el);
+}
+
+// --- Add series dynamically ---
+function ensureSeries(name) {
+  if (names.includes(name)) return;
+  names.push(name);
+  data.push(new Array(data[0].length).fill(null));
+  rebuildPlot();
+}
+
+// --- Push data ---
+function pushData(values) {
+  ptCount++;
+  rateCnt++;
+
+  // Ensure all series exist
+  for (const k of Object.keys(values)) ensureSeries(k);
+
+  // Append x
+  data[0].push(ptCount);
+
+  // Append y for each series
+  for (let i = 0; i < names.length; i++) {
+    const v = values[names[i]];
+    data[i + 1].push(v !== undefined ? v : null);
+  }
+
+  // Trim
+  if (data[0].length > MAX_PTS) {
+    for (let i = 0; i < data.length; i++) {
+      data[i] = data[i].slice(-MAX_PTS);
+    }
+  }
+
+  dirty = true;
+}
+
+// --- Render loop (throttled to ~60fps via rAF, setData at most every 100ms) ---
+let lastRender = 0;
+function renderLoop(ts) {
+  if (dirty && ts - lastRender > 100) {
+    if (plot) plot.setData(data);
+    document.getElementById('pts').textContent = ptCount;
+    dirty = false;
+    lastRender = ts;
+  }
+  requestAnimationFrame(renderLoop);
+}
+requestAnimationFrame(renderLoop);
+
+// --- WebSocket ---
+let ws = null;
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    document.getElementById('status').textContent = 'connected';
+    document.getElementById('status').className = 'connected';
+    lastHb = Date.now();
+  };
+  ws.onclose = () => {
+    document.getElementById('status').textContent = 'disconnected';
+    document.getElementById('status').className = 'disconnected';
+    setTimeout(connect, 2000);
+  };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    switch (msg.type) {
+      case 'data':      pushData(msg.values); break;
+      case 'state':     document.getElementById('state-value').textContent = msg.state; break;
+      case 'heartbeat': lastHb = Date.now(); break;
+      case 'status': {
+        const m = msg.message.toLowerCase();
+        const sev = m.includes('died') || m.includes('failed') ? 'error'
+                  : m.includes('disconnect') || m.includes('reconnect') ? 'warn' : 'info';
+        showBanner(msg.message, sev);
+        break;
+      }
+    }
+  };
+}
+connect();
+
+// --- Rate counter + heartbeat check ---
+setInterval(() => {
+  document.getElementById('rate').textContent = rateCnt;
+  rateCnt = 0;
+  if (lastHb > 0 && Date.now() - lastHb > 6000) {
+    showBanner('No heartbeat from server', 'warn');
+  }
+}, 1000);
+
+// --- Resize ---
+const ro = new ResizeObserver(() => {
+  if (plot) {
+    const el = document.getElementById('chart');
+    plot.setSize({ width: el.clientWidth, height: el.clientHeight });
+  }
+});
+ro.observe(document.getElementById('chart'));
+</script>
+</body>
+</html>

@@ -5,8 +5,8 @@ The daemon watches a text file (typically `cmd.txt`) for commands to send to the
 device. Historically this file was overwritten, which could lose commands and
 race with the daemon reading at the same time.
 
-This module provides a simple, line-based FIFO protocol using `fcntl.flock`
-when available:
+This module provides a simple, line-based FIFO protocol using `portalocker`
+for cross-platform file locking:
 - Writers append one command per line under an exclusive lock.
 - The daemon drains the file under an exclusive lock and truncates it.
 
@@ -19,22 +19,15 @@ from __future__ import annotations
 import os
 from typing import IO, List, Optional
 
-try:  # Unix only
-    import fcntl  # type: ignore
-except Exception:  # pragma: no cover
-    fcntl = None  # type: ignore[assignment]
+import portalocker
 
 
 def _lock_ex(file: IO[str]) -> None:
-    if fcntl is None:  # pragma: no cover
-        return
-    fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+    portalocker.lock(file, portalocker.LOCK_EX)
 
 
 def _unlock(file: IO[str]) -> None:
-    if fcntl is None:  # pragma: no cover
-        return
-    fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+    portalocker.unlock(file)
 
 
 def append_command(cmd_path: str, command: str) -> None:

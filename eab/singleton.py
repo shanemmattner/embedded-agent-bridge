@@ -2,13 +2,13 @@
 """
 Singleton Daemon Enforcement for Embedded Agent Bridge.
 
-Ensures only one EAB daemon runs per machine using a PID file with flock.
+Ensures only one EAB daemon runs per machine using a PID file with portalocker.
 """
 
 import os
 import sys
 import errno
-import fcntl
+import portalocker
 import atexit
 import signal
 from typing import Optional
@@ -203,7 +203,7 @@ class SingletonDaemon:
         # Try to acquire lock
         try:
             self._lock_fd = os.open(self.PID_FILE, os.O_CREAT | os.O_RDWR, 0o644)
-            fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            portalocker.lock(self._lock_fd, portalocker.LOCK_EX | portalocker.LOCK_NB)
         except (OSError, IOError) as e:
             self._log_error(f"Could not acquire lock: {e}")
             if self._lock_fd:
@@ -251,7 +251,7 @@ class SingletonDaemon:
         # Release lock and remove PID file
         if self._lock_fd:
             try:
-                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+                portalocker.unlock(self._lock_fd)
                 os.close(self._lock_fd)
             except OSError:
                 pass

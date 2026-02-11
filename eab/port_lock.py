@@ -8,7 +8,7 @@ Provides:
 - Logging of contention events
 """
 
-import fcntl
+import portalocker
 import os
 import sys
 import time
@@ -99,7 +99,7 @@ class PortLock:
                 self._lock_fd = open(self._lock_path, "w")
 
                 # Try non-blocking exclusive lock
-                fcntl.flock(self._lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                portalocker.lock(self._lock_fd, portalocker.LOCK_EX | portalocker.LOCK_NB)
 
                 # Got the lock! Write our info
                 self._write_owner_info()
@@ -142,7 +142,7 @@ class PortLock:
         """Release the port lock."""
         if self._lock_fd:
             try:
-                fcntl.flock(self._lock_fd.fileno(), fcntl.LOCK_UN)
+                portalocker.unlock(self._lock_fd)
                 self._lock_fd.close()
             except Exception:
                 pass
@@ -274,7 +274,7 @@ def cleanup_dead_locks(*, logger=None) -> dict:
 
     Safety: we only delete `.lock` files when we can prove the recorded PID is dead.
     If we cannot parse `.info`, we only delete the `.info` file (never the `.lock`),
-    because deleting a lock file while a live process holds a flock can cause a second
+    because deleting a lock file while a live process holds a lock can cause a second
     process to create a new lock inode and 'double-own' the lock.
     """
     lock_dir = Path(PortLock.LOCK_DIR)

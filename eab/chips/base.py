@@ -231,6 +231,25 @@ class ChipProfile(ABC):
         """
         return None
 
+    def prepare_firmware(self, firmware_path: str) -> tuple[str, bool]:
+        """
+        Prepare firmware for flashing, performing any needed conversions.
+
+        For example, STM32 needs ELF-to-binary conversion since st-flash
+        doesn't handle ELF natively. ESP32 handles ELF via esptool directly.
+
+        Args:
+            firmware_path: Path to firmware file
+
+        Returns:
+            Tuple of (possibly-converted path, True if converted)
+
+        Raises:
+            FileNotFoundError: If firmware file or required tools not found
+            RuntimeError: If conversion fails
+        """
+        return (firmware_path, False)
+
     def is_line_crash(self, line: str) -> bool:
         """Check if line indicates a crash."""
         line_lower = line.lower()

@@ -11,6 +11,15 @@ from eab.cli.helpers import _print
 
 
 def cmd_openocd_status(*, base_dir: str, json_mode: bool) -> int:
+    """Report whether OpenOCD is running and its connection details.
+
+    Args:
+        base_dir: Session directory where OpenOCD state files live.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: always 0.
+    """
     bridge = OpenOCDBridge(base_dir)
     st = bridge.status()
     _print(
@@ -41,6 +50,21 @@ def cmd_openocd_start(
     tcl_port: int,
     json_mode: bool,
 ) -> int:
+    """Start OpenOCD for JTAG/SWD debugging.
+
+    Args:
+        base_dir: Session directory for OpenOCD state files.
+        chip: Chip identifier used to select OpenOCD config.
+        vid: USB vendor ID of the debug adapter.
+        pid: USB product ID of the debug adapter.
+        telnet_port: OpenOCD telnet command port.
+        gdb_port: OpenOCD GDB server port.
+        tcl_port: OpenOCD TCL server port.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 if OpenOCD started, 1 on failure.
+    """
     bridge = OpenOCDBridge(base_dir)
     st = bridge.start(
         chip=chip,
@@ -68,6 +92,15 @@ def cmd_openocd_start(
 
 
 def cmd_openocd_stop(*, base_dir: str, json_mode: bool) -> int:
+    """Stop the running OpenOCD instance.
+
+    Args:
+        base_dir: Session directory for OpenOCD state files.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: always 0.
+    """
     bridge = OpenOCDBridge(base_dir)
     st = bridge.stop()
     _print(
@@ -88,6 +121,18 @@ def cmd_openocd_cmd(
     timeout_s: float,
     json_mode: bool,
 ) -> int:
+    """Send a single command to OpenOCD via its telnet interface.
+
+    Args:
+        base_dir: Session directory for OpenOCD state files.
+        command: OpenOCD command string to execute.
+        telnet_port: OpenOCD telnet port to connect to.
+        timeout_s: Socket timeout in seconds.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: always 0.
+    """
     bridge = OpenOCDBridge(base_dir)
     out = bridge.cmd(command, telnet_port=telnet_port, timeout_s=timeout_s)
     _print({"command": command, "output": out}, json_mode=json_mode)

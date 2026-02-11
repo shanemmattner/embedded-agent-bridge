@@ -24,6 +24,23 @@ def cmd_stream_start(
     truncate: bool,
     json_mode: bool,
 ) -> int:
+    """Enable high-speed data streaming by writing ``stream.json``.
+
+    The daemon reads this config file and switches to streaming mode,
+    writing raw or base64-decoded serial data to ``data.bin``.
+
+    Args:
+        base_dir: Session directory for ``stream.json``.
+        mode: ``"raw"`` or ``"base64"``.
+        chunk_size: Bytes per read chunk in raw mode.
+        marker: Optional marker line that triggers streaming start.
+        pattern_matching: Keep pattern matching active while streaming.
+        truncate: Truncate ``data.bin`` when enabling the stream.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: always 0.
+    """
     stream_path = os.path.join(base_dir, "stream.json")
     payload = {
         "enabled": True,
@@ -73,6 +90,22 @@ def cmd_recv(
     base64_output: bool,
     json_mode: bool,
 ) -> int:
+    """Read *length* bytes from ``data.bin`` starting at *offset*.
+
+    When *output_path* is given the bytes are written to that file;
+    otherwise a JSON summary (optionally with base64 data) is printed.
+
+    Args:
+        base_dir: Session directory containing ``data.bin``.
+        offset: Byte offset to start reading from.
+        length: Number of bytes to read.
+        output_path: If set, write raw bytes to this file.
+        base64_output: Include base64-encoded data in JSON output.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success, 1 if ``data.bin`` is missing.
+    """
     data_path = os.path.join(base_dir, "data.bin")
     try:
         payload = _read_bytes(data_path, offset, length)

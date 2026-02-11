@@ -26,6 +26,16 @@ from eab.cli.helpers import (
 
 
 def _await_log_ack(log_path: str, marker: str, timeout_s: float) -> bool:
+    """Tail *log_path* until *marker* appears or *timeout_s* expires.
+
+    Args:
+        log_path: Path to the log file to tail.
+        marker: Substring to search for in new log lines.
+        timeout_s: Maximum seconds to wait.
+
+    Returns:
+        True if the marker was found, False on timeout or missing file.
+    """
     start = time.time()
     try:
         with open(log_path, "r", encoding="utf-8", errors="replace") as f:
@@ -53,6 +63,18 @@ def _await_event(
     command: Optional[str],
     timeout_s: float,
 ) -> Optional[dict[str, Any]]:
+    """Tail *events_path* (JSONL) for a matching event.
+
+    Args:
+        events_path: Path to the ``events.jsonl`` file.
+        event_type: If set, only match events with this ``type`` field.
+        contains: If set, only match events whose JSON contains this substring.
+        command: If set, only match events whose ``data.command`` equals this.
+        timeout_s: Maximum seconds to wait.
+
+    Returns:
+        The matched event dict, or None on timeout / missing file.
+    """
     start = time.time()
     try:
         with open(events_path, "r", encoding="utf-8", errors="replace") as f:
@@ -79,6 +101,18 @@ def _await_event(
 
 
 def cmd_status(*, base_dir: str, json_mode: bool) -> int:
+    """Show daemon and device status.
+
+    Reads the singleton PID file and ``status.json`` to build a combined
+    status payload.  In plain-text mode, prints a human-readable summary.
+
+    Args:
+        base_dir: Session directory for daemon state files.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 if daemon is running, 1 otherwise.
+    """
     existing = check_singleton()
     status_path = os.path.join(base_dir, "status.json")
 
@@ -192,6 +226,23 @@ def cmd_send(
     timeout_s: float,
     json_mode: bool,
 ) -> int:
+    """Queue a text command to the device and optionally wait for acknowledgement.
+
+    Writes *text* to ``cmd.txt``; the daemon picks it up and sends it over
+    serial.  With ``--await`` or ``--await-event``, blocks until the daemon
+    logs or emits an event confirming the send.
+
+    Args:
+        base_dir: Session directory containing ``cmd.txt``.
+        text: Command string to send.
+        await_ack: Wait for the command to appear in ``latest.log``.
+        await_event: Wait for a ``command_sent`` event in ``events.jsonl``.
+        timeout_s: Maximum seconds to wait for acknowledgement.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success (or if no ack requested), 1 on ack timeout.
+    """
     cmd_path = os.path.join(base_dir, "cmd.txt")
     log_path = os.path.join(base_dir, "latest.log")
     events_path = os.path.join(base_dir, "events.jsonl")
@@ -243,6 +294,17 @@ def cmd_send(
 
 
 def cmd_wait(*, base_dir: str, pattern: str, timeout_s: float, json_mode: bool) -> int:
+    """Block until a regex *pattern* appears in ``latest.log`` or timeout.
+
+    Args:
+        base_dir: Session directory containing ``latest.log``.
+        pattern: Regex pattern to match against new log lines.
+        timeout_s: Maximum seconds to wait.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 if matched, 1 on timeout.
+    """
     log_path = os.path.join(base_dir, "latest.log")
     regex = re.compile(pattern)
 
@@ -294,6 +356,19 @@ def cmd_wait_event(
     timeout_s: float,
     json_mode: bool,
 ) -> int:
+    """Block until a matching event appears in ``events.jsonl`` or timeout.
+
+    Args:
+        base_dir: Session directory containing ``events.jsonl``.
+        event_type: If set, only match events with this ``type`` field.
+        contains: If set, only match events whose JSON contains this substring.
+        command: If set, only match events whose ``data.command`` equals this.
+        timeout_s: Maximum seconds to wait.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 if matched, 1 on timeout.
+    """
     events_path = os.path.join(base_dir, "events.jsonl")
     started = time.time()
 
@@ -332,6 +407,26 @@ def cmd_capture_between(
     decode_base64: bool,
     json_mode: bool,
 ) -> int:
+    """Capture payload lines between two markers in ``latest.log``.
+
+    Scans for *start_marker* and *end_marker*, extracts lines between them,
+    optionally filters to base64-only content, and writes to *output_path*.
+
+    Args:
+        base_dir: Session directory containing ``latest.log``.
+        start_marker: Line that signals the start of the payload.
+        end_marker: Line that signals the end of the payload.
+        output_path: Destination file path.
+        timeout_s: Maximum seconds to wait for both markers.
+        from_start: Scan from the beginning of the log instead of tailing.
+        strip_timestamps: Remove ``[HH:MM:SS.mmm]`` prefixes before filtering.
+        filter_mode: ``"base64"`` or ``"none"``.
+        decode_base64: Decode captured base64 payload to bytes before writing.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 if both markers found, 1 otherwise.
+    """
     log_path = os.path.join(base_dir, "latest.log")
     result = capture_between_markers(
         log_path=log_path,

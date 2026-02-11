@@ -308,12 +308,6 @@ class STM32Profile(ChipProfile):
                 "address": "0x08000000",
                 "description": "ST bootloader for SensorTile",
             },
-            # Add more boards as we encounter them:
-            # "nucleo-l476rg": {
-            #     "path": "...",
-            #     "address": "0x08000000",
-            #     "description": "...",
-            # },
         }
 
     def get_stock_firmware(self, board: str) -> Optional[dict[str, str]]:

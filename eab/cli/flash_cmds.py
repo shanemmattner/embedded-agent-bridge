@@ -160,6 +160,7 @@ def cmd_flash(
 
 def cmd_preflight_hw(
     *,
+    base_dir: str,
     chip: str,
     stock_firmware: str,
     address: Optional[str],
@@ -214,7 +215,7 @@ def cmd_preflight_hw(
     checks.append({
         "name": "flash_stock_firmware",
         "passed": flash_success,
-        "message": "Stock firmware flashed successfully" if flash_success else f"Flash failed: {result.stderr if result else str(e)}",
+        "message": "Stock firmware flashed successfully" if flash_success else f"Flash failed: {str(e) if result is None else result.stderr}",
     })
 
     if not flash_success:
@@ -232,7 +233,7 @@ def cmd_preflight_hw(
 
     # Step 3: Check if CPU is running (not stuck)
     # Use OpenOCD to halt, get PC, resume, halt again, compare PCs
-    bridge = OpenOCDBridge("/tmp/eab-session")
+    bridge = OpenOCDBridge(base_dir)
 
     # Try to start OpenOCD if not running
     try:
@@ -313,7 +314,7 @@ def cmd_preflight_hw(
         # Resume CPU and stop OpenOCD
         try:
             bridge.cmd("resume", timeout_s=2)
-        except:
+        except Exception:
             pass
         bridge.stop()
 
@@ -411,7 +412,18 @@ def cmd_chip_info(
     port: Optional[str],
     json_mode: bool,
 ) -> int:
-    """Get chip information using chip-specific tool."""
+    """Get chip information using chip-specific tool.
+
+    Runs ``st-info --probe`` (STM32) or equivalent and returns probe output.
+
+    Args:
+        chip: Chip type identifier (e.g. ``"stm32l4"``).
+        port: Serial port (ESP32) or ignored (STM32 uses USB).
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success, 1 on failure, 2 for invalid chip.
+    """
     started = time.time()
 
     try:
@@ -466,7 +478,20 @@ def cmd_reset(
     connect_under_reset: bool,
     json_mode: bool,
 ) -> int:
-    """Hardware reset device using st-flash reset or STM32CubeProgrammer."""
+    """Hardware reset device using st-flash reset or STM32CubeProgrammer.
+
+    Tries st-flash first; auto-retries with STM32CubeProgrammer in
+    connect-under-reset mode if the initial attempt fails to connect.
+
+    Args:
+        chip: Chip type identifier (e.g. ``"stm32l4"``).
+        method: Reset method — ``"hard"``, ``"soft"``, or ``"bootloader"``.
+        connect_under_reset: If True, skip st-flash and use CubeProgrammer directly.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success, 1 on failure.
+    """
     started = time.time()
     retried_with_cur = False
 

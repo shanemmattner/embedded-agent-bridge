@@ -28,6 +28,21 @@ def cmd_start(
     force: bool,
     json_mode: bool,
 ) -> int:
+    """Start the EAB daemon in the background.
+
+    Spawns the daemon process, optionally force-killing any existing instance
+    first. Detects the correct Python interpreter from the eabctl shebang.
+
+    Args:
+        base_dir: Session directory for daemon state files.
+        port: Serial port (or ``"auto"`` to auto-detect).
+        baud: Baud rate for the serial connection.
+        force: Kill existing daemon before starting.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success, 1 if daemon already running (without --force).
+    """
     existing = check_singleton()
     if existing and existing.is_alive:
         if not force:
@@ -132,6 +147,17 @@ def cmd_start(
 
 
 def cmd_stop(*, json_mode: bool) -> int:
+    """Stop the running EAB daemon.
+
+    Sends SIGTERM (then SIGKILL) to the daemon process found via the
+    singleton PID file.
+
+    Args:
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success, 1 if daemon not running or kill failed.
+    """
     existing = check_singleton()
     if not existing or not existing.is_alive:
         payload = {
@@ -155,6 +181,19 @@ def cmd_stop(*, json_mode: bool) -> int:
 
 
 def cmd_pause(*, base_dir: str, seconds: int, json_mode: bool) -> int:
+    """Pause the daemon for *seconds* by writing a pause file.
+
+    The daemon checks for ``pause.txt`` and releases the serial port while
+    the pause is active, allowing external tools to access the device.
+
+    Args:
+        base_dir: Session directory containing ``pause.txt``.
+        seconds: Duration to pause in seconds.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: always 0.
+    """
     pause_path = os.path.join(base_dir, "pause.txt")
     pause_until = time.time() + seconds
     os.makedirs(base_dir, exist_ok=True)
@@ -173,6 +212,15 @@ def cmd_pause(*, base_dir: str, seconds: int, json_mode: bool) -> int:
 
 
 def cmd_resume(*, base_dir: str, json_mode: bool) -> int:
+    """Resume the daemon early by removing the pause file.
+
+    Args:
+        base_dir: Session directory containing ``pause.txt``.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: always 0.
+    """
     pause_path = os.path.join(base_dir, "pause.txt")
     try:
         os.remove(pause_path)
@@ -190,6 +238,18 @@ def cmd_resume(*, base_dir: str, json_mode: bool) -> int:
 
 
 def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
+    """Run health checks on the daemon and device, with recommendations.
+
+    Inspects the singleton PID, ``status.json``, connection state, and
+    pattern counters to produce a pass/warn/error summary.
+
+    Args:
+        base_dir: Session directory for daemon state files.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 if all checks pass, 1 otherwise.
+    """
     existing = check_singleton()
     status_path = os.path.join(base_dir, "status.json")
 

@@ -81,6 +81,12 @@ def _preprocess_argv(argv: list[str]) -> list[str]:
 
     Agent ergonomics: allow global flags anywhere (before or after subcommand).
     argparse doesn't support this reliably with subparsers, so we reorder.
+
+    Args:
+        argv: Raw argument list (without ``sys.argv[0]``).
+
+    Returns:
+        Reordered argument list with global flags moved to the front.
     """
     global_args: list[str] = []
     rest: list[str] = []
@@ -291,6 +297,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    """Entry point for the ``eabctl`` CLI.
+
+    Parses arguments, resolves the session base directory, and dispatches
+    to the appropriate command handler.
+
+    Args:
+        argv: Argument list to parse.  Defaults to ``sys.argv[1:]``.
+
+    Returns:
+        Exit code: 0 on success, non-zero on error.
+    """
     if argv is None:
         argv = sys.argv[1:]
 
@@ -464,6 +481,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     if args.cmd == "preflight-hw":
         return cmd_preflight_hw(
+            base_dir=base_dir,
             chip=args.chip,
             stock_firmware=args.stock_firmware,
             address=args.address,

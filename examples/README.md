@@ -8,6 +8,7 @@ Test firmware for verifying EAB with real hardware. Each example targets a diffe
 | [stm32l4-test-firmware](stm32l4-test-firmware/) | STM32L476RG | UART (ST-Link VCP) | Bare-metal blinky + heartbeat |
 | [nrf5340-test-firmware](nrf5340-test-firmware/) | nRF5340 DK | SEGGER RTT | Sine wave data, state machine, real-time plotter |
 | [nrf5340-fault-demo](nrf5340-fault-demo/) | nRF5340 DK | SEGGER RTT | Injectable Cortex-M33 faults for `eabctl fault-analyze` |
+| [frdm-mcxn947-fault-demo](frdm-mcxn947-fault-demo/) | FRDM-MCXN947 | UART (USB-CDC) | Injectable Cortex-M33 faults via OpenOCD/CMSIS-DAP |
 
 ## Quick start
 
@@ -46,4 +47,17 @@ bridge.stop_rtt()
 #   /tmp/eab-session/rtt.log   — cleaned text log
 #   /tmp/eab-session/rtt.csv   — DATA records as CSV
 #   /tmp/eab-session/rtt.jsonl — structured JSON records
+```
+
+### OpenOCD (FRDM-MCXN947)
+
+Requires OpenOCD installed (provides CMSIS-DAP support for the on-board MCU-Link probe).
+
+```bash
+west build -b frdm_mcxn947/mcxn947/cpu0 examples/frdm-mcxn947-fault-demo
+west flash --runner linkserver
+
+# Trigger a fault (press SW2 or use UART shell: fault null)
+# Then analyze:
+eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947
 ```

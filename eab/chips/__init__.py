@@ -47,6 +47,7 @@ _PROFILES: dict[str, type[ChipProfile]] = {
     "zephyr_nrf52840": ZephyrProfile,
     "zephyr_nrf52833": ZephyrProfile,
     "zephyr_rp2040": ZephyrProfile,
+    "zephyr_mcxn947": ZephyrProfile,
     "zephyr": ZephyrProfile,
 }
 

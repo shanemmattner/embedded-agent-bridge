@@ -193,10 +193,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_gdb.add_argument("--timeout", type=float, default=60.0)
     p_gdb.add_argument("--cmd", dest="commands", action="append", default=[], help="GDB command (repeatable)")
 
-    p_fault = sub.add_parser("fault-analyze", help="Analyze Cortex-M33 fault registers via J-Link GDB")
-    p_fault.add_argument("--device", default="NRF5340_XXAA_APP", help="J-Link device string")
+    p_fault = sub.add_parser("fault-analyze", help="Analyze Cortex-M fault registers via debug probe")
+    p_fault.add_argument("--device", default="NRF5340_XXAA_APP", help="Device string (e.g., NRF5340_XXAA_APP, MCXN947)")
     p_fault.add_argument("--elf", default=None, help="ELF file for GDB symbols")
     p_fault.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_fault.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
 
     p_stream = sub.add_parser("stream", help="Configure high-speed data stream mode")
     p_stream.add_argument("action", choices=["start", "stop"])
@@ -408,6 +410,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             device=args.device,
             elf=args.elf,
             chip=args.chip,
+            probe_type=args.probe,
             json_mode=args.json,
         )
     if args.cmd == "stream":

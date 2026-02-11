@@ -49,6 +49,12 @@ def _default_gdb_for_chip(chip: str) -> Optional[str]:
             p = shutil.which(name)
             if p:
                 return p
+    # NXP MCX (Cortex-M33)
+    if chip.startswith("mcx"):
+        for name in ("arm-none-eabi-gdb", "gdb-multiarch"):
+            p = shutil.which(name)
+            if p:
+                return p
     # Fall back to system gdb if present.
     return shutil.which("gdb")
 

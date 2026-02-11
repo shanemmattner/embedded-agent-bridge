@@ -10,11 +10,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from eab.debug_probes.base import DebugProbe, GDBServerStatus
+from eab.debug_probes.jlink import JLinkProbe
 from eab.fault_analyzer import (
     analyze_fault,
     format_report,
     _parse_gdb_registers,
     _parse_gdb_backtrace,
+    _wrap_legacy_bridge,
 )
 from eab.fault_decoders import FaultReport, get_fault_decoder
 
@@ -65,6 +68,27 @@ class TestParseGDBBacktrace:
 
 
 # =============================================================================
+# Legacy Bridge Wrapping
+# =============================================================================
+
+class TestWrapLegacyBridge:
+    def test_debug_probe_passes_through(self):
+        """A DebugProbe should pass through unwrapped."""
+        probe = MagicMock(spec=DebugProbe)
+        result, legacy = _wrap_legacy_bridge(probe)
+        assert result is probe
+        assert legacy is None
+
+    def test_jlink_bridge_gets_wrapped(self):
+        """A JLinkBridge should be wrapped in JLinkProbe."""
+        bridge = MagicMock()
+        bridge.rtt_status = MagicMock()
+        result, legacy = _wrap_legacy_bridge(bridge)
+        assert isinstance(result, JLinkProbe)
+        assert legacy is bridge
+
+
+# =============================================================================
 # Integration Test (Mocked)
 # =============================================================================
 
@@ -99,6 +123,7 @@ class TestAnalyzeFaultIntegration:
         gdb_status = MagicMock()
         gdb_status.running = True
         gdb_status.last_error = None
+        gdb_status.port = 2331
         bridge.start_gdb_server.return_value = gdb_status
 
         mock_result = MagicMock()
@@ -124,6 +149,30 @@ class TestAnalyzeFaultIntegration:
         assert report.arch == "cortex-m"
 
     @patch("eab.fault_analyzer.run_gdb_batch")
+    def test_full_pipeline_with_debug_probe(self, mock_gdb_batch, tmp_path):
+        """analyze_fault() should work with a DebugProbe (no RTT)."""
+        probe = MagicMock(spec=DebugProbe)
+        probe.gdb_port = 3333
+        probe.start_gdb_server.return_value = GDBServerStatus(
+            running=True, pid=12345, port=3333
+        )
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = self._make_gdb_output()
+        mock_result.stderr = ""
+        mock_gdb_batch.return_value = mock_result
+
+        report = analyze_fault(probe, device="MCXN947", chip="mcxn947")
+
+        probe.start_gdb_server.assert_called_once()
+        probe.stop_gdb_server.assert_called_once()
+        assert report.arch == "cortex-m"
+        # GDB batch should target the probe's port
+        call_kwargs = mock_gdb_batch.call_args[1]
+        assert call_kwargs["target"] == "localhost:3333"
+
+    @patch("eab.fault_analyzer.run_gdb_batch")
     def test_rtt_stop_and_restart(self, mock_gdb_batch, tmp_path):
         """analyze_fault() should stop RTT before GDB and restart if requested."""
         bridge = MagicMock()
@@ -134,6 +183,7 @@ class TestAnalyzeFaultIntegration:
         gdb_status = MagicMock()
         gdb_status.running = True
         gdb_status.last_error = None
+        gdb_status.port = 2331
         bridge.start_gdb_server.return_value = gdb_status
 
         mock_result = MagicMock()
@@ -148,6 +198,26 @@ class TestAnalyzeFaultIntegration:
         bridge.start_rtt.assert_called_once_with(device="NRF5340_XXAA_APP")
 
     @patch("eab.fault_analyzer.run_gdb_batch")
+    def test_no_rtt_for_openocd_probe(self, mock_gdb_batch, tmp_path):
+        """analyze_fault() with DebugProbe should NOT touch RTT."""
+        probe = MagicMock(spec=DebugProbe)
+        probe.gdb_port = 3333
+        probe.start_gdb_server.return_value = GDBServerStatus(
+            running=True, pid=12345, port=3333
+        )
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.stdout = self._make_gdb_output()
+        mock_result.stderr = ""
+        mock_gdb_batch.return_value = mock_result
+
+        report = analyze_fault(probe, device="MCXN947", chip="mcxn947")
+
+        # DebugProbe has no rtt_status — should never be called
+        assert not hasattr(probe, "rtt_status") or not probe.rtt_status.called
+
+    @patch("eab.fault_analyzer.run_gdb_batch")
     def test_cfsr_zero_with_psp_frame(self, mock_gdb_batch, tmp_path):
         """CFSR=0 + FORCED: should produce cleared hint and parse stacked PC."""
         bridge = MagicMock()
@@ -158,6 +228,7 @@ class TestAnalyzeFaultIntegration:
         gdb_status = MagicMock()
         gdb_status.running = True
         gdb_status.last_error = None
+        gdb_status.port = 2331
         bridge.start_gdb_server.return_value = gdb_status
 
         lines = [
@@ -198,6 +269,7 @@ class TestAnalyzeFaultIntegration:
         gdb_status = MagicMock()
         gdb_status.running = False
         gdb_status.last_error = "JLinkGDBServer not found"
+        gdb_status.port = 2331
         bridge.start_gdb_server.return_value = gdb_status
 
         report = analyze_fault(bridge, device="NRF5340_XXAA_APP")
@@ -217,6 +289,7 @@ class TestAnalyzeFaultIntegration:
         gdb_status = MagicMock()
         gdb_status.running = True
         gdb_status.last_error = None
+        gdb_status.port = 2331
         bridge.start_gdb_server.return_value = gdb_status
 
         mock_result = MagicMock()

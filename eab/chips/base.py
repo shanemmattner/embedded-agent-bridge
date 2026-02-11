@@ -49,7 +49,7 @@ class OpenOCDConfig:
     """OpenOCD configuration for a chip."""
 
     interface_cfg: str  # e.g., "interface/stlink.cfg"
-    target_cfg: str  # e.g., "target/stm32f4x.cfg"
+    target_cfg: Optional[str] = None  # e.g., "target/stm32f4x.cfg" (None for inline config)
     adapter_driver: Optional[str] = None  # e.g., "hla_swd"
     transport: Optional[str] = None  # e.g., "hla_swd", "dapdirect_swd"
     extra_commands: list[str] = field(default_factory=list)

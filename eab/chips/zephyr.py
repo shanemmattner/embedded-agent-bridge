@@ -46,6 +46,7 @@ class ZephyrProfile(ChipProfile):
         "nrf52840": {"board": "nrf52840dk/nrf52840", "runner": "jlink"},
         "nrf52833": {"board": "nrf52833dk/nrf52833", "runner": "jlink"},
         "rp2040": {"board": "rpi_pico", "runner": None},
+        "mcxn947": {"board": "frdm_mcxn947/mcxn947/cpu0", "runner": "linkserver"},
     }
 
     @property
@@ -65,7 +66,10 @@ class ZephyrProfile(ChipProfile):
             return ChipFamily.ESP32
         elif "rp2040" in variant_lower:
             return ChipFamily.RP2040
-        
+        elif "mcx" in variant_lower:
+            # NXP MCX series — Cortex-M33, same debug family as nRF53
+            return ChipFamily.NRF52
+
         # Default fallback
         return ChipFamily.NRF52
 
@@ -383,7 +387,23 @@ class ZephyrProfile(ChipProfile):
                 target_cfg="target/rp2040.cfg",
                 transport="swd",
             )
-        
+
+        # NXP MCX: Use CMSIS-DAP (MCU-Link on-board) with inline SWD config
+        # OpenOCD 0.12 has no stock target/mcxn947.cfg
+        if "mcx" in variant_lower:
+            return OpenOCDConfig(
+                interface_cfg="interface/cmsis-dap.cfg",
+                target_cfg=None,
+                transport="swd",
+                extra_commands=[
+                    "adapter speed 1000",
+                    "swd newdap mcxn947 cpu -dp-id 0",
+                    "dap create mcxn947.dap -chain-position mcxn947.cpu",
+                    "target create mcxn947.cpu cortex_m -dap mcxn947.dap -ap-num 0",
+                    "cortex_m reset_config sysresetreq",
+                ],
+            )
+
         # Fallback: ST-Link with STM32F4 (generic Cortex-M)
         return OpenOCDConfig(
             interface_cfg="interface/stlink.cfg",

@@ -25,6 +25,7 @@ _DECODERS: dict[str, type[FaultDecoder]] = {
     "stm32f4": CortexMDecoder,
     "stm32l4": CortexMDecoder,
     "stm32h7": CortexMDecoder,
+    "mcxn947": CortexMDecoder,
     # Future:
     # "esp32c6": RiscVDecoder,
     # "esp32s3": XtensaDecoder,

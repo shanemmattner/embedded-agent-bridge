@@ -7,10 +7,10 @@ returns a structured FaultReport with human-readable diagnostics.
 Architecture:
     analyze_fault()
         -> get_fault_decoder(chip) selects decoder
-        -> JLinkBridge.start_gdb_server(device)
+        -> probe.start_gdb_server() (DebugProbe abstraction)
         -> run_gdb_batch() with decoder.gdb_commands() + info regs + bt
         -> decoder.parse_and_decode() interprets arch-specific registers
-        -> JLinkBridge.stop_gdb_server()
+        -> probe.stop_gdb_server()
         -> returns FaultReport
 """
 
@@ -20,6 +20,7 @@ import logging
 import re
 from typing import Optional
 
+from .debug_probes.base import DebugProbe
 from .fault_decoders import FaultDecoder, FaultReport, get_fault_decoder
 from .gdb_bridge import run_gdb_batch
 
@@ -61,12 +62,23 @@ def _parse_gdb_backtrace(output: str) -> str:
     return "\n".join(bt_lines)
 
 
+def _wrap_legacy_bridge(probe_or_bridge):
+    """If given a JLinkBridge, wrap it in JLinkProbe for backward compat."""
+    if isinstance(probe_or_bridge, DebugProbe):
+        return probe_or_bridge, None
+
+    # Legacy JLinkBridge — wrap it
+    from .debug_probes.jlink import JLinkProbe
+    wrapped = JLinkProbe(bridge=probe_or_bridge)
+    return wrapped, probe_or_bridge
+
+
 # =============================================================================
 # Main Analysis Pipeline
 # =============================================================================
 
 def analyze_fault(
-    bridge,
+    probe,
     device: str,
     *,
     decoder: Optional[FaultDecoder] = None,
@@ -74,44 +86,58 @@ def analyze_fault(
     chip: str = "nrf5340",
     port: int = 2331,
     restart_rtt: bool = False,
+    rtt_bridge=None,
 ) -> FaultReport:
     """Full fault analysis pipeline: start GDB server, read registers, decode, stop.
 
-    Handles J-Link single-client constraint (issue #66):
-    1. Checks if RTT is running
-    2. Stops RTT if needed (J-Link only allows one client)
-    3. Starts GDB server, reads fault registers
-    4. Stops GDB server
-    5. Optionally restarts RTT
+    Supports both the DebugProbe abstraction and legacy JLinkBridge for
+    backward compatibility:
+    - DebugProbe: uses probe.start_gdb_server() / stop_gdb_server() / gdb_port
+    - JLinkBridge: auto-wrapped in JLinkProbe, RTT handled via rtt_bridge
+
+    J-Link single-client constraint (issue #66):
+    RTT stop/start only happens if rtt_bridge is provided (or if probe is a
+    legacy JLinkBridge, which auto-sets rtt_bridge). OpenOCD doesn't have
+    this constraint.
 
     Args:
-        bridge: JLinkBridge instance
-        device: J-Link device string (e.g., NRF5340_XXAA_APP)
+        probe: DebugProbe instance or JLinkBridge (backward compat)
+        device: Device string (e.g., NRF5340_XXAA_APP, MCXN947)
         decoder: Optional FaultDecoder override (defaults to chip-based lookup)
         elf: Optional path to ELF file for symbols
         chip: Chip type for GDB selection and decoder lookup (default: nrf5340)
-        port: GDB server port (default: 2331)
+        port: GDB server port (default: 2331, ignored if probe is DebugProbe)
         restart_rtt: Whether to restart RTT after analysis
+        rtt_bridge: Separate RTT bridge for J-Link RTT stop/start (optional)
 
     Returns:
         FaultReport with decoded fault information
     """
+    # Backward compat: wrap JLinkBridge in JLinkProbe
+    probe, legacy_bridge = _wrap_legacy_bridge(probe)
+    if legacy_bridge is not None and rtt_bridge is None:
+        rtt_bridge = legacy_bridge
+
     if decoder is None:
         decoder = get_fault_decoder(chip)
+
+    # Use probe's port unless caller provided one explicitly via legacy path
+    effective_port = probe.gdb_port if legacy_bridge is None else port
 
     report = FaultReport()
     rtt_was_running = False
 
     try:
-        # Step 1: Check/stop RTT (J-Link single-client constraint)
-        rtt_status = bridge.rtt_status()
-        if rtt_status.running:
-            logger.info("RTT is running — stopping for GDB access (J-Link single-client)")
-            bridge.stop_rtt()
-            rtt_was_running = True
+        # Step 1: Check/stop RTT (only if rtt_bridge provided — J-Link constraint)
+        if rtt_bridge is not None:
+            rtt_status = rtt_bridge.rtt_status()
+            if rtt_status.running:
+                logger.info("RTT is running — stopping for GDB access (J-Link single-client)")
+                rtt_bridge.stop_rtt()
+                rtt_was_running = True
 
-        # Step 2: Start GDB server
-        gdb_status = bridge.start_gdb_server(device=device, port=port)
+        # Step 2: Start GDB server via probe
+        gdb_status = probe.start_gdb_server(device=device, port=effective_port)
         if not gdb_status.running:
             logger.error("Failed to start GDB server: %s", gdb_status.last_error)
             report.faults = [f"GDB server failed to start: {gdb_status.last_error}"]
@@ -125,7 +151,7 @@ def analyze_fault(
         )
 
         # Step 4: Run GDB batch
-        target = f"localhost:{port}"
+        target = f"localhost:{effective_port}"
         result = run_gdb_batch(
             chip=chip,
             target=target,
@@ -148,14 +174,14 @@ def analyze_fault(
     finally:
         # Step 7: Stop GDB server
         try:
-            bridge.stop_gdb_server()
+            probe.stop_gdb_server()
         except Exception:
             logger.exception("Failed to stop GDB server")
 
         # Step 8: Restart RTT if it was running and requested
-        if rtt_was_running and restart_rtt:
+        if rtt_was_running and restart_rtt and rtt_bridge is not None:
             try:
-                bridge.start_rtt(device=device)
+                rtt_bridge.start_rtt(device=device)
             except Exception:
                 logger.exception("Failed to restart RTT")
 

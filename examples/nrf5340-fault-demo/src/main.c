@@ -2,19 +2,27 @@
  * EAB Fault Demo — Multi-threaded firmware with injectable faults
  *
  * Three worker threads run continuously (sensor, blinker, watchdog).
- * Shell commands let you trigger specific Cortex-M33 faults on demand
- * so you can diagnose them with: eabctl fault-analyze
+ * Trigger faults via buttons (primary) or shell commands (advanced):
  *
- * Shell commands (via RTT):
+ * Buttons (nRF5340 DK):
+ *   Button 1 — NULL pointer dereference  (DACCVIOL)
+ *   Button 2 — Divide by zero            (DIVBYZERO)
+ *   Button 3 — Stack overflow            (STKOF)
+ *   Button 4 — Invalid peripheral read   (PRECISERR)
+ *
+ * Shell commands (via RTT channel 1):
  *   fault null       — NULL pointer dereference  (DACCVIOL)
  *   fault divzero    — Integer divide by zero     (DIVBYZERO)
  *   fault unaligned  — Unaligned 32-bit access    (UNALIGNED)
  *   fault undef      — Undefined instruction       (UNDEFINSTR)
  *   fault overflow   — Stack overflow              (STKOF)
  *   fault bus        — Invalid peripheral address  (PRECISERR)
+ *
+ * Then diagnose with: eabctl fault-analyze --device NRF5340_XXAA_APP
  */
 
 #include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include <math.h>
@@ -22,6 +30,75 @@
 #include <string.h>
 
 LOG_MODULE_REGISTER(fault_demo, LOG_LEVEL_INF);
+
+/* ===================================================================
+ * Button-Triggered Faults (nRF5340 DK buttons sw0–sw3)
+ * =================================================================== */
+
+static const struct gpio_dt_spec btn1 = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
+static const struct gpio_dt_spec btn2 = GPIO_DT_SPEC_GET(DT_ALIAS(sw1), gpios);
+static const struct gpio_dt_spec btn3 = GPIO_DT_SPEC_GET(DT_ALIAS(sw2), gpios);
+static const struct gpio_dt_spec btn4 = GPIO_DT_SPEC_GET(DT_ALIAS(sw3), gpios);
+
+static struct gpio_callback btn1_cb, btn2_cb, btn3_cb, btn4_cb;
+
+/* Prevent compiler from optimizing away our fault triggers */
+static volatile int fault_sink;
+
+static void btn1_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+	LOG_INF("Button 1 → NULL pointer dereference");
+	volatile int *p = NULL;
+	fault_sink = *p;
+}
+
+static void overflow_recurse(volatile int depth)
+{
+	volatile char buf[256];
+	memset((void *)buf, (int)depth, sizeof(buf));
+	overflow_recurse(depth + 1);
+}
+
+static void btn2_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+	LOG_INF("Button 2 → Divide by zero");
+	volatile int a = 42;
+	volatile int b = 0;
+	fault_sink = a / b;
+}
+
+static void btn3_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+	LOG_INF("Button 3 → Stack overflow");
+	overflow_recurse(0);
+}
+
+static void btn4_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+	LOG_INF("Button 4 → Invalid peripheral read");
+	volatile uint32_t *bad_periph = (volatile uint32_t *)0x50FF0000;
+	fault_sink = *bad_periph;
+}
+
+static int init_buttons(void)
+{
+	const struct gpio_dt_spec *btns[] = {&btn1, &btn2, &btn3, &btn4};
+	struct gpio_callback *cbs[] = {&btn1_cb, &btn2_cb, &btn3_cb, &btn4_cb};
+	gpio_callback_handler_t handlers[] = {btn1_handler, btn2_handler, btn3_handler, btn4_handler};
+
+	for (int i = 0; i < 4; i++) {
+		if (!gpio_is_ready_dt(btns[i])) {
+			LOG_WRN("Button %d not ready", i + 1);
+			continue;
+		}
+		gpio_pin_configure_dt(btns[i], GPIO_INPUT);
+		gpio_pin_interrupt_configure_dt(btns[i], GPIO_INT_EDGE_TO_ACTIVE);
+		gpio_init_callback(cbs[i], handlers[i], BIT(btns[i]->pin));
+		gpio_add_callback(btns[i]->port, cbs[i]);
+	}
+
+	return 0;
+}
 
 /* ===================================================================
  * Worker Thread: Sensor (reads fake ADC, logs DATA lines)
@@ -119,9 +196,6 @@ K_THREAD_DEFINE(monitor_tid, MONITOR_STACK_SIZE,
  * Fault Injection Shell Commands
  * =================================================================== */
 
-/* Prevent compiler from optimizing away our fault triggers */
-static volatile int fault_sink;
-
 static int cmd_fault_null(const struct shell *sh, size_t argc, char **argv)
 {
 	shell_print(sh, "Triggering NULL pointer dereference...");
@@ -154,13 +228,6 @@ static int cmd_fault_undef(const struct shell *sh, size_t argc, char **argv)
 	/* UDF #0 — permanently undefined on ARM Thumb-2 */
 	__asm volatile (".hword 0xDE00");  /* UNDEFINSTR */
 	return 0;
-}
-
-static void overflow_recurse(volatile int depth)
-{
-	volatile char buf[256];  /* eat stack quickly */
-	memset((void *)buf, (int)depth, sizeof(buf));
-	overflow_recurse(depth + 1);
 }
 
 static int cmd_fault_overflow(const struct shell *sh, size_t argc, char **argv)
@@ -201,10 +268,13 @@ int main(void)
 {
 	LOG_INF("=== EAB Fault Demo v1.0 ===");
 	LOG_INF("3 worker threads running (sensor, blinker, monitor)");
-	LOG_INF("Type 'fault <type>' in shell to inject a fault");
-	LOG_INF("Then run: eabctl fault-analyze --device NRF5340_XXAA_APP");
-	LOG_INF("Fault types: null, divzero, unaligned, undef, overflow, bus");
+	LOG_INF("Press buttons 1-4 to trigger faults:");
+	LOG_INF("  B1=NULL  B2=DivZero  B3=StackOvf  B4=BusFault");
 
-	/* Main thread has nothing else to do — workers run independently */
+	init_buttons();
+
+	LOG_INF("Shell also available on RTT ch1: fault <type>");
+	LOG_INF("Then run: eabctl fault-analyze --device NRF5340_XXAA_APP");
+
 	return 0;
 }

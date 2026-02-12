@@ -233,7 +233,7 @@ class TestGetDWTStatus:
 class TestParseSymbolAddress:
     """Test ELF symbol parsing with arm-none-eabi-nm."""
 
-    @patch("eab.dwt_profiler.shutil.which")
+    @patch("eab.dwt_profiler._which_or_sdk")
     @patch("eab.dwt_profiler.subprocess.run")
     def test_parse_finds_function_address(self, mock_run, mock_which):
         """_parse_symbol_address() should parse nm output for function address."""
@@ -258,7 +258,7 @@ class TestParseSymbolAddress:
             "/path/to/app.elf",
         ]
 
-    @patch("eab.dwt_profiler.shutil.which")
+    @patch("eab.dwt_profiler._which_or_sdk")
     @patch("eab.dwt_profiler.subprocess.run")
     def test_parse_handles_weak_symbols(self, mock_run, mock_which):
         """_parse_symbol_address() should accept weak symbols (W)."""
@@ -272,7 +272,7 @@ class TestParseSymbolAddress:
 
         assert addr == 0x2000
 
-    @patch("eab.dwt_profiler.shutil.which")
+    @patch("eab.dwt_profiler._which_or_sdk")
     @patch("eab.dwt_profiler.subprocess.run")
     def test_parse_returns_none_if_not_found(self, mock_run, mock_which):
         """_parse_symbol_address() should return None if symbol not found."""
@@ -296,7 +296,7 @@ class TestParseSymbolAddress:
 
         assert "not found" in str(exc_info.value).lower()
 
-    @patch("eab.dwt_profiler.shutil.which")
+    @patch("eab.dwt_profiler._which_or_sdk")
     @patch("eab.dwt_profiler.subprocess.run")
     def test_parse_raises_on_subprocess_error(self, mock_run, mock_which):
         """_parse_symbol_address() should raise on subprocess failure."""
@@ -312,7 +312,7 @@ class TestParseSymbolAddress:
 class TestFindFunctionEnd:
     """Test function end address detection via objdump."""
 
-    @patch("eab.dwt_profiler.shutil.which")
+    @patch("eab.dwt_profiler._which_or_sdk")
     @patch("eab.dwt_profiler.subprocess.run")
     def test_find_end_from_objdump(self, mock_run, mock_which):
         """_find_function_end() should parse objdump to find next function."""
@@ -334,7 +334,7 @@ class TestFindFunctionEnd:
         # Should return address of next_function (0x123c)
         assert end_addr == 0x123c
 
-    @patch("eab.dwt_profiler.shutil.which")
+    @patch("eab.dwt_profiler._which_or_sdk")
     @patch("eab.dwt_profiler.subprocess.run")
     def test_find_end_when_last_function(self, mock_run, mock_which):
         """_find_function_end() should use last_addr + 4 if no next function."""
@@ -354,7 +354,7 @@ class TestFindFunctionEnd:
         # Should return last instruction + 4
         assert end_addr == 0x123c  # 0x1238 + 4
 
-    @patch("eab.dwt_profiler.shutil.which")
+    @patch("eab.dwt_profiler._which_or_sdk")
     def test_find_end_fallback_when_objdump_missing(self, mock_which):
         """_find_function_end() should use heuristic if objdump not found."""
         mock_which.return_value = None
@@ -364,7 +364,7 @@ class TestFindFunctionEnd:
         # Fallback: start + 32 bytes
         assert end_addr == 0x1234 + 32
 
-    @patch("eab.dwt_profiler.shutil.which")
+    @patch("eab.dwt_profiler._which_or_sdk")
     @patch("eab.dwt_profiler.subprocess.run")
     def test_find_end_fallback_on_subprocess_error(self, mock_run, mock_which):
         """_find_function_end() should use heuristic on objdump failure."""
@@ -686,3 +686,103 @@ class TestProfileResult:
 
         with pytest.raises(AttributeError):
             result.cycles = 2000  # type: ignore
+
+
+# =============================================================================
+# OpenOCD DWT Backend Tests
+# =============================================================================
+
+class TestOcdRead32:
+    """Test _ocd_read32 OpenOCD telnet register read."""
+
+    def test_parses_mdw_response(self):
+        from eab.dwt_profiler import _ocd_read32
+        bridge = MagicMock()
+        bridge.cmd.return_value = "0xe0001004: 00000042"
+        assert _ocd_read32(bridge, 0xE0001004) == 0x42
+
+    def test_raises_on_unparseable_response(self):
+        from eab.dwt_profiler import _ocd_read32
+        bridge = MagicMock()
+        bridge.cmd.return_value = "error: target not halted"
+        with pytest.raises(RuntimeError, match="Failed to parse mdw"):
+            _ocd_read32(bridge, 0xE0001004)
+
+
+class TestOcdWrite32:
+    """Test _ocd_write32 OpenOCD telnet register write."""
+
+    def test_sends_mww_command(self):
+        from eab.dwt_profiler import _ocd_write32
+        bridge = MagicMock()
+        _ocd_write32(bridge, 0xE0001004, 0)
+        bridge.cmd.assert_called_once_with("mww 0xE0001004 0x00000000", telnet_port=4444)
+
+
+class TestEnableDwtOpenocd:
+    """Test enable_dwt_openocd via mocked bridge."""
+
+    def test_enables_trcena_and_cyccntena(self):
+        from eab.dwt_profiler import enable_dwt_openocd
+        bridge = MagicMock()
+        # First reads: DEMCR=0, DWT_CTRL=0 (disabled)
+        # After writes, verification reads return enabled bits
+        bridge.cmd.side_effect = [
+            "0xe000edfc: 00000000",  # read DEMCR
+            "",                       # write DEMCR
+            "0xe0001000: 00000000",  # read DWT_CTRL
+            "",                       # write DWT_CTRL
+            "0xe000edfc: 01000000",  # verify DEMCR (TRCENA set)
+            "0xe0001000: 00000001",  # verify DWT_CTRL (CYCCNTENA set)
+        ]
+        assert enable_dwt_openocd(bridge) is True
+
+    def test_returns_false_on_verify_failure(self):
+        from eab.dwt_profiler import enable_dwt_openocd
+        bridge = MagicMock()
+        bridge.cmd.side_effect = [
+            "0xe000edfc: 00000000",  # read DEMCR
+            "",                       # write DEMCR
+            "0xe0001000: 00000000",  # read DWT_CTRL
+            "",                       # write DWT_CTRL
+            "0xe000edfc: 00000000",  # verify DEMCR (still 0 — failed)
+            "0xe0001000: 00000000",  # verify DWT_CTRL (still 0)
+        ]
+        assert enable_dwt_openocd(bridge) is False
+
+
+class TestReadCycleCountOpenocd:
+    """Test read_cycle_count_openocd."""
+
+    def test_reads_cyccnt(self):
+        from eab.dwt_profiler import read_cycle_count_openocd
+        bridge = MagicMock()
+        bridge.cmd.return_value = "0xe0001004: 0000ffff"
+        assert read_cycle_count_openocd(bridge) == 0xFFFF
+
+
+class TestResetCycleCountOpenocd:
+    """Test reset_cycle_count_openocd."""
+
+    def test_writes_zero_to_cyccnt(self):
+        from eab.dwt_profiler import reset_cycle_count_openocd
+        bridge = MagicMock()
+        reset_cycle_count_openocd(bridge)
+        bridge.cmd.assert_called_once_with("mww 0xE0001004 0x00000000", telnet_port=4444)
+
+
+class TestGetDwtStatusOpenocd:
+    """Test get_dwt_status_openocd."""
+
+    def test_returns_register_dict(self):
+        from eab.dwt_profiler import get_dwt_status_openocd
+        bridge = MagicMock()
+        bridge.cmd.side_effect = [
+            "0xe000edfc: 01000000",  # DEMCR
+            "0xe0001000: 40000001",  # DWT_CTRL
+            "0xe0001004: 00001234",  # DWT_CYCCNT
+        ]
+        status = get_dwt_status_openocd(bridge)
+        assert status["DEMCR"] == 0x01000000
+        assert status["DWT_CTRL"] == 0x40000001
+        assert status["DWT_CYCCNT"] == 0x1234

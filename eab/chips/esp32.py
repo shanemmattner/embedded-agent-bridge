@@ -7,7 +7,6 @@ Uses esptool for flashing and esp_usb_jtag for OpenOCD.
 
 from __future__ import annotations
 
-import glob
 import logging
 import re
 import shutil

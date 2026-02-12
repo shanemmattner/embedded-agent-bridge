@@ -37,11 +37,18 @@ def _detect_cpu_freq(device: str, chip: Optional[str] = None) -> Optional[int]:
     return None
 
 
-def _setup_openocd_probe(base_dir: str, chip: str):
+def _setup_openocd_probe(base_dir: str, chip: str) -> tuple:
     """Create and start an OpenOCD probe for the given chip.
 
+    Args:
+        base_dir: Session directory for probe state files.
+        chip: Chip type for ZephyrProfile lookup (e.g., stm32l4, mcxn947).
+
     Returns:
-        (probe, bridge, telnet_port) tuple
+        (probe, bridge) tuple — OpenOCDProbe and OpenOCDBridge instances.
+
+    Raises:
+        RuntimeError: If OpenOCD fails to start.
     """
     from eab.debug_probes import get_debug_probe
     from eab.chips.zephyr import ZephyrProfile
@@ -209,6 +216,19 @@ def cmd_profile_region(
     """Profile an address region using DWT cycle counter.
 
     Supports both J-Link (pylink) and OpenOCD probe backends.
+
+    Args:
+        base_dir: Session directory for probe state files.
+        start_addr: Start address of the region to profile.
+        end_addr: End address of the region to profile.
+        device: Device string for J-Link (e.g., NRF5340_XXAA_APP).
+        cpu_freq: CPU frequency in Hz (None for auto-detect).
+        probe_type: Debug probe type ('jlink' or 'openocd').
+        chip: Chip type for OpenOCD config and auto-detect.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success, 1 on profiling error, 2 on config error.
     """
     if cpu_freq is None:
         cpu_freq = _detect_cpu_freq(device, chip)
@@ -305,6 +325,16 @@ def cmd_dwt_status(
     """Display DWT register state.
 
     Supports both J-Link (pylink) and OpenOCD probe backends.
+
+    Args:
+        base_dir: Session directory for probe state files.
+        device: Device string for J-Link (e.g., NRF5340_XXAA_APP).
+        probe_type: Debug probe type ('jlink' or 'openocd').
+        chip: Chip type for OpenOCD config lookup.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success, 1 on read failure, 2 on config error.
     """
     from eab.dwt_profiler import DEMCR_TRCENA, DWT_CTRL_CYCCNTENA
 

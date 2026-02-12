@@ -20,11 +20,10 @@ DWT Register Map:
 from __future__ import annotations
 
 import logging
-import shutil
+import re
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +75,7 @@ def _ensure_pylink_available():
         )
 
 
-def enable_dwt(jlink) -> bool:
+def enable_dwt(jlink: Any) -> bool:  # jlink: pylink.JLink (optional dep)
     """Enable DWT cycle counter by setting TRCENA and CYCCNTENA bits.
 
     Args:
@@ -127,7 +126,7 @@ def enable_dwt(jlink) -> bool:
         raise
 
 
-def read_cycle_count(jlink) -> int:
+def read_cycle_count(jlink: Any) -> int:
     """Read current DWT cycle counter value.
 
     Args:
@@ -150,7 +149,7 @@ def read_cycle_count(jlink) -> int:
         raise
 
 
-def reset_cycle_count(jlink):
+def reset_cycle_count(jlink: Any) -> None:
     """Reset DWT cycle counter to zero.
 
     Args:
@@ -170,7 +169,7 @@ def reset_cycle_count(jlink):
         raise
 
 
-def get_dwt_status(jlink) -> dict:
+def get_dwt_status(jlink: Any) -> dict[str, int]:
     """Read and return DWT register values for diagnostics.
 
     Args:
@@ -204,17 +203,7 @@ def get_dwt_status(jlink) -> dict:
 # ELF Symbol Parsing
 # =============================================================================
 
-def _which_or_sdk(name: str) -> Optional[str]:
-    """Try PATH first, then known SDK directories (Zephyr SDK)."""
-    result = shutil.which(name)
-    if result:
-        return result
-    home = Path.home()
-    for sdk_dir in sorted(home.glob("zephyr-sdk-*"), reverse=True):
-        candidate = sdk_dir / "arm-zephyr-eabi" / "bin" / name
-        if candidate.is_file():
-            return str(candidate)
-    return None
+from eab.toolchain import which_or_sdk as _which_or_sdk
 
 
 def _parse_symbol_address(elf_path: str, function_name: str) -> Optional[int]:
@@ -274,7 +263,7 @@ def _parse_symbol_address(elf_path: str, function_name: str) -> Optional[int]:
 # =============================================================================
 
 def profile_region(
-    jlink,
+    jlink: Any,
     start_addr: int,
     end_addr: int,
     cpu_freq_hz: int,
@@ -373,7 +362,7 @@ def profile_region(
             pass
 
 
-def _wait_for_halt(jlink, timeout_s: float) -> bool:
+def _wait_for_halt(jlink: Any, timeout_s: float) -> bool:
     """Wait for target to halt (e.g., due to breakpoint).
 
     Args:
@@ -393,7 +382,7 @@ def _wait_for_halt(jlink, timeout_s: float) -> bool:
 
 
 def profile_function(
-    jlink,
+    jlink: Any,
     elf_path: str,
     function_name: str,
     cpu_freq_hz: int,
@@ -552,12 +541,10 @@ def _find_function_end(elf_path: str, function_name: str, start_addr: int) -> in
 # of pylink. This enables DWT profiling on any debug probe (ST-Link,
 # CMSIS-DAP, etc.), not just J-Link.
 
-import re
-
 _MDW_PATTERN = re.compile(r"0x[0-9a-fA-F]+:\s+(0x[0-9a-fA-F]+|[0-9a-fA-F]+)")
 
 
-def _ocd_read32(bridge, addr: int, telnet_port: int = 4444) -> int:
+def _ocd_read32(bridge: Any, addr: int, telnet_port: int = 4444) -> int:
     """Read a 32-bit word via OpenOCD telnet ``mdw`` command.
 
     Args:
@@ -576,12 +563,12 @@ def _ocd_read32(bridge, addr: int, telnet_port: int = 4444) -> int:
     return int(val_str, 16) if val_str.startswith("0x") else int(val_str, 16)
 
 
-def _ocd_write32(bridge, addr: int, value: int, telnet_port: int = 4444) -> None:
+def _ocd_write32(bridge: Any, addr: int, value: int, telnet_port: int = 4444) -> None:
     """Write a 32-bit word via OpenOCD telnet ``mww`` command."""
     bridge.cmd(f"mww 0x{addr:08X} 0x{value:08X}", telnet_port=telnet_port)
 
 
-def enable_dwt_openocd(bridge, telnet_port: int = 4444) -> bool:
+def enable_dwt_openocd(bridge: Any, telnet_port: int = 4444) -> bool:
     """Enable DWT cycle counter via OpenOCD (same logic as enable_dwt but using telnet)."""
     try:
         demcr = _ocd_read32(bridge, DEMCR_ADDR, telnet_port)
@@ -608,17 +595,17 @@ def enable_dwt_openocd(bridge, telnet_port: int = 4444) -> bool:
         raise
 
 
-def read_cycle_count_openocd(bridge, telnet_port: int = 4444) -> int:
+def read_cycle_count_openocd(bridge: Any, telnet_port: int = 4444) -> int:
     """Read DWT_CYCCNT via OpenOCD."""
     return _ocd_read32(bridge, DWT_CYCCNT_ADDR, telnet_port)
 
 
-def reset_cycle_count_openocd(bridge, telnet_port: int = 4444) -> None:
+def reset_cycle_count_openocd(bridge: Any, telnet_port: int = 4444) -> None:
     """Reset DWT_CYCCNT to zero via OpenOCD."""
     _ocd_write32(bridge, DWT_CYCCNT_ADDR, 0, telnet_port)
 
 
-def get_dwt_status_openocd(bridge, telnet_port: int = 4444) -> dict:
+def get_dwt_status_openocd(bridge: Any, telnet_port: int = 4444) -> dict[str, int]:
     """Read DWT register values via OpenOCD (same as get_dwt_status but via telnet)."""
     return {
         "DEMCR": _ocd_read32(bridge, DEMCR_ADDR, telnet_port),

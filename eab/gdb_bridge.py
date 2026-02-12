@@ -29,37 +29,21 @@ class GDBResult:
     json_result: Optional[dict[str, Any]] = None
 
 
-def _find_in_sdk_dirs(name: str) -> Optional[str]:
-    """Search for a tool in known SDK directories beyond PATH.
-
-    Checks Zephyr SDK and ESP-IDF toolchain install locations that may
-    not be on the user's PATH.
-    """
-    home = Path.home()
-    # Zephyr SDK (glob for version-numbered dirs)
-    for sdk_dir in sorted(home.glob("zephyr-sdk-*"), reverse=True):
-        candidate = sdk_dir / "arm-zephyr-eabi" / "bin" / name
-        if candidate.is_file():
-            return str(candidate)
-    # ESP-IDF RISC-V GDB
-    for tool_dir in sorted(home.glob(".espressif/tools/riscv32-esp-elf-gdb/*/riscv32-esp-elf-gdb/bin"), reverse=True):
-        candidate = tool_dir / name
-        if candidate.is_file():
-            return str(candidate)
-    # ESP-IDF Xtensa GDB
-    for tool_dir in sorted(home.glob(".espressif/tools/xtensa-*-elf-gdb/*/xtensa-*-elf-gdb/bin"), reverse=True):
-        candidate = tool_dir / name
-        if candidate.is_file():
-            return str(candidate)
-    return None
-
-
-def _which_or_sdk(name: str) -> Optional[str]:
-    """Try PATH first, then known SDK directories."""
-    return shutil.which(name) or _find_in_sdk_dirs(name)
+from eab.toolchain import which_or_sdk as _which_or_sdk
 
 
 def _default_gdb_for_chip(chip: str) -> Optional[str]:
+    """Resolve the best GDB binary for a given chip family.
+
+    Searches PATH then SDK directories (Zephyr SDK, ESP-IDF toolchain).
+    Prefers Python-enabled GDB variants for scripting support.
+
+    Args:
+        chip: Chip identifier (e.g., nrf5340, esp32c6, stm32l4, mcxn947).
+
+    Returns:
+        Absolute path to GDB binary, or None if not found.
+    """
     chip = chip.lower()
     if chip in ("esp32s3", "esp32s2", "esp32"):
         # ESP32/ESP32S2/ESP32S3 use Xtensa.
@@ -102,6 +86,19 @@ def run_gdb_batch(
     commands: list[str],
     timeout_s: float = 60.0,
 ) -> GDBResult:
+    """Run GDB in batch mode with a list of commands against a remote target.
+
+    Args:
+        chip: Chip type for GDB binary selection (e.g., nrf5340, esp32c6).
+        target: GDB remote target string (default localhost:3333).
+        elf: Optional ELF file path for debug symbols.
+        gdb_path: Override GDB binary path (auto-detected from chip if None).
+        commands: List of GDB commands to execute sequentially.
+        timeout_s: Subprocess timeout in seconds.
+
+    Returns:
+        GDBResult with stdout, stderr, return code, and resolved gdb_path.
+    """
     gdb = gdb_path or _default_gdb_for_chip(chip) or "gdb"
     argv = [gdb, "-q"]
     if elf:
@@ -235,11 +232,9 @@ def generate_struct_inspector(elf_path: str, struct_name: str, var_name: str) ->
         with open("inspect_kernel.py", "w") as f:
             f.write(script)
     """
-    # Find readelf tool
-    readelf = shutil.which("arm-none-eabi-readelf") or shutil.which("readelf")
-    if not readelf:
-        # Generate a simpler script that tries to read the variable directly
-        return f'''#!/usr/bin/env python3
+    # Generate a script that reads the variable via GDB's type introspection.
+    # A future enhancement could use readelf DWARF parsing for richer field info.
+    return f'''#!/usr/bin/env python3
 """Generated GDB Python script to inspect {struct_name} variable {var_name}."""
 
 import gdb
@@ -286,11 +281,6 @@ except Exception as e:
 with open(result_file, "w") as f:
     json.dump(result, f, indent=2)
 '''
-    
-    # If readelf is available, we could parse DWARF to get field info
-    # For now, use the generic approach above
-    # In the future, this could be extended to use readelf output
-    return generate_struct_inspector(elf_path, struct_name, var_name)
 
 
 def generate_thread_inspector(rtos: str = 'zephyr') -> str:

@@ -19,6 +19,39 @@ from eab.debug_probes import get_debug_probe
 from eab.chips.zephyr import ZephyrProfile
 
 from eab.cli.helpers import _print
+from eab.debug_probes.base import DebugProbe, GDBServerStatus
+
+
+def _build_probe(
+    probe_type: str,
+    base_dir: str,
+    chip: str,
+    port: Optional[int] = None,
+) -> DebugProbe:
+    """Create a debug probe with OpenOCD or J-Link config.
+
+    Args:
+        probe_type: 'jlink' or 'openocd'.
+        base_dir: Session directory for probe state files.
+        chip: Chip type for ZephyrProfile lookup.
+        port: Optional GDB server port override.
+
+    Returns:
+        Configured DebugProbe instance.
+    """
+    probe_kwargs: dict = {}
+    if probe_type == "openocd":
+        profile = ZephyrProfile(variant=chip)
+        ocd_cfg = profile.get_openocd_config()
+        probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
+        probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
+        if ocd_cfg.transport:
+            probe_kwargs["transport"] = ocd_cfg.transport
+        probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
+        probe_kwargs["halt_command"] = ocd_cfg.halt_command
+    elif probe_type == "jlink" and port is not None:
+        probe_kwargs["port"] = port
+    return get_debug_probe(probe_type, base_dir=base_dir, **probe_kwargs)
 
 
 def cmd_openocd_status(*, base_dir: str, json_mode: bool) -> int:
@@ -213,22 +246,7 @@ def cmd_gdb_script(
     Returns:
         Exit code: 0 on success, 1 on failure.
     """
-    probe_kwargs: dict = {}
-
-    if probe_type == "openocd":
-        # Build OpenOCD config from chip profile
-        profile = ZephyrProfile(variant=chip)
-        ocd_cfg = profile.get_openocd_config()
-        probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
-        probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        if ocd_cfg.transport:
-            probe_kwargs["transport"] = ocd_cfg.transport
-        probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
-        probe_kwargs["halt_command"] = ocd_cfg.halt_command
-    elif probe_type == "jlink" and port is not None:
-        probe_kwargs["port"] = port
-
-    probe = get_debug_probe(probe_type, base_dir=base_dir, **probe_kwargs)
+    probe = _build_probe(probe_type, base_dir, chip, port)
 
     # Start GDB server
     status = probe.start_gdb_server(device=device) if probe_type == "jlink" else probe.start_gdb_server()

@@ -198,6 +198,21 @@ class ESP32Profile(ChipProfile):
     def flash_tool(self) -> str:
         return "esptool.py"
 
+    @staticmethod
+    def is_usb_jtag_port(port: str) -> bool:
+        """Check if port looks like a USB-JTAG/Serial connection (not external UART bridge).
+
+        USB-JTAG ports on macOS show up as /dev/cu.usbmodemXXXX (no "serial" in name).
+        External USB-UART bridges show up as /dev/cu.usbserial-XXXX or /dev/cu.SLAB_USBtoUART.
+        """
+        if not port:
+            return False
+        port_lower = port.lower()
+        # USB-JTAG: usbmodem (macOS), ttyACM (Linux)
+        if "usbmodem" in port_lower or "ttyacm" in port_lower:
+            return True
+        return False
+
     def get_flash_command(
         self,
         firmware_path: str,
@@ -205,6 +220,7 @@ class ESP32Profile(ChipProfile):
         address: str = "0x10000",
         baud: int = 921600,
         chip: str | None = None,
+        no_stub: bool = False,
         **kwargs,
     ) -> FlashCommand:
         """
@@ -216,14 +232,23 @@ class ESP32Profile(ChipProfile):
             address: Flash address (default 0x10000 for app)
             baud: Baud rate for flashing
             chip: Chip type (esp32, esp32s3, etc.)
+            no_stub: Use ROM bootloader instead of RAM stub (slower but more reliable)
         """
         chip = chip or self.variant or "auto"
+        usb_jtag = self.is_usb_jtag_port(port)
 
-        args = [
-            "--chip", chip,
+        # USB-JTAG benefits from usb-reset and lower baud
+        before_mode = "usb-reset" if usb_jtag else "default_reset"
+
+        args = ["--chip", chip]
+
+        if no_stub:
+            args.append("--no-stub")
+
+        args += [
             "--port", port,
             "--baud", str(baud),
-            "--before", "default_reset",
+            "--before", before_mode,
             "--after", "hard_reset",
             "write_flash",
             "--flash_mode", "dio",
@@ -231,10 +256,13 @@ class ESP32Profile(ChipProfile):
             address, firmware_path,
         ]
 
+        # Longer timeout when using --no-stub (ROM loader is ~10x slower)
+        timeout = 300.0 if no_stub else 120.0
+
         return FlashCommand(
             tool="esptool.py",
             args=args,
-            timeout=120.0,
+            timeout=timeout,
         )
 
     def get_erase_command(self, port: str, **kwargs) -> FlashCommand:

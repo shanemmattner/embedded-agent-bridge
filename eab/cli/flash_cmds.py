@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
+import tempfile
 import time
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 from eab.chips import get_chip_profile
 from eab.chips.stm32 import _find_stm32_programmer_cli
@@ -16,6 +20,38 @@ from eab.cli.helpers import (
     _now_iso,
     _print,
 )
+
+# esptool.cfg with increased timeouts for flaky USB-JTAG connections.
+# Default esptool timeouts are too aggressive for USB-Serial/JTAG when
+# sharing a USB bus with other devices.  See:
+# - https://docs.espressif.com/projects/esptool/en/latest/esp32c6/esptool/configuration-file.html
+# - https://github.com/espressif/esptool/issues/967
+_ESPTOOL_USB_JTAG_CFG = """\
+[esptool]
+timeout = 10
+max_timeout = 240
+serial_write_timeout = 20
+erase_write_timeout_per_mb = 60
+connect_attempts = 10
+write_block_attempts = 5
+reset_delay = 0.25
+"""
+
+
+def _write_esptool_cfg_for_usb_jtag() -> str | None:
+    """Write a temporary esptool.cfg with increased timeouts for USB-JTAG.
+
+    Returns:
+        Path to the temp config file, or None on failure.
+    """
+    try:
+        fd, path = tempfile.mkstemp(prefix="esptool_", suffix=".cfg")
+        with os.fdopen(fd, "w") as f:
+            f.write(_ESPTOOL_USB_JTAG_CFG)
+        return path
+    except OSError:
+        logger.warning("Failed to create esptool.cfg temp file")
+        return None
 
 
 def cmd_flash(
@@ -85,6 +121,23 @@ def cmd_flash(
     # Merge profile env (e.g. ZEPHYR_BASE) into parent env when present.
     # None inherits parent env; explicit dict overrides specific keys.
     run_env = {**os.environ, **flash_cmd.env} if flash_cmd.env else None
+
+    # For ESP32 USB-JTAG: generate esptool.cfg with increased timeouts/retries
+    esptool_cfg_path = None
+    if chip.lower().startswith("esp"):
+        from eab.chips.esp32 import ESP32Profile
+
+        if ESP32Profile.is_usb_jtag_port(port or ""):
+            esptool_cfg_path = _write_esptool_cfg_for_usb_jtag()
+            if esptool_cfg_path:
+                if run_env is None:
+                    run_env = {**os.environ}
+                run_env["ESPTOOL_CFGFILE"] = esptool_cfg_path
+                logger.info("USB-JTAG detected on %s — using esptool.cfg: %s", port, esptool_cfg_path)
+
+    attempt = 1
+    logger.info("Flash attempt %d: %s", attempt, " ".join(cmd_list))
+
     try:
         result = subprocess.run(
             cmd_list,
@@ -105,6 +158,9 @@ def cmd_flash(
         stdout = ""
         stderr = f"Tool not found: {flash_cmd.tool}. Install with: brew install stlink"
 
+    if not success:
+        logger.warning("Flash attempt %d failed: %s", attempt, stderr[:200])
+
     # Auto-retry with connect-under-reset if connection failed (STM32 only)
     retried_with_cur = False
     if not success and chip.lower().startswith("stm32") and not connect_under_reset:
@@ -119,6 +175,8 @@ def cmd_flash(
                 **kwargs,
             )
             cmd_list = [flash_cmd.tool] + flash_cmd.args
+            attempt += 1
+            logger.info("STM32 retry (connect-under-reset), attempt %d: %s", attempt, " ".join(cmd_list))
             try:
                 result = subprocess.run(
                     cmd_list,
@@ -136,14 +194,76 @@ def cmd_flash(
                 stdout = ""
                 stderr = f"Tool not found: {flash_cmd.tool}"
 
+    # Auto-retry for ESP32 USB-JTAG failures with --no-stub and lower baud
+    esp32_retried = False
+    if not success and chip.lower().startswith("esp") and not retried_with_cur:
+        esp_retry_errors = [
+            "serial data stream stopped",
+            "chip stopped responding",
+            "no serial data received",
+            "protocol error",
+            "timed out waiting for packet",
+        ]
+        stderr_lower = stderr.lower()
+        should_retry = any(err in stderr_lower for err in esp_retry_errors)
+
+        if should_retry:
+            esp32_retried = True
+            # Degrade: --no-stub + lower baud rate
+            retry_baud = 115200
+            logger.info(
+                "ESP32 USB-JTAG flash failed (%s). Retrying with --no-stub, baud=%d...",
+                stderr.strip().split("\n")[-1][:100],
+                retry_baud,
+            )
+            retry_kwargs = {**kwargs, "no_stub": True, "baud": retry_baud}
+            flash_cmd = profile.get_flash_command(
+                firmware_path=firmware,
+                port=port or "",
+                **({"address": address} if address else {}),
+                **retry_kwargs,
+            )
+            cmd_list = [flash_cmd.tool] + flash_cmd.args
+            attempt += 1
+            logger.info("ESP32 retry (no-stub), attempt %d: %s", attempt, " ".join(cmd_list))
+
+            # Brief pause before retry to let USB bus settle
+            time.sleep(1.0)
+
+            try:
+                result = subprocess.run(
+                    cmd_list,
+                    capture_output=True,
+                    text=True,
+                    timeout=flash_cmd.timeout,
+                    env=run_env,
+                )
+                success = result.returncode == 0
+                stdout = result.stdout
+                stderr = result.stderr
+            except subprocess.TimeoutExpired:
+                stdout = ""
+                stderr = f"Timeout after {flash_cmd.timeout}s (no-stub retry)"
+            except FileNotFoundError:
+                stdout = ""
+                stderr = f"Tool not found: {flash_cmd.tool}"
+
+            if not success:
+                logger.warning("ESP32 retry attempt %d also failed: %s", attempt, stderr[:200])
+
     duration_ms = int((time.time() - started) * 1000)
 
-    # Clean up temp file if created
+    # Clean up temp files
     if temp_bin_path and os.path.exists(temp_bin_path):
         try:
             os.unlink(temp_bin_path)
         except Exception:
             pass  # Best effort cleanup
+    if esptool_cfg_path and os.path.exists(esptool_cfg_path):
+        try:
+            os.unlink(esptool_cfg_path)
+        except Exception:
+            pass
 
     payload = {
         "schema_version": 1,
@@ -154,16 +274,18 @@ def cmd_flash(
         "address": address,
         "tool": flash_cmd.tool,
         "command": cmd_list,
+        "attempts": attempt,
         "retried_with_connect_under_reset": retried_with_cur,
+        "retried_with_no_stub": esp32_retried,
         "stdout": stdout,
         "stderr": stderr,
         "duration_ms": duration_ms,
     }
-    
+
     # Add converted_from field if ELF conversion happened
     if converted_from_elf:
         payload["converted_from"] = "elf"
-    
+
     _print(payload, json_mode=json_mode)
     return 0 if success else 1
 

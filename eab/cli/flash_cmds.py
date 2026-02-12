@@ -79,20 +79,22 @@ def cmd_flash(
         _print({"error": str(e)}, json_mode=json_mode)
         return 2
 
-    # Check if firmware is an ELF file and convert if needed (chip-specific)
-    try:
-        firmware, converted_from_elf = profile.prepare_firmware(firmware)
-        if converted_from_elf:
-            temp_bin_path = firmware  # Track for cleanup
-    except FileNotFoundError as e:
-        _print({"error": str(e)}, json_mode=json_mode)
-        return 1
-    except RuntimeError as e:
-        _print({"error": str(e)}, json_mode=json_mode)
-        return 1
-    except Exception as e:
-        _print({"error": f"Failed to read firmware file: {e}"}, json_mode=json_mode)
-        return 1
+    # Check if firmware is an ELF file and convert if needed (chip-specific).
+    # Skip for directories (ESP-IDF build dirs handle their own binaries).
+    if not os.path.isdir(firmware):
+        try:
+            firmware, converted_from_elf = profile.prepare_firmware(firmware)
+            if converted_from_elf:
+                temp_bin_path = firmware  # Track for cleanup
+        except FileNotFoundError as e:
+            _print({"error": str(e)}, json_mode=json_mode)
+            return 1
+        except RuntimeError as e:
+            _print({"error": str(e)}, json_mode=json_mode)
+            return 1
+        except Exception as e:
+            _print({"error": f"Failed to read firmware file: {e}"}, json_mode=json_mode)
+            return 1
 
     # Build flash command from chip profile
     kwargs = {"baud": baud, "connect_under_reset": connect_under_reset}

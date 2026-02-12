@@ -7,7 +7,9 @@ Uses esptool for flashing and esp_usb_jtag for OpenOCD.
 
 from __future__ import annotations
 
+import logging
 import re
+from pathlib import Path
 from typing import Optional
 
 from .base import (
@@ -213,6 +215,40 @@ class ESP32Profile(ChipProfile):
             return True
         return False
 
+    @staticmethod
+    def parse_flash_args(build_dir: Path) -> list[tuple[str, str]] | None:
+        """Parse ESP-IDF flash_args file for multi-partition layout.
+
+        Args:
+            build_dir: Path to ESP-IDF build directory containing flash_args.
+
+        Returns:
+            List of (address, filepath) tuples, or None if flash_args not found.
+        """
+        flash_args_file = build_dir / "flash_args"
+        if not flash_args_file.exists():
+            return None
+
+        logger = logging.getLogger(__name__)
+        partitions: list[tuple[str, str]] = []
+        try:
+            for line in flash_args_file.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith("--"):
+                    continue
+                parts = line.split()
+                if len(parts) == 2:
+                    addr, rel_path = parts
+                    abs_path = build_dir / rel_path
+                    if abs_path.exists():
+                        partitions.append((addr, str(abs_path)))
+                    else:
+                        logger.warning("flash_args: file not found: %s", abs_path)
+        except OSError:
+            return None
+
+        return partitions if partitions else None
+
     def get_flash_command(
         self,
         firmware_path: str,
@@ -226,10 +262,13 @@ class ESP32Profile(ChipProfile):
         """
         Build esptool flash command.
 
+        If firmware_path is a directory containing flash_args (ESP-IDF build dir),
+        all partitions (bootloader, partition table, app) are flashed in one command.
+
         Args:
-            firmware_path: Path to .bin file
+            firmware_path: Path to .bin file or ESP-IDF build directory
             port: Serial port
-            address: Flash address (default 0x10000 for app)
+            address: Flash address (default 0x10000 for app, ignored for build dirs)
             baud: Baud rate for flashing
             chip: Chip type (esp32, esp32s3, etc.)
             no_stub: Use ROM bootloader instead of RAM stub (slower but more reliable)
@@ -253,8 +292,24 @@ class ESP32Profile(ChipProfile):
             "write_flash",
             "--flash_mode", "dio",
             "--flash_size", "detect",
-            address, firmware_path,
         ]
+
+        # Check if firmware_path is a build directory with flash_args
+        fw_path = Path(firmware_path)
+        partitions = None
+        if fw_path.is_dir():
+            partitions = self.parse_flash_args(fw_path)
+            if not partitions:
+                # Try build/ subdirectory
+                partitions = self.parse_flash_args(fw_path / "build")
+
+        if partitions:
+            # Multi-partition flash: add all addr/file pairs
+            for addr, fpath in partitions:
+                args.extend([addr, fpath])
+        else:
+            # Single binary flash
+            args.extend([address, firmware_path])
 
         # Longer timeout when using --no-stub (ROM loader is ~10x slower)
         timeout = 300.0 if no_stub else 120.0

@@ -279,6 +279,12 @@ class ZephyrProfile(ChipProfile):
 
         Handles out-of-tree builds where the build dir is outside the Zephyr
         workspace (e.g., ``west build --build-dir /tmp/build-nrf5340``).
+
+        Args:
+            build_path: Path to the Zephyr build directory containing CMakeCache.txt.
+
+        Returns:
+            Path to ZEPHYR_BASE directory, or None if not found, unreadable, or invalid.
         """
         cmake_cache = build_path / "CMakeCache.txt"
         if not cmake_cache.exists():
@@ -290,7 +296,8 @@ class ZephyrProfile(ChipProfile):
                 zb = Path(match.group(1).strip())
                 if zb.is_dir():
                     return zb
-        except Exception:
+        except (OSError, UnicodeDecodeError):
+            # Silently fail — flash should proceed even if CMakeCache is unreadable
             pass
         return None
 

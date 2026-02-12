@@ -450,6 +450,31 @@ def test_zephyr_read_zephyr_base_from_cmake_invalid_path():
         assert result is None
 
 
+def test_zephyr_read_zephyr_base_from_cmake_no_zephyr_base_line():
+    """Test _read_zephyr_base_from_cmake returns None when CMakeCache.txt has no ZEPHYR_BASE line."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        (build_path / "CMakeCache.txt").write_text(
+            "BOARD:STRING=nrf5340dk/nrf5340/cpuapp\n"
+            "CMAKE_BUILD_TYPE:STRING=Debug\n"
+        )
+        result = ZephyrProfile._read_zephyr_base_from_cmake(build_path)
+        assert result is None
+
+
+def test_zephyr_read_zephyr_base_from_cmake_unreadable(tmp_path):
+    """Test _read_zephyr_base_from_cmake returns None when CMakeCache.txt cannot be read."""
+    cmake_cache = tmp_path / "CMakeCache.txt"
+    cmake_cache.write_text("ZEPHYR_BASE:PATH=/some/path\n")
+    cmake_cache.chmod(0o000)
+
+    try:
+        result = ZephyrProfile._read_zephyr_base_from_cmake(tmp_path)
+        assert result is None
+    finally:
+        cmake_cache.chmod(0o644)
+
+
 def test_zephyr_board_defaults_class_var():
     """Test BOARD_DEFAULTS class variable contains expected entries."""
     assert "nrf5340" in ZephyrProfile.BOARD_DEFAULTS

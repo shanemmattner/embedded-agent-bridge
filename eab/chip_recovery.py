@@ -191,6 +191,7 @@ class ChipRecovery:
         self._boot_events: List[BootEvent] = []
         self._consecutive_crashes = 0
         self._recovery_attempts = 0
+        self._gave_up = False
         self._boot_start_time: Optional[datetime] = None
         self._last_reset_reason = ""
         self._last_boot_mode = ""
@@ -348,7 +349,9 @@ class ChipRecovery:
 
         # Too many recovery attempts
         if self._recovery_attempts >= self._max_recovery_attempts:
-            self._log_error("Max recovery attempts reached, giving up")
+            if not self._gave_up:
+                self._log_error("Max recovery attempts reached, giving up")
+                self._gave_up = True
             return False
 
         # Crashed state
@@ -433,6 +436,7 @@ class ChipRecovery:
         """Reset all counters and state."""
         self._consecutive_crashes = 0
         self._recovery_attempts = 0
+        self._gave_up = False
         self._boot_events.clear()
         self._state = ChipState.UNKNOWN
 

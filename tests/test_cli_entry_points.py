@@ -31,7 +31,7 @@ class TestDaemonEntryPoint:
         assert sig.parameters["argv"].default is None
         # And the annotation should be Optional (either old-style or new-style union)
         annotation_str = str(sig.parameters["argv"].annotation)
-        assert "None" in annotation_str and "list" in annotation_str
+        assert ("None" in annotation_str or "Optional" in annotation_str) and "list" in annotation_str
 
     def test_daemon_main_returns_int(self):
         """The main() function should return an int exit code."""

@@ -1,6 +1,6 @@
 # Embedded Agent Bridge (EAB) - Agent Guide
 
-A daemon and command-line interface for LLM agents to interact with ESP32 devices reliably.
+A daemon and CLI for LLM agents to interact with embedded hardware (ESP32, STM32, nRF, NXP MCX) via serial, RTT, J-Link, and OpenOCD.
 
 ## Quick Reference (TL;DR)
 
@@ -35,6 +35,10 @@ eabctl recv-latest --bytes 65536 --out latest.bin
 # Reset device
 eabctl reset
 
+# Fault analysis (Cortex-M crash decode)
+eabctl fault-analyze --device NRF5340_XXAA_APP --json
+eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
+
 # Flash firmware (auto-detects chip, handles everything)
 eabctl flash /path/to/project
 
@@ -44,7 +48,7 @@ eabctl erase
 
 ## The eabctl Script
 
-The `eabctl` script is the primary interface. It handles serial port management, daemon control, and all ESP32 operations automatically.
+The `eabctl` script is the primary interface. It handles serial port management, daemon control, debug probes, and all hardware operations automatically.
 
 ### All Available Commands
 
@@ -66,6 +70,10 @@ Port Control:
 Device Control:
   reset       Reset the ESP32 device
   cmd <cmd>   Send special command (e.g., '!CHIP_INFO', '!BOOTLOADER')
+
+Debug:
+  fault-analyze    Decode Cortex-M fault registers (CFSR, HFSR, BFAR, etc.)
+                   Options: --device, --probe (jlink|openocd), --chip, --json
 
 Flashing (handles pause/resume automatically):
   flash <dir>      Flash ESP-IDF project (auto-detects chip, finds binaries)
@@ -192,6 +200,48 @@ eabctl events 20
 # Run automated diagnostics (human or JSON)
 eabctl diagnose
 eabctl diagnose --json
+```
+
+### 8. Fault Analysis (Cortex-M Crash Decode)
+
+```bash
+# J-Link probe (nRF5340, etc.)
+eabctl fault-analyze --device NRF5340_XXAA_APP --json
+
+# OpenOCD probe (MCXN947 via CMSIS-DAP, etc.)
+eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
+```
+
+The command:
+1. Connects to the target via GDB (through J-Link or OpenOCD)
+2. Reads Cortex-M fault registers (CFSR, HFSR, BFAR, MMFAR, SFSR, SFAR)
+3. Decodes fault bits to human-readable descriptions
+4. Extracts stacked PC for crash location
+5. Returns JSON with fault details and suggestions
+
+### 9. RTT via Python API
+
+RTT (Real-Time Transfer) is available via the Python API (no CLI command yet):
+
+```python
+from eab.rtt import JLinkBridge
+
+bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
+bridge.start()
+# RTT output goes to session files: rtt.log, rtt.jsonl, rtt.csv
+bridge.stop()
+```
+
+## Supported Hardware
+
+| Family | Variants | Flash Tool | Debug Probe |
+|--------|----------|-----------|-------------|
+| ESP32 | esp32, esp32s3, esp32c3, esp32c6 | esptool | OpenOCD (ESP build) |
+| STM32 | stm32l4, stm32f4, stm32h7, stm32g4, stm32mp1 | st-flash | OpenOCD + ST-Link |
+| nRF | nRF5340 (Zephyr) | west flash | J-Link SWD |
+| NXP MCX | MCXN947 (Zephyr) | west flash | OpenOCD CMSIS-DAP |
+
+Zephyr targets: Any board with J-Link or OpenOCD support can be used via chip profiles.
 
 ## Event Stream (Non-Blocking IPC)
 

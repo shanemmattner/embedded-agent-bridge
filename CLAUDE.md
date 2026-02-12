@@ -1,12 +1,12 @@
 # Embedded Agent Bridge (EAB)
 
-ESP32 serial communication daemon. **ALWAYS use eabctl for ALL ESP32 operations.**
+Background daemons bridging AI coding agents to debuggers and embedded hardware (ESP32, STM32, nRF, NXP MCX via serial, RTT, J-Link, OpenOCD). **ALWAYS use eabctl for ALL hardware operations.**
 
 ## CRITICAL RULES FOR AGENTS
 
-1. **NEVER use esptool directly** - Use `eabctl flash` instead
+1. **NEVER use esptool/JLinkExe/openocd directly** - Use `eabctl` instead
 2. **NEVER use pio device monitor** - Use `eabctl tail` instead
-3. **NEVER access the serial port directly** - EAB manages the port
+3. **NEVER access serial ports or debug probes directly** - EAB manages all hardware interfaces
 4. **Port busy errors?** Run `eabctl flash` - it handles port release automatically
 
 ## Quick Reference
@@ -28,6 +28,15 @@ eabctl flash /path/to/project
 
 # Reset device
 eabctl reset
+
+# Fault analysis (Cortex-M crash decode)
+eabctl fault-analyze --device NRF5340_XXAA_APP --json
+eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
+
+# RTT (Python API — no CLI command yet)
+# from eab.rtt import JLinkBridge
+# bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
+# bridge.start(); bridge.stop()
 ```
 
 ## Flashing Firmware
@@ -50,6 +59,12 @@ The flash command:
 4. Resumes daemon and shows boot output
 
 **If you see "port is busy" anywhere, you did something wrong. Use eabctl.**
+
+```bash
+# Zephyr targets (uses west flash)
+eabctl flash --chip nrf5340 --runner jlink
+eabctl flash --chip mcxn947 --runner openocd
+```
 
 ## Fixing Boot Loops
 
@@ -80,6 +95,15 @@ If the device outputs base64 between markers and you need a clean extract:
 ```bash
 eabctl capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 ```
+
+## Supported Hardware
+
+| Family | Variants | Debug Probe | Flash Tool |
+|--------|----------|-------------|------------|
+| ESP32 | esp32, esp32s3, esp32c3, esp32c6 | OpenOCD (ESP) | esptool |
+| STM32 | stm32l4, stm32f4, stm32h7, stm32g4 | OpenOCD + ST-Link | st-flash |
+| nRF | nRF5340 | J-Link SWD | west flash (Zephyr) |
+| NXP MCX | MCXN947 | OpenOCD CMSIS-DAP | west flash (Zephyr) |
 
 ## Diagnostics
 
@@ -121,19 +145,20 @@ This checks:
 ## All Commands
 
 ```
-eabctl status      # Check daemon and device status
-eabctl preflight   # Verify ready to flash (run before flashing!)
-eabctl tail [N]    # Show last N lines (default 50)
-eabctl alerts [N]  # Show last N alerts (default 20)
-eabctl events [N]  # Show last N JSON events (default 50)
-eabctl send <text> # Send text to device
-eabctl reset       # Reset ESP32
-eabctl flash <dir> # Flash ESP-IDF project
-eabctl erase       # Erase entire flash
-eabctl wait <pat>  # Wait for pattern in output
-eabctl wait-event  # Wait for event in events.jsonl
-eabctl stream ...  # High-speed data stream (data.bin)
-eabctl recv ...    # Read bytes from data.bin
+eabctl status         # Check daemon and device status
+eabctl preflight      # Verify ready to flash (run before flashing!)
+eabctl tail [N]       # Show last N lines (default 50)
+eabctl alerts [N]     # Show last N alerts (default 20)
+eabctl events [N]     # Show last N JSON events (default 50)
+eabctl send <text>    # Send text to device
+eabctl reset          # Reset ESP32
+eabctl flash <dir>    # Flash ESP-IDF project
+eabctl erase          # Erase entire flash
+eabctl wait <pat>     # Wait for pattern in output
+eabctl wait-event     # Wait for event in events.jsonl
+eabctl stream ...     # High-speed data stream (data.bin)
+eabctl recv ...       # Read bytes from data.bin
+eabctl fault-analyze  # Decode Cortex-M fault registers via GDB
 ```
 
 ## Binary Framing (Optional)
@@ -152,6 +177,10 @@ compatible with line‑based logs.
 | Daemon not running | Run `eabctl start` |
 | Flash failed | Run `eabctl preflight` to diagnose |
 | USB disconnected | Check cable, run `eabctl status` |
+| J-Link not found | Install J-Link Software Pack from SEGGER |
+| OpenOCD "unknown target" | Use chip-specific OpenOCD (espressif/openocd-esp32 for ESP32) |
+| `west` not found | `pip install west` and set `ZEPHYR_BASE` |
+| RTT no output | Verify J-Link connected, correct device name in `--device` flag |
 
 ## ESPTool Wrapper (System Protection)
 

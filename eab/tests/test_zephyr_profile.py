@@ -394,7 +394,7 @@ def test_zephyr_get_flash_command_env_zephyr_base():
 
 
 def test_zephyr_get_flash_command_env_empty_without_workspace():
-    """Test get_flash_command has empty env when no workspace found."""
+    """Test get_flash_command has empty env when no workspace and no CMakeCache."""
     with tempfile.TemporaryDirectory() as tmpdir:
         profile = ZephyrProfile(variant="nrf5340")
         cmd = profile.get_flash_command(
@@ -403,6 +403,51 @@ def test_zephyr_get_flash_command_env_empty_without_workspace():
         )
 
         assert cmd.env == {}
+
+
+def test_zephyr_get_flash_command_env_from_cmake_cache():
+    """Test get_flash_command reads ZEPHYR_BASE from CMakeCache.txt for out-of-tree builds."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        # Create a separate 'zephyr_ws' dir to simulate the real workspace
+        zephyr_ws = build_path / "zephyr_ws"
+        zephyr_base = zephyr_ws / "zephyr"
+        zephyr_base.mkdir(parents=True)
+
+        # Create an out-of-tree build dir (no .west/ above it)
+        out_of_tree = build_path / "out_build"
+        out_of_tree.mkdir()
+        (out_of_tree / "CMakeCache.txt").write_text(
+            f"ZEPHYR_BASE:PATH={zephyr_base}\n"
+            "BOARD:STRING=nrf5340dk/nrf5340/cpuapp\n"
+        )
+
+        profile = ZephyrProfile(variant="nrf5340")
+        cmd = profile.get_flash_command(
+            firmware_path=str(out_of_tree),
+            port="",
+        )
+
+        assert "ZEPHYR_BASE" in cmd.env
+        assert cmd.env["ZEPHYR_BASE"] == str(zephyr_base)
+
+
+def test_zephyr_read_zephyr_base_from_cmake_missing_file():
+    """Test _read_zephyr_base_from_cmake returns None when CMakeCache.txt missing."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = ZephyrProfile._read_zephyr_base_from_cmake(Path(tmpdir))
+        assert result is None
+
+
+def test_zephyr_read_zephyr_base_from_cmake_invalid_path():
+    """Test _read_zephyr_base_from_cmake returns None when ZEPHYR_BASE path doesn't exist."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        (build_path / "CMakeCache.txt").write_text(
+            "ZEPHYR_BASE:PATH=/nonexistent/path/zephyr\n"
+        )
+        result = ZephyrProfile._read_zephyr_base_from_cmake(build_path)
+        assert result is None
 
 
 def test_zephyr_board_defaults_class_var():

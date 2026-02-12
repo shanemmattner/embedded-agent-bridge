@@ -221,8 +221,10 @@ def cmd_gdb_script(
         ocd_cfg = profile.get_openocd_config()
         probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
         probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        probe_kwargs["transport"] = ocd_cfg.transport or "swd"
+        if ocd_cfg.transport:
+            probe_kwargs["transport"] = ocd_cfg.transport
         probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
+        probe_kwargs["halt_command"] = ocd_cfg.halt_command
     elif probe_type == "jlink" and port is not None:
         probe_kwargs["port"] = port
 
@@ -307,8 +309,10 @@ def cmd_inspect(
         ocd_cfg = profile.get_openocd_config()
         probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
         probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        probe_kwargs["transport"] = ocd_cfg.transport or "swd"
+        if ocd_cfg.transport:
+            probe_kwargs["transport"] = ocd_cfg.transport
         probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
+        probe_kwargs["halt_command"] = ocd_cfg.halt_command
     elif probe_type == "jlink" and port is not None:
         probe_kwargs["port"] = port
 
@@ -411,8 +415,10 @@ def cmd_threads(
         ocd_cfg = profile.get_openocd_config()
         probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
         probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        probe_kwargs["transport"] = ocd_cfg.transport or "swd"
+        if ocd_cfg.transport:
+            probe_kwargs["transport"] = ocd_cfg.transport
         probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
+        probe_kwargs["halt_command"] = ocd_cfg.halt_command
     elif probe_type == "jlink" and port is not None:
         probe_kwargs["port"] = port
 
@@ -514,8 +520,10 @@ def cmd_watch(
         ocd_cfg = profile.get_openocd_config()
         probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
         probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        probe_kwargs["transport"] = ocd_cfg.transport or "swd"
+        if ocd_cfg.transport:
+            probe_kwargs["transport"] = ocd_cfg.transport
         probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
+        probe_kwargs["halt_command"] = ocd_cfg.halt_command
     elif probe_type == "jlink" and port is not None:
         probe_kwargs["port"] = port
 
@@ -632,8 +640,10 @@ def cmd_memdump(
         ocd_cfg = profile.get_openocd_config()
         probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
         probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        probe_kwargs["transport"] = ocd_cfg.transport or "swd"
+        if ocd_cfg.transport:
+            probe_kwargs["transport"] = ocd_cfg.transport
         probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
+        probe_kwargs["halt_command"] = ocd_cfg.halt_command
     elif probe_type == "jlink" and port is not None:
         probe_kwargs["port"] = port
 

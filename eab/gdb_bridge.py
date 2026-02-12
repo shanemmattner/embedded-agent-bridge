@@ -29,34 +29,64 @@ class GDBResult:
     json_result: Optional[dict[str, Any]] = None
 
 
+def _find_in_sdk_dirs(name: str) -> Optional[str]:
+    """Search for a tool in known SDK directories beyond PATH.
+
+    Checks Zephyr SDK and ESP-IDF toolchain install locations that may
+    not be on the user's PATH.
+    """
+    home = Path.home()
+    # Zephyr SDK (glob for version-numbered dirs)
+    for sdk_dir in sorted(home.glob("zephyr-sdk-*"), reverse=True):
+        candidate = sdk_dir / "arm-zephyr-eabi" / "bin" / name
+        if candidate.is_file():
+            return str(candidate)
+    # ESP-IDF RISC-V GDB
+    for tool_dir in sorted(home.glob(".espressif/tools/riscv32-esp-elf-gdb/*/riscv32-esp-elf-gdb/bin"), reverse=True):
+        candidate = tool_dir / name
+        if candidate.is_file():
+            return str(candidate)
+    # ESP-IDF Xtensa GDB
+    for tool_dir in sorted(home.glob(".espressif/tools/xtensa-*-elf-gdb/*/xtensa-*-elf-gdb/bin"), reverse=True):
+        candidate = tool_dir / name
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _which_or_sdk(name: str) -> Optional[str]:
+    """Try PATH first, then known SDK directories."""
+    return shutil.which(name) or _find_in_sdk_dirs(name)
+
+
 def _default_gdb_for_chip(chip: str) -> Optional[str]:
     chip = chip.lower()
     if chip in ("esp32s3", "esp32s2", "esp32"):
         # ESP32/ESP32S2/ESP32S3 use Xtensa.
         for name in ("xtensa-esp32s3-elf-gdb", "xtensa-esp32s2-elf-gdb", "xtensa-esp32-elf-gdb"):
-            p = shutil.which(name)
+            p = _which_or_sdk(name)
             if p:
                 return p
     if chip in ("esp32c3", "esp32c6", "esp32h2"):
-        p = shutil.which("riscv32-esp-elf-gdb")
+        p = _which_or_sdk("riscv32-esp-elf-gdb")
         if p:
             return p
     # STM32 ARM Cortex-M
     if chip.startswith("stm32"):
-        for name in ("arm-none-eabi-gdb-py", "arm-none-eabi-gdb", "gdb-multiarch"):
-            p = shutil.which(name)
+        for name in ("arm-none-eabi-gdb-py", "arm-none-eabi-gdb", "arm-zephyr-eabi-gdb-py", "arm-zephyr-eabi-gdb", "gdb-multiarch"):
+            p = _which_or_sdk(name)
             if p:
                 return p
     # nRF / Zephyr ARM Cortex-M (prefer -gdb-py for Python scripting support)
     if chip.startswith("nrf") or chip.startswith("zephyr"):
         for name in ("arm-zephyr-eabi-gdb-py", "arm-zephyr-eabi-gdb", "arm-none-eabi-gdb", "gdb-multiarch"):
-            p = shutil.which(name)
+            p = _which_or_sdk(name)
             if p:
                 return p
     # NXP MCX (Cortex-M33)
     if chip.startswith("mcx"):
-        for name in ("arm-none-eabi-gdb-py", "arm-none-eabi-gdb", "gdb-multiarch"):
-            p = shutil.which(name)
+        for name in ("arm-zephyr-eabi-gdb-py", "arm-zephyr-eabi-gdb", "arm-none-eabi-gdb-py", "arm-none-eabi-gdb", "gdb-multiarch"):
+            p = _which_or_sdk(name)
             if p:
                 return p
     # Fall back to system gdb if present.

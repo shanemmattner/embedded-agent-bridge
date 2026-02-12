@@ -23,6 +23,7 @@ import logging
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -203,6 +204,19 @@ def get_dwt_status(jlink) -> dict:
 # ELF Symbol Parsing
 # =============================================================================
 
+def _which_or_sdk(name: str) -> Optional[str]:
+    """Try PATH first, then known SDK directories (Zephyr SDK)."""
+    result = shutil.which(name)
+    if result:
+        return result
+    home = Path.home()
+    for sdk_dir in sorted(home.glob("zephyr-sdk-*"), reverse=True):
+        candidate = sdk_dir / "arm-zephyr-eabi" / "bin" / name
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 def _parse_symbol_address(elf_path: str, function_name: str) -> Optional[int]:
     """Parse function address from ELF using arm-none-eabi-nm.
 
@@ -218,8 +232,8 @@ def _parse_symbol_address(elf_path: str, function_name: str) -> Optional[int]:
         subprocess.SubprocessError: If nm command fails
     """
     nm_tool = (
-        shutil.which("arm-none-eabi-nm")
-        or shutil.which("arm-zephyr-eabi-nm")
+        _which_or_sdk("arm-none-eabi-nm")
+        or _which_or_sdk("arm-zephyr-eabi-nm")
     )
     if nm_tool is None:
         raise FileNotFoundError(
@@ -466,8 +480,8 @@ def _find_function_end(elf_path: str, function_name: str, start_addr: int) -> in
         Address of first instruction after function (function end + 1 instruction)
     """
     objdump_tool = (
-        shutil.which("arm-none-eabi-objdump")
-        or shutil.which("arm-zephyr-eabi-objdump")
+        _which_or_sdk("arm-none-eabi-objdump")
+        or _which_or_sdk("arm-zephyr-eabi-objdump")
     )
     if objdump_tool is None:
         # Fallback: assume function is 32 bytes (8 instructions)
@@ -529,3 +543,85 @@ def _find_function_end(elf_path: str, function_name: str, start_addr: int) -> in
         logger.warning("Failed to parse objdump output: %s", e)
         # Fallback: assume 32-byte function
         return start_addr + 32
+
+
+# =============================================================================
+# OpenOCD-based DWT Register Access
+# =============================================================================
+# Provides the same DWT functions but via OpenOCD telnet commands instead
+# of pylink. This enables DWT profiling on any debug probe (ST-Link,
+# CMSIS-DAP, etc.), not just J-Link.
+
+import re
+
+_MDW_PATTERN = re.compile(r"0x[0-9a-fA-F]+:\s+(0x[0-9a-fA-F]+|[0-9a-fA-F]+)")
+
+
+def _ocd_read32(bridge, addr: int, telnet_port: int = 4444) -> int:
+    """Read a 32-bit word via OpenOCD telnet ``mdw`` command.
+
+    Args:
+        bridge: OpenOCDBridge instance with ``cmd()`` method.
+        addr: Memory address to read.
+        telnet_port: OpenOCD telnet port.
+
+    Returns:
+        32-bit value at *addr*.
+    """
+    resp = bridge.cmd(f"mdw 0x{addr:08X}", telnet_port=telnet_port)
+    m = _MDW_PATTERN.search(resp)
+    if not m:
+        raise RuntimeError(f"Failed to parse mdw response for 0x{addr:08X}: {resp!r}")
+    val_str = m.group(1)
+    return int(val_str, 16) if val_str.startswith("0x") else int(val_str, 16)
+
+
+def _ocd_write32(bridge, addr: int, value: int, telnet_port: int = 4444) -> None:
+    """Write a 32-bit word via OpenOCD telnet ``mww`` command."""
+    bridge.cmd(f"mww 0x{addr:08X} 0x{value:08X}", telnet_port=telnet_port)
+
+
+def enable_dwt_openocd(bridge, telnet_port: int = 4444) -> bool:
+    """Enable DWT cycle counter via OpenOCD (same logic as enable_dwt but using telnet)."""
+    try:
+        demcr = _ocd_read32(bridge, DEMCR_ADDR, telnet_port)
+        if not (demcr & DEMCR_TRCENA):
+            demcr |= DEMCR_TRCENA
+            _ocd_write32(bridge, DEMCR_ADDR, demcr, telnet_port)
+
+        dwt_ctrl = _ocd_read32(bridge, DWT_CTRL_ADDR, telnet_port)
+        if not (dwt_ctrl & DWT_CTRL_CYCCNTENA):
+            dwt_ctrl |= DWT_CTRL_CYCCNTENA
+            _ocd_write32(bridge, DWT_CTRL_ADDR, dwt_ctrl, telnet_port)
+
+        # Verify
+        demcr_check = _ocd_read32(bridge, DEMCR_ADDR, telnet_port)
+        dwt_ctrl_check = _ocd_read32(bridge, DWT_CTRL_ADDR, telnet_port)
+        enabled = bool(demcr_check & DEMCR_TRCENA) and bool(dwt_ctrl_check & DWT_CTRL_CYCCNTENA)
+        if enabled:
+            logger.info("DWT cycle counter enabled via OpenOCD")
+        else:
+            logger.warning("DWT enable verification failed via OpenOCD")
+        return enabled
+    except Exception as e:
+        logger.error("Failed to enable DWT via OpenOCD: %s", e)
+        raise
+
+
+def read_cycle_count_openocd(bridge, telnet_port: int = 4444) -> int:
+    """Read DWT_CYCCNT via OpenOCD."""
+    return _ocd_read32(bridge, DWT_CYCCNT_ADDR, telnet_port)
+
+
+def reset_cycle_count_openocd(bridge, telnet_port: int = 4444) -> None:
+    """Reset DWT_CYCCNT to zero via OpenOCD."""
+    _ocd_write32(bridge, DWT_CYCCNT_ADDR, 0, telnet_port)
+
+
+def get_dwt_status_openocd(bridge, telnet_port: int = 4444) -> dict:
+    """Read DWT register values via OpenOCD (same as get_dwt_status but via telnet)."""
+    return {
+        "DEMCR": _ocd_read32(bridge, DEMCR_ADDR, telnet_port),
+        "DWT_CTRL": _ocd_read32(bridge, DWT_CTRL_ADDR, telnet_port),
+        "DWT_CYCCNT": _ocd_read32(bridge, DWT_CYCCNT_ADDR, telnet_port),
+    }

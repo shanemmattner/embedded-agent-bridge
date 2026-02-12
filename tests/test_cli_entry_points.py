@@ -349,17 +349,16 @@ class TestProfileCommands:
         assert args.cmd == "profile-region"
     
     def test_dwt_status_command_registered(self):
-        """dwt-status command should be registered and parse required args."""
+        """dwt-status command should be registered and parse args."""
         from eab.cli import _build_parser
-        
+
         parser = _build_parser()
-        
-        # Test that required args are enforced
-        with pytest.raises(SystemExit):
-            # Missing required arguments should fail
-            parser.parse_args(["dwt-status"])
-        
-        # Test that required args parse correctly
+
+        # dwt-status has no required args (--device is optional for OpenOCD)
+        args = parser.parse_args(["dwt-status"])
+        assert args.cmd == "dwt-status"
+
+        # Test that optional args parse correctly
         args = parser.parse_args([
             "dwt-status",
             "--device", "NRF5340_XXAA_APP",

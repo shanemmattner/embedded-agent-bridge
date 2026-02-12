@@ -438,9 +438,34 @@ class ZephyrProfile(ChipProfile):
                 ],
             )
 
+        # STM32 family — ST-Link uses HLA driver, no transport select needed.
+        # connect_assert_srst is required for reliable target examination
+        # (STM32 chips in low-power or protection states need reset-connect).
+        stm32_extra = [
+            "reset_config srst_only srst_nogate connect_assert_srst",
+        ]
+        if "stm32l4" in variant_lower:
+            return OpenOCDConfig(
+                interface_cfg="interface/stlink.cfg",
+                target_cfg="target/stm32l4x.cfg",
+                transport=None,
+                extra_commands=stm32_extra,
+                halt_command="reset halt",
+            )
+        if "stm32h7" in variant_lower:
+            return OpenOCDConfig(
+                interface_cfg="interface/stlink.cfg",
+                target_cfg="target/stm32h7x.cfg",
+                transport=None,
+                extra_commands=stm32_extra,
+                halt_command="reset halt",
+            )
+
         # Fallback: ST-Link with STM32F4 (generic Cortex-M)
         return OpenOCDConfig(
             interface_cfg="interface/stlink.cfg",
             target_cfg="target/stm32f4x.cfg",
-            transport="swd",
+            transport=None,
+            extra_commands=stm32_extra,
+            halt_command="reset halt",
         )

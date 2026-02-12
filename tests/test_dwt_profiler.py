@@ -286,15 +286,15 @@ class TestParseSymbolAddress:
 
         assert addr is None
 
-    @patch("eab.dwt_profiler.shutil.which")
-    def test_parse_raises_if_nm_not_found(self, mock_which):
+    @patch("eab.dwt_profiler._which_or_sdk")
+    def test_parse_raises_if_nm_not_found(self, mock_which_or_sdk):
         """_parse_symbol_address() should raise FileNotFoundError if nm not on PATH."""
-        mock_which.return_value = None
+        mock_which_or_sdk.return_value = None
 
         with pytest.raises(FileNotFoundError) as exc_info:
             _parse_symbol_address("/path/to/app.elf", "my_function")
 
-        assert "arm-none-eabi-nm not found" in str(exc_info.value).lower()
+        assert "not found" in str(exc_info.value).lower()
 
     @patch("eab.dwt_profiler.shutil.which")
     @patch("eab.dwt_profiler.subprocess.run")

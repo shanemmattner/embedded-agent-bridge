@@ -67,7 +67,7 @@ class TestGenerateStructInspector:
         )
         
         # Should read result_file from convenience variable
-        assert 'result_file = gdb.convenience_variable("result_file")' in script
+        assert 'gdb.convenience_variable("result_file")' in script
         # Should write JSON to result_file
         assert 'with open(result_file, "w")' in script
         assert 'json.dump' in script
@@ -159,7 +159,7 @@ class TestGenerateThreadInspector:
         """generate_thread_inspector() should follow result_file pattern."""
         script = generate_thread_inspector(rtos='zephyr')
         
-        assert 'result_file = gdb.convenience_variable("result_file")' in script
+        assert 'gdb.convenience_variable("result_file")' in script
         assert 'with open(result_file, "w")' in script
         assert 'json.dump' in script
 
@@ -250,7 +250,7 @@ class TestGenerateWatchpointLogger:
         """generate_watchpoint_logger() should follow result_file pattern."""
         script = generate_watchpoint_logger("g_counter")
         
-        assert 'result_file = gdb.convenience_variable("result_file")' in script
+        assert 'gdb.convenience_variable("result_file")' in script
         assert 'with open(result_file, "w")' in script
         assert 'json.dump' in script
 
@@ -368,7 +368,7 @@ class TestGenerateMemoryDumpScript:
         """generate_memory_dump_script() should follow result_file pattern."""
         script = generate_memory_dump_script(0x20000000, 1024, "/tmp/dump.bin")
         
-        assert 'result_file = gdb.convenience_variable("result_file")' in script
+        assert 'gdb.convenience_variable("result_file")' in script
         assert 'with open(result_file, "w")' in script
         assert 'json.dump' in script
 

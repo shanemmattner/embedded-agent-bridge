@@ -211,19 +211,28 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Debug probe type (default: jlink)")
 
     p_profile_func = sub.add_parser("profile-function", help="Profile a function using DWT cycle counter")
-    p_profile_func.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_profile_func.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
     p_profile_func.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
     p_profile_func.add_argument("--function", required=True, help="Function name to profile")
     p_profile_func.add_argument("--cpu-freq", type=int, default=None, help="CPU frequency in Hz (auto-detect if omitted)")
+    p_profile_func.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_profile_func.add_argument("--chip", default=None, help="Chip type for OpenOCD config (e.g., stm32l4, mcxn947)")
 
     p_profile_region = sub.add_parser("profile-region", help="Profile an address region using DWT cycle counter")
-    p_profile_region.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_profile_region.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
     p_profile_region.add_argument("--start", type=lambda x: int(x, 0), required=True, help="Start address (hex or decimal)")
     p_profile_region.add_argument("--end", type=lambda x: int(x, 0), required=True, help="End address (hex or decimal)")
     p_profile_region.add_argument("--cpu-freq", type=int, default=None, help="CPU frequency in Hz (auto-detect if omitted)")
+    p_profile_region.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_profile_region.add_argument("--chip", default=None, help="Chip type for OpenOCD config (e.g., stm32l4, mcxn947)")
 
     p_dwt_status = sub.add_parser("dwt-status", help="Display DWT register state")
-    p_dwt_status.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_dwt_status.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_dwt_status.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_dwt_status.add_argument("--chip", default=None, help="Chip type for OpenOCD config (e.g., stm32l4, mcxn947)")
 
     p_gdb_script = sub.add_parser("gdb-script", help="Execute custom GDB Python script via debug probe")
     p_gdb_script.add_argument("script_path", help="Path to GDB Python script")
@@ -493,6 +502,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             elf=args.elf,
             function=args.function,
             cpu_freq=args.cpu_freq,
+            probe_type=args.probe,
+            chip=args.chip,
             json_mode=args.json,
         )
     if args.cmd == "profile-region":
@@ -502,12 +513,16 @@ def main(argv: Optional[list[str]] = None) -> int:
             end_addr=args.end,
             device=args.device,
             cpu_freq=args.cpu_freq,
+            probe_type=args.probe,
+            chip=args.chip,
             json_mode=args.json,
         )
     if args.cmd == "dwt-status":
         return cmd_dwt_status(
             base_dir=base_dir,
             device=args.device,
+            probe_type=args.probe,
+            chip=args.chip,
             json_mode=args.json,
         )
     if args.cmd == "gdb-script":

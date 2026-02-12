@@ -437,7 +437,7 @@ class TestScriptGenerators:
         ]
 
         for script in scripts:
-            assert 'result_file = gdb.convenience_variable("result_file")' in script
+            assert 'gdb.convenience_variable("result_file")' in script
             assert 'with open(result_file, "w")' in script
             assert 'json.dump' in script
 

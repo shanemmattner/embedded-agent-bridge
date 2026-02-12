@@ -194,7 +194,10 @@ def cmd_flash(
                 stdout = ""
                 stderr = f"Tool not found: {flash_cmd.tool}"
 
-    # Auto-retry for ESP32 USB-JTAG failures with --no-stub and lower baud
+    # Auto-retry for ESP32 USB-JTAG failures with --no-stub and lower baud.
+    # USB-JTAG serial is inherently flaky — retries often succeed on next attempt.
+    # Strategy: up to 3 retries with --no-stub at 115200 baud, 2s pause between.
+    _ESP32_MAX_RETRIES = 3
     esp32_retried = False
     if not success and chip.lower().startswith("esp") and not retried_with_cur:
         esp_retry_errors = [
@@ -209,47 +212,62 @@ def cmd_flash(
 
         if should_retry:
             esp32_retried = True
-            # Degrade: --no-stub + lower baud rate
             retry_baud = 115200
-            logger.info(
-                "ESP32 USB-JTAG flash failed (%s). Retrying with --no-stub, baud=%d...",
-                stderr.strip().split("\n")[-1][:100],
-                retry_baud,
-            )
             retry_kwargs = {**kwargs, "no_stub": True, "baud": retry_baud}
-            flash_cmd = profile.get_flash_command(
-                firmware_path=firmware,
-                port=port or "",
-                **({"address": address} if address else {}),
-                **retry_kwargs,
-            )
-            cmd_list = [flash_cmd.tool] + flash_cmd.args
-            attempt += 1
-            logger.info("ESP32 retry (no-stub), attempt %d: %s", attempt, " ".join(cmd_list))
 
-            # Brief pause before retry to let USB bus settle
-            time.sleep(1.0)
-
-            try:
-                result = subprocess.run(
-                    cmd_list,
-                    capture_output=True,
-                    text=True,
-                    timeout=flash_cmd.timeout,
-                    env=run_env,
+            for retry_num in range(_ESP32_MAX_RETRIES):
+                logger.info(
+                    "ESP32 USB-JTAG flash failed (%s). Retry %d/%d with --no-stub, baud=%d...",
+                    stderr.strip().split("\n")[-1][:100],
+                    retry_num + 1,
+                    _ESP32_MAX_RETRIES,
+                    retry_baud,
                 )
-                success = result.returncode == 0
-                stdout = result.stdout
-                stderr = result.stderr
-            except subprocess.TimeoutExpired:
-                stdout = ""
-                stderr = f"Timeout after {flash_cmd.timeout}s (no-stub retry)"
-            except FileNotFoundError:
-                stdout = ""
-                stderr = f"Tool not found: {flash_cmd.tool}"
+                flash_cmd = profile.get_flash_command(
+                    firmware_path=firmware,
+                    port=port or "",
+                    **({"address": address} if address else {}),
+                    **retry_kwargs,
+                )
+                cmd_list = [flash_cmd.tool] + flash_cmd.args
+                attempt += 1
+                logger.info("ESP32 retry attempt %d: %s", attempt, " ".join(cmd_list))
 
-            if not success:
-                logger.warning("ESP32 retry attempt %d also failed: %s", attempt, stderr[:200])
+                # Pause to let USB bus settle between attempts
+                time.sleep(2.0)
+
+                try:
+                    result = subprocess.run(
+                        cmd_list,
+                        capture_output=True,
+                        text=True,
+                        timeout=flash_cmd.timeout,
+                        env=run_env,
+                    )
+                    success = result.returncode == 0
+                    stdout = result.stdout
+                    stderr = result.stderr
+                except subprocess.TimeoutExpired:
+                    success = False
+                    stdout = ""
+                    stderr = f"Timeout after {flash_cmd.timeout}s (no-stub retry {retry_num + 1})"
+                except FileNotFoundError:
+                    success = False
+                    stdout = ""
+                    stderr = f"Tool not found: {flash_cmd.tool}"
+                    break  # No point retrying if tool is missing
+
+                if success:
+                    logger.info("ESP32 flash succeeded on attempt %d", attempt)
+                    break
+
+                logger.warning("ESP32 retry attempt %d failed: %s", attempt, stderr[:200])
+
+                # Check if this retry also had a retryable error
+                stderr_lower = stderr.lower()
+                if not any(err in stderr_lower for err in esp_retry_errors):
+                    logger.info("Non-retryable error, stopping retries")
+                    break
 
     duration_ms = int((time.time() - started) * 1000)
 

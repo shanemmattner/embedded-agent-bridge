@@ -72,6 +72,11 @@ def get_chip_profile(chip: str, variant: str | None = None) -> ChipProfile:
         # Return ESP32 as default for now - detection happens via serial output
         return ESP32Profile(variant=variant)
 
+    # Alias mapping: bare chip names to zephyr_ prefixed versions
+    # Check if chip name matches any key in ZephyrProfile.BOARD_DEFAULTS
+    if chip_lower in ZephyrProfile.BOARD_DEFAULTS:
+        chip_lower = f"zephyr_{chip_lower}"
+
     # Special handling for Zephyr profiles
     if chip_lower.startswith("zephyr_"):
         variant_part = chip_lower[len("zephyr_"):]  # e.g., "nrf5340"

@@ -411,3 +411,65 @@ def test_zephyr_board_defaults_class_var():
     assert ZephyrProfile.BOARD_DEFAULTS["nrf5340"]["board"] == "nrf5340dk/nrf5340/cpuapp"
     assert ZephyrProfile.BOARD_DEFAULTS["nrf5340"]["runner"] == "jlink"
     assert ZephyrProfile.BOARD_DEFAULTS["rp2040"]["runner"] is None
+
+
+def test_get_chip_profile_bare_nrf5340():
+    """Test get_chip_profile("nrf5340") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("nrf5340")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "nrf5340"
+    assert profile.board == "nrf5340dk/nrf5340/cpuapp"
+    assert profile.runner == "jlink"
+
+
+def test_get_chip_profile_bare_nrf52840():
+    """Test get_chip_profile("nrf52840") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("nrf52840")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "nrf52840"
+    assert profile.board == "nrf52840dk/nrf52840"
+    assert profile.runner == "jlink"
+
+
+def test_get_chip_profile_bare_nrf52833():
+    """Test get_chip_profile("nrf52833") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("nrf52833")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "nrf52833"
+    assert profile.board == "nrf52833dk/nrf52833"
+    assert profile.runner == "jlink"
+
+
+def test_get_chip_profile_bare_rp2040():
+    """Test get_chip_profile("rp2040") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("rp2040")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "rp2040"
+    assert profile.board == "rpi_pico"
+    assert profile.runner is None
+
+
+def test_get_chip_profile_bare_mcxn947():
+    """Test get_chip_profile("mcxn947") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("mcxn947")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "mcxn947"
+    assert profile.board == "frdm_mcxn947/mcxn947/cpu0"
+    assert profile.runner == "linkserver"
+
+
+def test_get_chip_profile_alias_matches_prefixed():
+    """Test that bare chip name aliases match the zephyr_prefixed versions."""
+    # Test nrf5340
+    bare_profile = get_chip_profile("nrf5340")
+    prefixed_profile = get_chip_profile("zephyr_nrf5340")
+    assert bare_profile.variant == prefixed_profile.variant
+    assert bare_profile.board == prefixed_profile.board
+    assert bare_profile.runner == prefixed_profile.runner
+    
+    # Test nrf52840
+    bare_profile = get_chip_profile("nrf52840")
+    prefixed_profile = get_chip_profile("zephyr_nrf52840")
+    assert bare_profile.variant == prefixed_profile.variant
+    assert bare_profile.board == prefixed_profile.board
+    assert bare_profile.runner == prefixed_profile.runner

@@ -1,0 +1,9 @@
+/*
+ * Enable UART1 (Arduino header D0/D1) for STM32L4 data link.
+ * P1.01 (RX) receives JSON from STM32 USART1 TX (PA9).
+ * P1.02 (TX) can send commands to STM32 USART1 RX (PA10).
+ */
+
+&uart1 {
+	status = "okay";
+};

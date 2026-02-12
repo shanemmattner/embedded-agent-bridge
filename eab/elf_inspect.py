@@ -14,7 +14,7 @@ import fnmatch
 import logging
 import re
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from eab.toolchain import which_or_sdk as _which_or_sdk
@@ -71,13 +71,21 @@ def _resolve_nm() -> str:
     Raises:
         FileNotFoundError: If no nm binary found.
     """
-    for name in ("arm-none-eabi-nm", "arm-zephyr-eabi-nm"):
+    # ARM Cortex-M, ESP32 RISC-V, ESP32 Xtensa, then system fallback
+    for name in (
+        "arm-none-eabi-nm",
+        "arm-zephyr-eabi-nm",
+        "riscv32-esp-elf-nm",
+        "xtensa-esp32s3-elf-nm",
+        "xtensa-esp32-elf-nm",
+        "nm",  # GNU binutils system nm reads any ELF
+    ):
         p = _which_or_sdk(name)
         if p:
             return p
     raise FileNotFoundError(
-        "arm-none-eabi-nm (or arm-zephyr-eabi-nm) not found. "
-        "Install ARM GCC toolchain or Zephyr SDK."
+        "No nm binary found (tried arm-none-eabi-nm, riscv32-esp-elf-nm, "
+        "xtensa-esp32s3-elf-nm, system nm). Install a toolchain or GNU binutils."
     )
 
 
@@ -176,11 +184,6 @@ _MAP_ADDR_LINE = re.compile(
 # Or inline:
 #  *(.bss.g_sensor_data)
 #  .bss.g_sensor_data  0x20001000  0x20  build/sensor.o
-
-# Memory region header: DRAM0 0x3fc00000 0x50000
-_MAP_MEMORY_REGION = re.compile(
-    r"^(\w+)\s+0x[0-9a-fA-F]+\s+0x[0-9a-fA-F]+"
-)
 
 # Section-to-region mapping for common RTOS configurations
 _SECTION_REGION_MAP = {

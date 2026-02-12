@@ -12,12 +12,15 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+import logging
+
 from eab.cli.helpers import _print
 from eab.elf_inspect import parse_symbols, parse_map_file
+
+logger = logging.getLogger(__name__)
 from eab.gdb_bridge import (
     run_gdb_python,
     generate_batch_variable_reader,
-    generate_variable_lister,
 )
 from eab.cli.debug_cmds import _build_probe
 
@@ -60,8 +63,8 @@ def cmd_vars(
             for ms in parse_map_file(map_file):
                 map_symbols[ms.name] = ms
         except Exception as e:
-            # MAP file parsing is best-effort
-            pass
+            # MAP parsing is best-effort — warn but don't fail the command
+            logger.warning("Failed to parse MAP file %s: %s", map_file, e)
 
     # Apply filter
     if filter_pattern:

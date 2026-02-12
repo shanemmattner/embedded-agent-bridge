@@ -6,8 +6,6 @@ debug probe interactions.
 
 from __future__ import annotations
 
-import json
-from io import StringIO
 from unittest.mock import patch, MagicMock
 
 import pytest

@@ -118,15 +118,20 @@ static const struct device *data_uart = DEVICE_DT_GET(UART_DATA_DEV);
 static char uart_line[UART_BUF_SIZE];
 static int uart_pos = 0;
 
-static uint8_t uart_rx_buf[64];
-
-static void uart_rx_callback(const struct device *dev, struct uart_event *evt,
-			     void *user_data)
+static void uart_irq_handler(const struct device *dev, void *user_data)
 {
-	switch (evt->type) {
-	case UART_RX_RDY:
-		for (int i = 0; i < evt->data.rx.len; i++) {
-			char c = evt->data.rx.buf[evt->data.rx.offset + i];
+	ARG_UNUSED(user_data);
+
+	while (uart_irq_update(dev) && uart_irq_is_pending(dev)) {
+		if (!uart_irq_rx_ready(dev)) {
+			continue;
+		}
+
+		uint8_t buf[64];
+		int len = uart_fifo_read(dev, buf, sizeof(buf));
+
+		for (int i = 0; i < len; i++) {
+			char c = (char)buf[i];
 
 			if (c == '\n' || c == '\r') {
 				if (uart_pos > 0) {
@@ -150,15 +155,6 @@ static void uart_rx_callback(const struct device *dev, struct uart_event *evt,
 				uart_line[uart_pos++] = c;
 			}
 		}
-		break;
-
-	case UART_RX_DISABLED:
-		/* Re-enable RX */
-		uart_rx_enable(dev, uart_rx_buf, sizeof(uart_rx_buf), 100);
-		break;
-
-	default:
-		break;
 	}
 }
 
@@ -169,17 +165,8 @@ static int init_data_uart(void)
 		return -1;
 	}
 
-	int ret = uart_callback_set(data_uart, uart_rx_callback, NULL);
-	if (ret < 0) {
-		LOG_ERR("UART callback set failed: %d", ret);
-		return ret;
-	}
-
-	ret = uart_rx_enable(data_uart, uart_rx_buf, sizeof(uart_rx_buf), 100);
-	if (ret < 0) {
-		LOG_ERR("UART RX enable failed: %d", ret);
-		return ret;
-	}
+	uart_irq_callback_set(data_uart, uart_irq_handler);
+	uart_irq_rx_enable(data_uart);
 
 	LOG_INF("Data UART ready — P1.01(RX) P1.02(TX) @ 115200");
 	return 0;
@@ -222,39 +209,68 @@ static uint8_t ble_notify_cb(struct bt_conn *conn,
 	return BT_GATT_ITER_CONTINUE;
 }
 
+static struct bt_gatt_discover_params disc_params;
+static struct bt_gatt_discover_params sub_disc_params;
+static uint16_t notify_value_handle;
+
 static uint8_t discover_cb(struct bt_conn *conn,
 			   const struct bt_gatt_attr *attr,
 			   struct bt_gatt_discover_params *params)
 {
-	/* Not used — we subscribe by UUID after connection */
-	return BT_GATT_ITER_STOP;
+	if (!attr) {
+		LOG_INF("GATT discovery complete (type=%u)", params->type);
+		return BT_GATT_ITER_STOP;
+	}
+
+	LOG_INF("GATT attr: handle=%u type=%u", attr->handle, params->type);
+
+	if (params->type == BT_GATT_DISCOVER_CHARACTERISTIC) {
+		struct bt_gatt_chrc *chrc = (struct bt_gatt_chrc *)attr->user_data;
+		notify_value_handle = chrc->value_handle;
+		LOG_INF("Found notify char, value_handle=%u", notify_value_handle);
+
+		/* Subscribe using auto-discover (separate disc_params struct) */
+		sub_params.notify = ble_notify_cb;
+		sub_params.value = BT_GATT_CCC_NOTIFY;
+		sub_params.value_handle = notify_value_handle;
+		sub_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
+		sub_params.disc_params = &sub_disc_params;
+
+		int err = bt_gatt_subscribe(conn, &sub_params);
+		if (err && err != -EALREADY) {
+			LOG_ERR("Subscribe failed: %d", err);
+		} else {
+			LOG_INF("Subscribe initiated (auto-discover CCC)");
+		}
+		return BT_GATT_ITER_STOP;
+	}
+
+	return BT_GATT_ITER_CONTINUE;
 }
 
 static void subscribe_to_notifications(struct bt_conn *conn)
 {
-	static struct bt_gatt_discover_params disc_params;
-
-	/* Discover the notify characteristic handle by UUID */
 	disc_params.uuid = &chr_notify_uuid.uuid;
 	disc_params.func = discover_cb;
 	disc_params.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE;
 	disc_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
 	disc_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
 
-	/* For simplicity, use gatt_subscribe with discover.
-	 * Set value_handle to 0 to trigger auto-discovery. */
-	sub_params.notify = ble_notify_cb;
-	sub_params.value = BT_GATT_CCC_NOTIFY;
-	sub_params.ccc_handle = 0;  /* auto-discover */
-	sub_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
-	sub_params.disc_params = &disc_params;
-	sub_params.value_handle = 0;  /* triggers discovery */
-
-	int err = bt_gatt_subscribe(conn, &sub_params);
-	if (err && err != -EALREADY) {
-		LOG_ERR("Subscribe failed: %d", err);
+	int err = bt_gatt_discover(conn, &disc_params);
+	if (err) {
+		LOG_ERR("GATT discover failed: %d", err);
 	} else {
-		LOG_INF("Subscribed to ESP32-C6 notifications");
+		LOG_INF("Starting GATT discovery for notify char...");
+	}
+}
+
+static void mtu_exchange_cb(struct bt_conn *conn, uint8_t err,
+			   struct bt_gatt_exchange_params *params)
+{
+	if (err) {
+		LOG_ERR("MTU exchange failed: %u", err);
+	} else {
+		LOG_INF("MTU exchanged: %u", bt_gatt_get_mtu(conn));
 	}
 }
 
@@ -271,7 +287,15 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 	LOG_INF("BLE connected to ESP32-C6");
 	ble_conn = bt_conn_ref(conn);
 
-	/* Wait a bit for service discovery, then subscribe */
+	/* Exchange MTU first (default 23 is too small for JSON payloads) */
+	static struct bt_gatt_exchange_params mtu_params;
+	mtu_params.func = mtu_exchange_cb;
+	int mtu_err = bt_gatt_exchange_mtu(conn, &mtu_params);
+	if (mtu_err) {
+		LOG_ERR("MTU exchange failed: %d", mtu_err);
+	}
+
+	/* Wait for MTU exchange + service discovery, then subscribe */
 	k_msleep(500);
 	subscribe_to_notifications(conn);
 }
@@ -292,10 +316,20 @@ BT_CONN_CB_DEFINE(conn_cbs) = {
 	.disconnected = disconnected_cb,
 };
 
+static int scan_count = 0;
+
 static void scan_recv_cb(const struct bt_le_scan_recv_info *info,
 			 struct net_buf_simple *ad)
 {
+	/* Log every 50th scan result so we know scanning works */
+	scan_count++;
+	bool found_name = false;
+	char name_buf[32] = {0};
+
 	/* Look for the device name "EAB-ESP32C6" in the advertisement */
+	/* Save initial state for debug */
+	uint16_t ad_len_orig = ad->len;
+
 	while (ad->len > 1) {
 		uint8_t len = net_buf_simple_pull_u8(ad);
 		if (len == 0 || len > ad->len) {
@@ -304,26 +338,33 @@ static void scan_recv_cb(const struct bt_le_scan_recv_info *info,
 		uint8_t type = net_buf_simple_pull_u8(ad);
 		len--;  /* type byte consumed */
 
-		if ((type == BT_DATA_NAME_COMPLETE || type == BT_DATA_NAME_SHORTENED) &&
-		    len == strlen("EAB-ESP32C6") &&
-		    memcmp(ad->data, "EAB-ESP32C6", len) == 0) {
-			LOG_INF("Found EAB-ESP32C6, connecting...");
+		if (type == BT_DATA_NAME_COMPLETE || type == BT_DATA_NAME_SHORTENED) {
+			/* Copy name for debug */
+			int copy_len = (len < sizeof(name_buf) - 1) ? len : sizeof(name_buf) - 1;
+			memcpy(name_buf, ad->data, copy_len);
+			name_buf[copy_len] = '\0';
+			found_name = true;
 
-			/* Stop scanning and connect */
-			bt_le_scan_stop();
+			if (len == strlen("EAB-ESP32C6") &&
+			    memcmp(ad->data, "EAB-ESP32C6", len) == 0) {
+				LOG_INF("Found EAB-ESP32C6, connecting...");
 
-			struct bt_conn *conn;
-			int err = bt_conn_le_create(info->addr,
-						    BT_CONN_LE_CREATE_CONN,
-						    BT_LE_CONN_PARAM_DEFAULT,
-						    &conn);
-			if (err) {
-				LOG_ERR("Create connection failed: %d", err);
-				bt_le_scan_start(BT_LE_SCAN_ACTIVE, NULL);
-			} else {
-				bt_conn_unref(conn);
+				/* Stop scanning and connect */
+				bt_le_scan_stop();
+
+				struct bt_conn *conn = NULL;
+				int err = bt_conn_le_create(info->addr,
+							    BT_CONN_LE_CREATE_CONN,
+							    BT_LE_CONN_PARAM_DEFAULT,
+							    &conn);
+				if (err) {
+					LOG_ERR("Create connection failed: %d", err);
+					bt_le_scan_start(BT_LE_SCAN_ACTIVE, NULL);
+				} else {
+					bt_conn_unref(conn);
+				}
+				return;
 			}
-			return;
 		}
 
 		/* Skip remaining field data */
@@ -331,6 +372,14 @@ static void scan_recv_cb(const struct bt_le_scan_recv_info *info,
 			break;
 		}
 		net_buf_simple_pull(ad, len);
+	}
+
+	/* Debug: log every 50th scan with name (or every 200th without) */
+	if (found_name && (scan_count % 50 == 0)) {
+		LOG_INF("SCAN[%d]: name=\"%s\" rssi=%d", scan_count, name_buf, info->rssi);
+	} else if (scan_count % 200 == 0) {
+		LOG_INF("SCAN[%d]: (no name, ad_len=%u) rssi=%d",
+			scan_count, ad_len_orig, info->rssi);
 	}
 }
 

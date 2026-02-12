@@ -304,7 +304,7 @@ def test_zephyr_openocd_config_fallback():
     
     assert config.interface_cfg == "interface/stlink.cfg"
     assert config.target_cfg == "target/stm32f4x.cfg"
-    assert config.transport == "swd"
+    assert config.transport is None
 
 
 def test_zephyr_chip_info_nrf():

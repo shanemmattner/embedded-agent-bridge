@@ -8,7 +8,7 @@ Tests that esptool commands use non-deprecated argument forms:
 - erase-flash (not erase_flash)
 """
 
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 import subprocess
 from eab.device_control import DeviceController, RESET_SEQUENCES, strip_ansi
 

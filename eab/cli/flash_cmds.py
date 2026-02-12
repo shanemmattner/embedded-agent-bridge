@@ -38,6 +38,28 @@ reset_delay = 0.25
 """
 
 
+def _wait_for_port(port: str, timeout_s: float = 10) -> bool:
+    """Wait for a serial port to appear (USB-JTAG re-enumeration after reset).
+
+    Args:
+        port: Serial port path (e.g., /dev/cu.usbmodem1101).
+        timeout_s: Maximum seconds to wait.
+
+    Returns:
+        True if port appeared within timeout, False otherwise.
+    """
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if os.path.exists(port):
+            # Port file exists — give USB stack a moment to stabilize
+            time.sleep(0.5)
+            logger.info("Port %s ready", port)
+            return True
+        time.sleep(0.5)
+    logger.warning("Port %s did not appear within %ds", port, timeout_s)
+    return False
+
+
 def _write_esptool_cfg_for_usb_jtag() -> str | None:
     """Write a temporary esptool.cfg with increased timeouts for USB-JTAG.
 
@@ -198,7 +220,7 @@ def cmd_flash(
 
     # Auto-retry for ESP32 USB-JTAG failures with --no-stub and lower baud.
     # USB-JTAG serial is inherently flaky — retries often succeed on next attempt.
-    # Strategy: up to 3 retries with --no-stub at 115200 baud, 2s pause between.
+    # Strategy: up to 3 retries with --no-stub at 115200 baud, wait for port between.
     _ESP32_MAX_RETRIES = 3
     esp32_retried = False
     if not success and chip.lower().startswith("esp") and not retried_with_cur:
@@ -208,6 +230,7 @@ def cmd_flash(
             "no serial data received",
             "protocol error",
             "timed out waiting for packet",
+            "device not configured",
         ]
         stderr_lower = stderr.lower()
         should_retry = any(err in stderr_lower for err in esp_retry_errors)
@@ -225,6 +248,11 @@ def cmd_flash(
                     _ESP32_MAX_RETRIES,
                     retry_baud,
                 )
+
+                # Wait for port to reappear (USB-JTAG disappears after failed flash/reset)
+                if port:
+                    _wait_for_port(port, timeout_s=10)
+
                 flash_cmd = profile.get_flash_command(
                     firmware_path=firmware,
                     port=port or "",
@@ -234,9 +262,6 @@ def cmd_flash(
                 cmd_list = [flash_cmd.tool] + flash_cmd.args
                 attempt += 1
                 logger.info("ESP32 retry attempt %d: %s", attempt, " ".join(cmd_list))
-
-                # Pause to let USB bus settle between attempts
-                time.sleep(2.0)
 
                 try:
                     result = subprocess.run(

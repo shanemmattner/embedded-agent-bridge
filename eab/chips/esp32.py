@@ -7,8 +7,10 @@ Uses esptool for flashing and esp_usb_jtag for OpenOCD.
 
 from __future__ import annotations
 
+import glob
 import logging
 import re
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +21,8 @@ from .base import (
     OpenOCDConfig,
     ResetSequence,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ESP32Profile(ChipProfile):
@@ -201,6 +205,38 @@ class ESP32Profile(ChipProfile):
         return "esptool.py"
 
     @staticmethod
+    def find_espressif_openocd() -> str | None:
+        """Find the Espressif OpenOCD binary (has ESP32 board configs).
+
+        The standard Homebrew OpenOCD does NOT include esp32c6-builtin.cfg
+        or the esp_usb_jtag interface driver. Only the Espressif fork works.
+
+        Returns:
+            Path to openocd binary, or None if not found.
+        """
+        # Check ESP-IDF tools directory (installed by install.sh)
+        home = Path.home()
+        espressif_dir = home / ".espressif" / "tools" / "openocd-esp32"
+        if espressif_dir.exists():
+            # Find newest version
+            versions = sorted(espressif_dir.iterdir(), reverse=True)
+            for ver_dir in versions:
+                ocd_bin = ver_dir / "openocd-esp32" / "bin" / "openocd"
+                if ocd_bin.exists():
+                    logger.info("Found Espressif OpenOCD: %s", ocd_bin)
+                    return str(ocd_bin)
+
+        # Check if openocd in PATH has esp32 support
+        ocd_path = shutil.which("openocd")
+        if ocd_path:
+            # Quick check: does it have esp32c6-builtin.cfg?
+            ocd_dir = Path(ocd_path).parent.parent / "share" / "openocd" / "scripts" / "board"
+            if (ocd_dir / "esp32c6-builtin.cfg").exists():
+                return ocd_path
+
+        return None
+
+    @staticmethod
     def is_usb_jtag_port(port: str) -> bool:
         """Check if port looks like a USB-JTAG/Serial connection (not external UART bridge).
 
@@ -340,6 +376,64 @@ class ESP32Profile(ChipProfile):
             tool="esptool.py",
             args=["--port", port, "chip_id"],
             timeout=30.0,
+        )
+
+    def get_openocd_flash_command(
+        self,
+        firmware_path: str,
+        address: str = "0x10000",
+        board_cfg: str | None = None,
+        **kwargs,
+    ) -> FlashCommand | None:
+        """Build OpenOCD program_esp command for flashing via JTAG.
+
+        Uses the JTAG transport instead of the serial bootloader protocol.
+        This is MUCH more reliable for ESP32-C6 USB-JTAG than esptool,
+        which uses the serial data stream that drops during large transfers.
+
+        Args:
+            firmware_path: Path to .bin file or ESP-IDF build directory.
+            address: Flash address (default 0x10000 for app, ignored for build dirs).
+            board_cfg: OpenOCD board config (default: auto-detected from variant).
+
+        Returns:
+            FlashCommand or None if Espressif OpenOCD is not installed.
+        """
+        openocd = self.find_espressif_openocd()
+        if not openocd:
+            logger.warning("Espressif OpenOCD not found — cannot flash via JTAG")
+            return None
+
+        # Determine board config
+        if not board_cfg:
+            variant = self.variant or "esp32c6"
+            board_cfg = f"board/{variant}-builtin.cfg"
+
+        args = ["-f", board_cfg]
+
+        # Check if firmware_path is a build directory with flash_args
+        fw_path = Path(firmware_path)
+        partitions = None
+        if fw_path.is_dir():
+            partitions = self.parse_flash_args(fw_path)
+            if not partitions:
+                partitions = self.parse_flash_args(fw_path / "build")
+
+        if partitions:
+            # Multi-partition flash: program_esp each partition
+            for addr, fpath in partitions:
+                args.extend(["-c", f"program_esp {fpath} {addr} verify"])
+        else:
+            # Single binary flash
+            args.extend(["-c", f"program_esp {firmware_path} {address} verify"])
+
+        # Reset and exit
+        args.extend(["-c", "reset run", "-c", "shutdown"])
+
+        return FlashCommand(
+            tool=openocd,
+            args=args,
+            timeout=120.0,
         )
 
     # =========================================================================

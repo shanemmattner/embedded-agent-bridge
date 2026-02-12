@@ -133,12 +133,38 @@ def cmd_flash(
     elif not address and chip.lower().startswith("esp"):
         address = "0x10000"
 
-    flash_cmd = profile.get_flash_command(
-        firmware_path=firmware,
-        port=port or "",
-        **({"address": address} if address else {}),
-        **kwargs,
-    )
+    # For ESP32 USB-JTAG: prefer OpenOCD JTAG flashing over esptool serial.
+    # The USB-Serial/JTAG peripheral's serial data stream is unreliable for
+    # large transfers (>~50KB), but JTAG transport works flawlessly.
+    use_openocd = False
+    esptool_cfg_path = None
+    if chip.lower().startswith("esp"):
+        from eab.chips.esp32 import ESP32Profile
+
+        if ESP32Profile.is_usb_jtag_port(port or ""):
+            openocd_cmd = profile.get_openocd_flash_command(
+                firmware_path=firmware,
+                **({"address": address} if address else {}),
+            )
+            if openocd_cmd:
+                flash_cmd = openocd_cmd
+                use_openocd = True
+                logger.info("USB-JTAG detected on %s — using OpenOCD JTAG flash (not esptool)", port)
+
+    if not use_openocd:
+        flash_cmd = profile.get_flash_command(
+            firmware_path=firmware,
+            port=port or "",
+            **({"address": address} if address else {}),
+            **kwargs,
+        )
+
+        # For ESP32 USB-JTAG without OpenOCD: use esptool.cfg with increased timeouts
+        if chip.lower().startswith("esp"):
+            from eab.chips.esp32 import ESP32Profile
+
+            if ESP32Profile.is_usb_jtag_port(port or ""):
+                esptool_cfg_path = _write_esptool_cfg_for_usb_jtag()
 
     # Execute flash command
     cmd_list = [flash_cmd.tool] + flash_cmd.args
@@ -146,18 +172,11 @@ def cmd_flash(
     # None inherits parent env; explicit dict overrides specific keys.
     run_env = {**os.environ, **flash_cmd.env} if flash_cmd.env else None
 
-    # For ESP32 USB-JTAG: generate esptool.cfg with increased timeouts/retries
-    esptool_cfg_path = None
-    if chip.lower().startswith("esp"):
-        from eab.chips.esp32 import ESP32Profile
-
-        if ESP32Profile.is_usb_jtag_port(port or ""):
-            esptool_cfg_path = _write_esptool_cfg_for_usb_jtag()
-            if esptool_cfg_path:
-                if run_env is None:
-                    run_env = {**os.environ}
-                run_env["ESPTOOL_CFGFILE"] = esptool_cfg_path
-                logger.info("USB-JTAG detected on %s — using esptool.cfg: %s", port, esptool_cfg_path)
+    if esptool_cfg_path:
+        if run_env is None:
+            run_env = {**os.environ}
+        run_env["ESPTOOL_CFGFILE"] = esptool_cfg_path
+        logger.info("Using esptool.cfg: %s", esptool_cfg_path)
 
     attempt = 1
     logger.info("Flash attempt %d: %s", attempt, " ".join(cmd_list))
@@ -318,6 +337,7 @@ def cmd_flash(
         "firmware": original_firmware_path,  # Show original path, not temp file
         "address": address,
         "tool": flash_cmd.tool,
+        "method": "openocd_jtag" if use_openocd else "esptool_serial",
         "command": cmd_list,
         "attempts": attempt,
         "retried_with_connect_under_reset": retried_with_cur,

@@ -35,6 +35,9 @@ dependencies = [
 plotter = [
     "websockets>=14",
 ]
+jlink = [
+    "pylink-square>=1.0",
+]
 dev = [
     "pytest>=9",
     "pytest-cov>=6",

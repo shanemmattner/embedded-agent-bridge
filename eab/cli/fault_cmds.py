@@ -44,8 +44,10 @@ def cmd_fault_analyze(
         ocd_cfg = profile.get_openocd_config()
         probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
         probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        probe_kwargs["transport"] = ocd_cfg.transport or "swd"
+        if ocd_cfg.transport:
+            probe_kwargs["transport"] = ocd_cfg.transport
         probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
+        probe_kwargs["halt_command"] = ocd_cfg.halt_command
 
     probe = get_debug_probe(probe_type, base_dir=base_dir, **probe_kwargs)
 

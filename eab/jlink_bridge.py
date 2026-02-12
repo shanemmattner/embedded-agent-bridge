@@ -259,8 +259,11 @@ class JLinkBridge:
         if cur.running:
             return cur
 
+        import shutil
+        gdb_server_bin = shutil.which("JLinkGDBServerCLExe") or shutil.which("JLinkGDBServer") or "JLinkGDBServer"
+
         cmd = [
-            "JLinkGDBServer",
+            gdb_server_bin,
             "-device", device,
             "-if", interface,
             "-speed", str(speed),

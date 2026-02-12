@@ -33,6 +33,11 @@ eabctl reset
 eabctl fault-analyze --device NRF5340_XXAA_APP --json
 eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
 
+# DWT profiling (function/region performance measurement)
+eabctl profile-function --function main --device NRF5340_XXAA_APP --elf build/zephyr/zephyr.elf
+eabctl profile-region --start 0x1000 --end 0x1100 --device NRF5340_XXAA_APP
+eabctl dwt-status --device NRF5340_XXAA_APP --json
+
 # RTT (Python API — no CLI command yet)
 # from eab.rtt import JLinkBridge
 # bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
@@ -102,6 +107,66 @@ If the device outputs base64 between markers and you need a clean extract:
 ```bash
 eabctl capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 ```
+
+## DWT Profiling (Cortex-M Performance Measurement)
+
+Profile function execution time and cycle counts using ARM Cortex-M DWT (Data Watchpoint and Trace) hardware. Requires J-Link debug probe and pylink-square package (`pip install embedded-agent-bridge[jlink]`).
+
+### Profile a Function
+
+Measure execution time of a specific function by name:
+
+```bash
+# Profile function by name (auto-detects CPU frequency)
+eabctl profile-function --function main --device NRF5340_XXAA_APP --elf build/zephyr/zephyr.elf
+
+# Override CPU frequency if auto-detection fails
+eabctl profile-function --function sensor_read --device NRF5340_XXAA_APP --elf build/zephyr/zephyr.elf --cpu-freq 128000000
+
+# JSON output for machine parsing
+eabctl profile-function --function main --device NRF5340_XXAA_APP --elf build/zephyr/zephyr.elf --json
+```
+
+### Profile an Address Region
+
+Measure execution time between two addresses:
+
+```bash
+# Profile specific address range
+eabctl profile-region --start 0x1000 --end 0x1100 --device NRF5340_XXAA_APP
+
+# With explicit CPU frequency
+eabctl profile-region --start 0x1000 --end 0x1100 --device NRF5340_XXAA_APP --cpu-freq 128000000
+
+# JSON output
+eabctl profile-region --start 0x1000 --end 0x1100 --device NRF5340_XXAA_APP --json
+```
+
+### Check DWT Status
+
+Display current DWT register state:
+
+```bash
+# Human-readable status
+eabctl dwt-status --device NRF5340_XXAA_APP
+
+# JSON output
+eabctl dwt-status --device NRF5340_XXAA_APP --json
+```
+
+### CPU Frequency Defaults
+
+The profiler auto-detects CPU frequency for common chips:
+
+| Device | CPU Frequency | Override Flag |
+|--------|---------------|---------------|
+| nRF5340 | 128 MHz | `--cpu-freq 128000000` |
+| nRF52840 | 64 MHz | `--cpu-freq 64000000` |
+| MCXN947 | 150 MHz | `--cpu-freq 150000000` |
+| STM32F4 | 168 MHz | `--cpu-freq 168000000` |
+| STM32H7 | 480 MHz | `--cpu-freq 480000000` |
+
+Use `--cpu-freq` to override auto-detection or support unlisted devices.
 
 ## Supported Hardware
 
@@ -177,20 +242,23 @@ This checks:
 ## All Commands
 
 ```
-eabctl status         # Check daemon and device status
-eabctl preflight      # Verify ready to flash (run before flashing!)
-eabctl tail [N]       # Show last N lines (default 50)
-eabctl alerts [N]     # Show last N alerts (default 20)
-eabctl events [N]     # Show last N JSON events (default 50)
-eabctl send <text>    # Send text to device
-eabctl reset          # Reset ESP32
-eabctl flash <dir>    # Flash ESP-IDF project
-eabctl erase          # Erase entire flash
-eabctl wait <pat>     # Wait for pattern in output
-eabctl wait-event     # Wait for event in events.jsonl
-eabctl stream ...     # High-speed data stream (data.bin)
-eabctl recv ...       # Read bytes from data.bin
-eabctl fault-analyze  # Decode Cortex-M fault registers via GDB
+eabctl status              # Check daemon and device status
+eabctl preflight           # Verify ready to flash (run before flashing!)
+eabctl tail [N]            # Show last N lines (default 50)
+eabctl alerts [N]          # Show last N alerts (default 20)
+eabctl events [N]          # Show last N JSON events (default 50)
+eabctl send <text>         # Send text to device
+eabctl reset               # Reset ESP32
+eabctl flash <dir>         # Flash ESP-IDF project
+eabctl erase               # Erase entire flash
+eabctl wait <pat>          # Wait for pattern in output
+eabctl wait-event          # Wait for event in events.jsonl
+eabctl stream ...          # High-speed data stream (data.bin)
+eabctl recv ...            # Read bytes from data.bin
+eabctl fault-analyze       # Decode Cortex-M fault registers via GDB
+eabctl profile-function    # Profile function execution time (J-Link + DWT)
+eabctl profile-region      # Profile address region execution time (J-Link + DWT)
+eabctl dwt-status          # Display DWT register state
 ```
 
 ## Binary Framing (Optional)
@@ -210,6 +278,7 @@ compatible with line‑based logs.
 | Flash failed | Run `eabctl preflight` to diagnose |
 | USB disconnected | Check cable, run `eabctl status` |
 | J-Link not found | Install J-Link Software Pack from SEGGER |
+| pylink not found | Install with: `pip install embedded-agent-bridge[jlink]` or `pip install pylink-square` |
 | OpenOCD "unknown target" | Use chip-specific OpenOCD (espressif/openocd-esp32 for ESP32) |
 | `west` not found | `pip install west` and set `ZEPHYR_BASE` |
 | RTT no output | Verify J-Link connected, correct device name in `--device` flag |

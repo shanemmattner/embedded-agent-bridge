@@ -59,8 +59,9 @@ class OpenOCDProbe(DebugProbe):
         *,
         interface_cfg: str = "interface/cmsis-dap.cfg",
         target_cfg: Optional[str] = None,
-        transport: str = "swd",
+        transport: Optional[str] = None,
         extra_commands: Optional[list[str]] = None,
+        halt_command: str = "halt",
         gdb_port: int = DEFAULT_GDB_PORT,
         telnet_port: int = DEFAULT_TELNET_PORT,
         tcl_port: int = DEFAULT_TCL_PORT,
@@ -71,6 +72,7 @@ class OpenOCDProbe(DebugProbe):
         self._target_cfg = target_cfg
         self._transport = transport
         self._extra_commands = extra_commands or []
+        self._halt_command = halt_command
         self._gdb_port = gdb_port
         self._telnet_port = telnet_port
         self._tcl_port = tcl_port
@@ -111,7 +113,7 @@ class OpenOCDProbe(DebugProbe):
         cmd += ["-c", f"telnet_port {self._telnet_port}"]
         cmd += ["-c", f"tcl_port {self._tcl_port}"]
         cmd += ["-c", "init"]
-        cmd += ["-c", "halt"]
+        cmd += ["-c", self._halt_command]
 
         logger.info("Starting OpenOCD: %s", " ".join(cmd))
 

@@ -53,6 +53,7 @@ class OpenOCDConfig:
     adapter_driver: Optional[str] = None  # e.g., "hla_swd"
     transport: Optional[str] = None  # e.g., "hla_swd", "dapdirect_swd"
     extra_commands: list[str] = field(default_factory=list)
+    halt_command: str = "halt"  # Command to halt target after init ("halt" or "reset halt")
 
 
 class ChipProfile(ABC):

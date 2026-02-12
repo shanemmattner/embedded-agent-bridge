@@ -559,3 +559,10 @@ with open(result_file, "w") as f:
     json.dump(result, f, indent=2)
 '''
 
+
+# Re-export elf_inspect generators for convenience
+from eab.elf_inspect import (  # noqa: E402, F401
+    generate_batch_variable_reader,
+    generate_variable_lister,
+)
+

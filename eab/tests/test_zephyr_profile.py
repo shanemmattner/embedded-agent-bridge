@@ -494,3 +494,39 @@ def test_get_chip_profile_error_includes_bare_zephyr_chips():
     assert "esp32" in error_msg
     assert "stm32" in error_msg
     assert "zephyr" in error_msg
+
+
+def test_get_chip_profile_case_insensitive_bare_chips():
+    """Test that bare chip names are case-insensitive (NRF5340 and nrf5340 both work)."""
+    # Test nrf5340 in lowercase
+    profile_lower = get_chip_profile("nrf5340")
+    assert isinstance(profile_lower, ZephyrProfile)
+    assert profile_lower.variant == "nrf5340"
+    assert profile_lower.board == "nrf5340dk/nrf5340/cpuapp"
+    assert profile_lower.runner == "jlink"
+    
+    # Test NRF5340 in uppercase
+    profile_upper = get_chip_profile("NRF5340")
+    assert isinstance(profile_upper, ZephyrProfile)
+    assert profile_upper.variant == "nrf5340"
+    assert profile_upper.board == "nrf5340dk/nrf5340/cpuapp"
+    assert profile_upper.runner == "jlink"
+    
+    # Test nRf5340 in mixed case
+    profile_mixed = get_chip_profile("nRf5340")
+    assert isinstance(profile_mixed, ZephyrProfile)
+    assert profile_mixed.variant == "nrf5340"
+    assert profile_mixed.board == "nrf5340dk/nrf5340/cpuapp"
+    assert profile_mixed.runner == "jlink"
+    
+    # Test another chip to verify pattern works across all bare names
+    profile_rp_lower = get_chip_profile("rp2040")
+    profile_rp_upper = get_chip_profile("RP2040")
+    assert profile_rp_lower.variant == profile_rp_upper.variant == "rp2040"
+    assert profile_rp_lower.board == profile_rp_upper.board == "rpi_pico"
+    
+    # Test mcxn947
+    profile_mcx_lower = get_chip_profile("mcxn947")
+    profile_mcx_upper = get_chip_profile("MCXN947")
+    assert profile_mcx_lower.variant == profile_mcx_upper.variant == "mcxn947"
+    assert profile_mcx_lower.board == profile_mcx_upper.board == "frdm_mcxn947/mcxn947/cpu0"

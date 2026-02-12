@@ -64,9 +64,11 @@ class OpenOCDProbe(DebugProbe):
         gdb_port: int = DEFAULT_GDB_PORT,
         telnet_port: int = DEFAULT_TELNET_PORT,
         tcl_port: int = DEFAULT_TCL_PORT,
+        openocd_path: Optional[str] = None,
     ):
         self._base_dir = Path(base_dir)
         self._base_dir.mkdir(parents=True, exist_ok=True)
+        self._openocd_path = openocd_path or "openocd"
         self._interface_cfg = interface_cfg
         self._target_cfg = target_cfg
         self._transport = transport
@@ -87,8 +89,8 @@ class OpenOCDProbe(DebugProbe):
         if pid and _pid_alive(pid):
             return GDBServerStatus(running=True, pid=pid, port=gdb_port)
 
-        scripts = _scripts_dir()
-        cmd = ["openocd"]
+        scripts = _scripts_dir() if self._openocd_path == "openocd" else None
+        cmd = [self._openocd_path]
         if scripts:
             cmd += ["-s", scripts]
 

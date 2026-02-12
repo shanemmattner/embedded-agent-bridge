@@ -1,0 +1,48 @@
+boards:
+  nrf5340:
+    chip: nrf5340
+    probe: jlink
+    device: NRF5340_XXAA_APP
+    arch: arm
+    has_dwt: true
+    sram_base: 0x20000000
+    firmware:
+      source: examples/nrf5340-test-firmware
+      framework: zephyr
+      board_target: nrf5340dk/nrf5340/cpuapp
+      flash_runner: jlink
+
+  stm32l4:
+    chip: stm32l4
+    probe: openocd
+    arch: arm
+    has_dwt: true
+    elf: examples/stm32l4-test-firmware/eab-test-firmware.elf
+    sram_base: 0x20000000
+    firmware:
+      binary: examples/stm32l4-test-firmware/eab-test-firmware.elf
+      framework: bare_metal
+      flash_chip: stm32l4
+
+  mcxn947:
+    chip: mcxn947
+    probe: openocd
+    device: MCXN947
+    arch: arm
+    has_dwt: true
+    sram_base: 0x20000000
+    firmware:
+      source: examples/frdm-mcxn947-fault-demo
+      framework: zephyr
+      board_target: frdm_mcxn947/mcxn947/cpu0
+      flash_runner: openocd
+
+  esp32c6:
+    chip: esp32c6
+    probe: openocd_esp
+    arch: riscv
+    has_dwt: false
+    sram_base: 0x40800000
+    firmware:
+      source: examples/esp32c6-test-firmware
+      framework: esp_idf

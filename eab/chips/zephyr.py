@@ -438,9 +438,31 @@ class ZephyrProfile(ChipProfile):
                 ],
             )
 
+        # STM32: ST-Link uses HLA (High-Level Adapter) transport
+        if "stm32" in variant_lower:
+            stm32_target_map = {
+                "stm32f1": "target/stm32f1x.cfg",
+                "stm32f3": "target/stm32f3x.cfg",
+                "stm32f4": "target/stm32f4x.cfg",
+                "stm32l4": "target/stm32l4x.cfg",
+                "stm32h7": "target/stm32h7x.cfg",
+                "stm32g0": "target/stm32g0x.cfg",
+                "stm32g4": "target/stm32g4x.cfg",
+            }
+            target_cfg = "target/stm32f4x.cfg"  # default
+            for prefix, cfg in stm32_target_map.items():
+                if variant_lower.startswith(prefix):
+                    target_cfg = cfg
+                    break
+            return OpenOCDConfig(
+                interface_cfg="interface/stlink.cfg",
+                target_cfg=target_cfg,
+                transport="hla_swd",
+            )
+
         # Fallback: ST-Link with STM32F4 (generic Cortex-M)
         return OpenOCDConfig(
             interface_cfg="interface/stlink.cfg",
             target_cfg="target/stm32f4x.cfg",
-            transport="swd",
+            transport="hla_swd",
         )

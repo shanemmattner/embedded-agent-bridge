@@ -39,19 +39,19 @@ def _default_gdb_for_chip(chip: str) -> Optional[str]:
             return p
     # STM32 ARM Cortex-M
     if chip.startswith("stm32"):
-        for name in ("arm-none-eabi-gdb", "gdb-multiarch"):
+        for name in ("arm-none-eabi-gdb", "arm-zephyr-eabi-gdb", "gdb-multiarch"):
             p = shutil.which(name)
             if p:
                 return p
     # nRF / Zephyr ARM Cortex-M
     if chip.startswith("nrf") or chip.startswith("zephyr"):
-        for name in ("arm-none-eabi-gdb", "gdb-multiarch"):
+        for name in ("arm-none-eabi-gdb", "arm-zephyr-eabi-gdb", "gdb-multiarch"):
             p = shutil.which(name)
             if p:
                 return p
     # NXP MCX (Cortex-M33)
     if chip.startswith("mcx"):
-        for name in ("arm-none-eabi-gdb", "gdb-multiarch"):
+        for name in ("arm-none-eabi-gdb", "arm-zephyr-eabi-gdb", "gdb-multiarch"):
             p = shutil.which(name)
             if p:
                 return p

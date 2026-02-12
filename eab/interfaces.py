@@ -127,6 +127,21 @@ class FileSystemInterface(ABC):
         """Delete a file."""
         pass
 
+    @abstractmethod
+    def file_size(self, path: str) -> int:
+        """Return file size in bytes. Raises FileNotFoundError if missing."""
+        pass
+
+    @abstractmethod
+    def rename_file(self, old_path: str, new_path: str) -> None:
+        """Rename a file."""
+        pass
+
+    @abstractmethod
+    def list_dir(self, path: str) -> List[str]:
+        """List filenames in a directory."""
+        pass
+
 
 class ClockInterface(ABC):
     """

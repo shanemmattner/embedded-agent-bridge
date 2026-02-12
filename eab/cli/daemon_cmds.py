@@ -45,6 +45,9 @@ def cmd_start(
     baud: int,
     force: bool,
     json_mode: bool,
+    log_max_size_mb: int = 100,
+    log_max_files: int = 5,
+    log_compress: bool = True,
 ) -> int:
     """Start the EAB daemon in the background.
 
@@ -132,7 +135,13 @@ def cmd_start(
         str(baud),
         "--base-dir",
         base_dir,
+        "--log-max-size",
+        str(log_max_size_mb),
+        "--log-max-files",
+        str(log_max_files),
     ]
+    if not log_compress:
+        args.append("--no-log-compress")
 
     log_path = "/tmp/eab-daemon.log"
     err_path = "/tmp/eab-daemon.err"

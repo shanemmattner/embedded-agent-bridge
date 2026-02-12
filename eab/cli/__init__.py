@@ -313,6 +313,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_start.add_argument("--port", default="auto")
     p_start.add_argument("--baud", type=int, default=115200)
     p_start.add_argument("--force", action="store_true")
+    p_start.add_argument("--log-max-size", type=int, default=100, help="Max log size in MB before rotation (default: 100)")
+    p_start.add_argument("--log-max-files", type=int, default=5, help="Max rotated log files to keep (default: 5)")
+    p_start.add_argument("--no-log-compress", action="store_true", help="Disable compression of rotated logs")
 
     sub.add_parser("stop", help="Stop running daemon")
 
@@ -619,6 +622,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             baud=args.baud,
             force=args.force,
             json_mode=args.json,
+            log_max_size_mb=args.log_max_size,
+            log_max_files=args.log_max_files,
+            log_compress=not args.no_log_compress,
         )
     if args.cmd == "stop":
         return cmd_stop(json_mode=args.json)

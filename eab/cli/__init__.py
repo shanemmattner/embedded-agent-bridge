@@ -67,6 +67,11 @@ from eab.cli.debug_cmds import (
     cmd_openocd_stop,
     cmd_openocd_cmd,
     cmd_gdb,
+    cmd_gdb_script,
+    cmd_inspect,
+    cmd_threads,
+    cmd_watch,
+    cmd_memdump,
 )
 from eab.cli.fault_cmds import cmd_fault_analyze
 from eab.cli.profile_cmds import (
@@ -219,6 +224,54 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_dwt_status = sub.add_parser("dwt-status", help="Display DWT register state")
     p_dwt_status.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+
+    p_gdb_script = sub.add_parser("gdb-script", help="Execute custom GDB Python script via debug probe")
+    p_gdb_script.add_argument("script_path", help="Path to GDB Python script")
+    p_gdb_script.add_argument("--device", default=None, help="Device string for J-Link (e.g., NRF5340_XXAA_APP)")
+    p_gdb_script.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_gdb_script.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_gdb_script.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_gdb_script.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    p_inspect = sub.add_parser("inspect", help="Inspect a struct variable via GDB")
+    p_inspect.add_argument("variable", help="Variable name to inspect (e.g., _kernel)")
+    p_inspect.add_argument("--device", default=None, help="Device string for J-Link")
+    p_inspect.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_inspect.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_inspect.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_inspect.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    p_threads = sub.add_parser("threads", help="List RTOS threads via GDB")
+    p_threads.add_argument("--device", default=None, help="Device string for J-Link")
+    p_threads.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_threads.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_threads.add_argument("--rtos", default="zephyr", help="RTOS type (default: zephyr)")
+    p_threads.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_threads.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    p_watch = sub.add_parser("watch", help="Set watchpoint on variable and log hits")
+    p_watch.add_argument("variable", help="Variable name to watch (e.g., g_counter)")
+    p_watch.add_argument("--device", default=None, help="Device string for J-Link")
+    p_watch.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_watch.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_watch.add_argument("--max-hits", type=int, default=100, help="Maximum hits to log (default: 100)")
+    p_watch.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_watch.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    p_memdump = sub.add_parser("memdump", help="Dump memory region to file via GDB")
+    p_memdump.add_argument("start_addr", help="Starting address (hex like 0x20000000)")
+    p_memdump.add_argument("size", type=int, help="Number of bytes to dump")
+    p_memdump.add_argument("output_path", help="Output file path")
+    p_memdump.add_argument("--device", default=None, help="Device string for J-Link")
+    p_memdump.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_memdump.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_memdump.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_memdump.add_argument("--port", type=int, default=None, help="GDB server port override")
 
     p_stream = sub.add_parser("stream", help="Configure high-speed data stream mode")
     p_stream.add_argument("action", choices=["start", "stop"])
@@ -455,6 +508,64 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_dwt_status(
             base_dir=base_dir,
             device=args.device,
+            json_mode=args.json,
+        )
+    if args.cmd == "gdb-script":
+        return cmd_gdb_script(
+            base_dir=base_dir,
+            script_path=args.script_path,
+            device=args.device,
+            elf=args.elf,
+            chip=args.chip,
+            probe_type=args.probe,
+            port=args.port,
+            json_mode=args.json,
+        )
+    if args.cmd == "inspect":
+        return cmd_inspect(
+            base_dir=base_dir,
+            variable=args.variable,
+            device=args.device,
+            elf=args.elf,
+            chip=args.chip,
+            probe_type=args.probe,
+            port=args.port,
+            json_mode=args.json,
+        )
+    if args.cmd == "threads":
+        return cmd_threads(
+            base_dir=base_dir,
+            device=args.device,
+            elf=args.elf,
+            chip=args.chip,
+            rtos=args.rtos,
+            probe_type=args.probe,
+            port=args.port,
+            json_mode=args.json,
+        )
+    if args.cmd == "watch":
+        return cmd_watch(
+            base_dir=base_dir,
+            variable=args.variable,
+            device=args.device,
+            elf=args.elf,
+            chip=args.chip,
+            max_hits=args.max_hits,
+            probe_type=args.probe,
+            port=args.port,
+            json_mode=args.json,
+        )
+    if args.cmd == "memdump":
+        return cmd_memdump(
+            base_dir=base_dir,
+            start_addr=args.start_addr,
+            size=args.size,
+            device=args.device,
+            elf=args.elf,
+            chip=args.chip,
+            output_path=args.output_path,
+            probe_type=args.probe,
+            port=args.port,
             json_mode=args.json,
         )
     if args.cmd == "stream":

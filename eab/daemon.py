@@ -420,6 +420,10 @@ class SerialDaemon:
             port=self._reconnection._port_name,
             baud=self._baud,
         )
+        
+        # Reset pattern counts for fresh session
+        self._pattern_matcher.reset_counts()
+        
         self._status_manager.set_connection_state(ConnectionState.CONNECTED)
         self._status_manager.set_stream_state(
             enabled=self._stream_enabled,

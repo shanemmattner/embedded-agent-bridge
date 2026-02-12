@@ -490,3 +490,107 @@ class ESP32Profile(ChipProfile):
         if boot_match:
             return boot_match.group(2)
         return None
+
+    # =========================================================================
+    # ESP-IDF Project Detection
+    # =========================================================================
+
+    @staticmethod
+    def detect_chip_from_sdkconfig(project_dir: Path) -> str | None:
+        """Detect chip variant from sdkconfig or sdkconfig.defaults.
+
+        Args:
+            project_dir: Path to ESP-IDF project directory.
+
+        Returns:
+            Chip variant string (e.g., "esp32c6") or None if not found.
+        """
+        # Try sdkconfig first, then sdkconfig.defaults
+        for config_file in ["sdkconfig", "sdkconfig.defaults"]:
+            config_path = project_dir / config_file
+            if not config_path.exists():
+                continue
+
+            try:
+                content = config_path.read_text()
+                # Look for CONFIG_IDF_TARGET="esp32c6" or CONFIG_IDF_TARGET=esp32c6
+                match = re.search(r'CONFIG_IDF_TARGET\s*=\s*"?([^"\s]+)"?', content)
+                if match:
+                    chip = match.group(1).strip()
+                    logger.debug("Detected chip %s from %s", chip, config_path)
+                    return chip
+            except OSError as e:
+                logger.warning("Failed to read %s: %s", config_path, e)
+                continue
+
+        return None
+
+    @staticmethod
+    def detect_esp_idf_project(path: str) -> dict | None:
+        """Detect if path is an ESP-IDF project and extract project info.
+
+        Checks for ESP-IDF project markers:
+        - sdkconfig or sdkconfig.defaults
+        - CMakeLists.txt with idf_component_register or project()
+        - build/flash_args (indicates project is built)
+
+        Args:
+            path: Path to potential ESP-IDF project directory.
+
+        Returns:
+            Dict with project info or None if not an ESP-IDF project:
+            {
+                "chip": "esp32c6",           # Chip variant from sdkconfig
+                "build_dir": "/path/build",  # Build directory path
+                "has_flash_args": True       # Whether flash_args exists
+            }
+        """
+        project_path = Path(path)
+        if not project_path.is_dir():
+            return None
+
+        # Check for ESP-IDF project markers
+        has_sdkconfig = (project_path / "sdkconfig").exists()
+        has_sdkconfig_defaults = (project_path / "sdkconfig.defaults").exists()
+        has_cmakelists = (project_path / "CMakeLists.txt").exists()
+
+        # Must have either sdkconfig file or CMakeLists.txt
+        if not (has_sdkconfig or has_sdkconfig_defaults or has_cmakelists):
+            return None
+
+        # If CMakeLists.txt exists, verify it's an ESP-IDF project
+        if has_cmakelists:
+            try:
+                cmake_content = (project_path / "CMakeLists.txt").read_text()
+                # Look for ESP-IDF specific CMake functions
+                is_esp_idf = (
+                    "idf_component_register" in cmake_content
+                    or "project(" in cmake_content
+                    or "IDF_PATH" in cmake_content
+                )
+                if not is_esp_idf:
+                    # Has CMakeLists.txt but doesn't look like ESP-IDF
+                    return None
+            except OSError:
+                pass
+
+        # Detect chip variant from sdkconfig
+        chip = ESP32Profile.detect_chip_from_sdkconfig(project_path)
+        if not chip and not (has_sdkconfig or has_sdkconfig_defaults):
+            # No chip info and no sdkconfig files - not an ESP-IDF project
+            return None
+
+        # Check for build directory and flash_args
+        build_dir = project_path / "build"
+        has_flash_args = False
+        if build_dir.exists() and build_dir.is_dir():
+            flash_args_path = build_dir / "flash_args"
+            has_flash_args = flash_args_path.exists()
+        else:
+            build_dir = None
+
+        return {
+            "chip": chip,
+            "build_dir": str(build_dir) if build_dir else None,
+            "has_flash_args": has_flash_args,
+        }

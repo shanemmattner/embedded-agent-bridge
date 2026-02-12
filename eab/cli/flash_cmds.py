@@ -79,7 +79,7 @@ def _write_esptool_cfg_for_usb_jtag() -> str | None:
 def cmd_flash(
     *,
     firmware: str,
-    chip: str,
+    chip: Optional[str],
     address: Optional[str],
     port: Optional[str],
     tool: Optional[str],
@@ -94,6 +94,42 @@ def cmd_flash(
     temp_bin_path = None
     converted_from_elf = False
     original_firmware_path = firmware  # Track original path for reporting
+
+    # Detect ESP-IDF project directories and auto-detect chip
+    if os.path.isdir(firmware):
+        from eab.chips.esp32 import ESP32Profile
+        
+        project_info = ESP32Profile.detect_esp_idf_project(firmware)
+        
+        if project_info is not None:
+            # It's an ESP-IDF project
+            if not project_info.get("has_flash_args"):
+                # Project exists but not built
+                _print(
+                    {"error": "ESP-IDF project not built. Run 'idf.py build' first."},
+                    json_mode=json_mode
+                )
+                return 1
+            
+            # Use auto-detected chip if --chip not explicitly provided
+            if chip is None and project_info.get("chip"):
+                chip = project_info["chip"]
+                logger.info("Auto-detected chip type: %s", chip)
+        else:
+            # Directory exists but not an ESP-IDF project
+            _print(
+                {"error": "Directory is not an ESP-IDF project (no sdkconfig or build/flash_args found)"},
+                json_mode=json_mode
+            )
+            return 1
+    
+    # If chip is still None (binary file without --chip), return error
+    if chip is None:
+        _print(
+            {"error": "--chip is required when flashing a binary file"},
+            json_mode=json_mode
+        )
+        return 1
 
     try:
         profile = get_chip_profile(chip)

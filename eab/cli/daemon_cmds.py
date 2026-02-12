@@ -20,6 +20,24 @@ from eab.cli.helpers import (
 )
 
 
+def _clear_session_files(base_dir: str) -> None:
+    """Remove or reset session files in the base directory.
+
+    Cleans up status.json, alerts.log, and events.jsonl files,
+    handling missing files gracefully.
+
+    Args:
+        base_dir: Session directory containing state files.
+    """
+    files_to_clear = ["status.json", "alerts.log", "events.jsonl"]
+    for filename in files_to_clear:
+        filepath = os.path.join(base_dir, filename)
+        try:
+            os.remove(filepath)
+        except FileNotFoundError:
+            pass
+
+
 def cmd_start(
     *,
     base_dir: str,
@@ -84,6 +102,9 @@ def cmd_start(
         # Clean stale lock artifacts from dead processes (safe).
         cleanup_dead_locks()
 
+    # Clear stale session files before starting new daemon.
+    _clear_session_files(base_dir)
+
     # Use the Python that can actually import eab — sys.executable can differ
     # from the interpreter running eabctl (e.g. system Python vs homebrew).
     import shutil
@@ -133,6 +154,17 @@ def cmd_start(
             env=env,
             start_new_session=True,
         )
+
+    # Write placeholder status.json immediately to avoid race condition
+    # where `eabctl status` is called before daemon has initialized
+    status_path = os.path.join(base_dir, "status.json")
+    os.makedirs(base_dir, exist_ok=True)
+    placeholder_status = {
+        "health": {"status": "starting"},
+        "connection": {"status": "starting"}
+    }
+    with open(status_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(placeholder_status, indent=2))
 
     payload = {
         "schema_version": 1,

@@ -214,6 +214,7 @@ class OpenOCDBridge:
             stdout=log_f,
             stderr=err_f,
             cwd=str(self.base_dir),
+            start_new_session=True,
         )
         self.pid_path.write_text(str(proc.pid))
 

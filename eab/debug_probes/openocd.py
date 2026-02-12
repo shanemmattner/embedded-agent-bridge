@@ -126,6 +126,7 @@ class OpenOCDProbe(DebugProbe):
                 stdout=log_f,
                 stderr=err_f,
                 cwd=str(self._base_dir),
+                start_new_session=True,
             )
         finally:
             log_f.close()

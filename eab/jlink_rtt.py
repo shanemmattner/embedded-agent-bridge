@@ -175,6 +175,7 @@ class JLinkRTTManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.PIPE,
+                start_new_session=True,
             )
         except Exception as e:
             self._last_error = f"Failed to start JLinkRTTLogger: {e}"

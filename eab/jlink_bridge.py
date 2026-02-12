@@ -335,6 +335,7 @@ class JLinkBridge:
                 stdout=log_f,
                 stderr=err_f,
                 cwd=str(self.base_dir),
+                start_new_session=True,
             )
         finally:
             log_f.close()

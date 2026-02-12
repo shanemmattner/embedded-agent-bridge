@@ -106,7 +106,6 @@ def cmd_flash(
         return 2
 
     # Check APPROTECT on nRF5340 and auto-recover if enabled
-    from eab.chips.zephyr import ZephyrProfile
     approtect_recovery_performed = False
     if isinstance(profile, ZephyrProfile):
         variant_lower = (profile.variant or "").lower()
@@ -188,7 +187,6 @@ def cmd_flash(
         address = "0x10000"
 
     # Check if multi-core flash is needed (Zephyr with net_firmware)
-    from eab.chips.zephyr import ZephyrProfile
     is_zephyr = isinstance(profile, ZephyrProfile)
     use_multi_core = is_zephyr and net_firmware
 
@@ -954,8 +952,6 @@ def cmd_reset(
                 stderr = f"STM32CubeProgrammer not found: {cubeprog}"
     # For Zephyr targets (nRF, MCXN947, etc.), use chip profile reset command
     elif hasattr(profile, "get_reset_command"):
-        from eab.chips.zephyr import ZephyrProfile
-        
         if isinstance(profile, ZephyrProfile):
             try:
                 reset_cmd = profile.get_reset_command(device=device)

@@ -43,19 +43,19 @@ def _default_gdb_for_chip(chip: str) -> Optional[str]:
             return p
     # STM32 ARM Cortex-M
     if chip.startswith("stm32"):
-        for name in ("arm-none-eabi-gdb", "gdb-multiarch"):
+        for name in ("arm-none-eabi-gdb-py", "arm-none-eabi-gdb", "gdb-multiarch"):
             p = shutil.which(name)
             if p:
                 return p
-    # nRF / Zephyr ARM Cortex-M
+    # nRF / Zephyr ARM Cortex-M (prefer -gdb-py for Python scripting support)
     if chip.startswith("nrf") or chip.startswith("zephyr"):
-        for name in ("arm-none-eabi-gdb", "gdb-multiarch"):
+        for name in ("arm-zephyr-eabi-gdb-py", "arm-zephyr-eabi-gdb", "arm-none-eabi-gdb", "gdb-multiarch"):
             p = shutil.which(name)
             if p:
                 return p
     # NXP MCX (Cortex-M33)
     if chip.startswith("mcx"):
-        for name in ("arm-none-eabi-gdb", "gdb-multiarch"):
+        for name in ("arm-none-eabi-gdb-py", "arm-none-eabi-gdb", "gdb-multiarch"):
             p = shutil.which(name)
             if p:
                 return p
@@ -110,7 +110,7 @@ def run_gdb_python(
         import gdb
         import json
         
-        result_file = gdb.convenience_variable("result_file")
+        result_file = str(gdb.convenience_variable("result_file")).strip('"')
         result = {"registers": {}, "status": "ok"}
         with open(result_file, "w") as f:
             json.dump(result, f)
@@ -215,7 +215,7 @@ def generate_struct_inspector(elf_path: str, struct_name: str, var_name: str) ->
 import gdb
 import json
 
-result_file = gdb.convenience_variable("result_file")
+result_file = str(gdb.convenience_variable("result_file")).strip('"')
 result = {{"status": "ok", "struct_name": "{struct_name}", "var_name": "{var_name}", "fields": {{}}}}
 
 try:
@@ -286,7 +286,7 @@ def generate_thread_inspector(rtos: str = 'zephyr') -> str:
 import gdb
 import json
 
-result_file = gdb.convenience_variable("result_file")
+result_file = str(gdb.convenience_variable("result_file")).strip('"')
 result = {"status": "ok", "rtos": "zephyr", "threads": []}
 
 try:
@@ -380,7 +380,7 @@ def generate_watchpoint_logger(var_name: str, max_hits: int = 100) -> str:
 import gdb
 import json
 
-result_file = gdb.convenience_variable("result_file")
+result_file = str(gdb.convenience_variable("result_file")).strip('"')
 result = {{"status": "ok", "var_name": "{var_name}", "max_hits": {max_hits}, "hits": []}}
 
 class WatchpointLogger(gdb.Command):
@@ -501,7 +501,7 @@ def generate_memory_dump_script(start_addr: int, size: int, output_path: str) ->
 import gdb
 import json
 
-result_file = gdb.convenience_variable("result_file")
+result_file = str(gdb.convenience_variable("result_file")).strip('"')
 result = {{
     "status": "ok",
     "start_addr": "0x{start_addr:08x}",

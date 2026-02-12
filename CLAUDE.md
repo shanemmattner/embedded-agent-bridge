@@ -55,9 +55,16 @@ eabctl flash /path/to/project
 The flash command:
 1. Automatically pauses daemon and releases the serial port
 2. Detects chip type from build config
-3. Flashes bootloader, partition table, and app
-4. Resumes daemon and shows boot output
+3. For ESP32 USB-JTAG ports: uses **OpenOCD JTAG** (not esptool) — much more reliable
+4. Flashes bootloader, partition table, and app
+5. Resumes daemon and shows boot output
 
+**ESP32-C6 USB-JTAG Note:** The built-in USB-Serial/JTAG peripheral is unreliable
+for large serial transfers (esptool drops at ~50KB+). EAB auto-detects USB-JTAG
+ports and flashes via OpenOCD's `program_esp` command using the JTAG transport,
+which is 100% reliable. Requires Espressif OpenOCD (installed with ESP-IDF).
+
+**NEVER use `idf.py flash` or `esptool.py` directly.** Use `eabctl flash`.
 **If you see "port is busy" anywhere, you did something wrong. Use eabctl.**
 
 ```bash
@@ -100,10 +107,35 @@ eabctl capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 
 | Family | Variants | Debug Probe | Flash Tool |
 |--------|----------|-------------|------------|
-| ESP32 | esp32, esp32s3, esp32c3, esp32c6 | OpenOCD (ESP) | esptool |
+| ESP32 | esp32, esp32s3, esp32c3, esp32c6 | OpenOCD (ESP) | OpenOCD JTAG (USB-JTAG) / esptool (UART) |
 | STM32 | stm32l4, stm32f4, stm32h7, stm32g4 | OpenOCD + ST-Link | st-flash |
 | nRF | nRF5340 | J-Link SWD | west flash (Zephyr) |
 | NXP MCX | MCXN947 | OpenOCD CMSIS-DAP | west flash (Zephyr) |
+
+## GDB Debugging (ESP32-C6)
+
+The ESP32-C6 has a built-in USB-JTAG that supports full GDB debugging via OpenOCD.
+Requires the **Espressif OpenOCD** fork (installed with ESP-IDF at `~/.espressif/tools/openocd-esp32/`).
+
+```bash
+# Start OpenOCD (runs as a server on port 3333)
+~/.espressif/tools/openocd-esp32/*/openocd-esp32/bin/openocd -f board/esp32c6-builtin.cfg
+
+# In another terminal, connect GDB
+~/.espressif/tools/riscv32-esp-elf-gdb/*/riscv32-esp-elf-gdb/bin/riscv32-esp-elf-gdb build/app.elf
+(gdb) target remote :3333
+(gdb) mon reset halt
+(gdb) info registers
+(gdb) continue
+
+# Quick register dump (no GDB needed)
+openocd -f board/esp32c6-builtin.cfg -c "init" -c "halt" -c "reg" -c "shutdown"
+
+# Flash via JTAG (what eabctl uses internally)
+openocd -f board/esp32c6-builtin.cfg -c "program_esp app.bin 0x10000 verify" -c "reset run" -c "shutdown"
+```
+
+ESP32-C6 supports 4 hardware breakpoints, 4 watchpoints, and full CSR/debug register access.
 
 ## Diagnostics
 

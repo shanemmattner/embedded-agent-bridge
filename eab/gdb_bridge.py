@@ -77,7 +77,10 @@ def run_gdb_batch(
         argv += ["-ex", cmd]
     argv += ["-ex", "detach", "-ex", "quit"]
 
-    proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s)
+    proc = subprocess.run(
+        argv, capture_output=True, text=True, timeout=timeout_s,
+        start_new_session=True,
+    )
     return GDBResult(
         success=proc.returncode == 0,
         stdout=proc.stdout,

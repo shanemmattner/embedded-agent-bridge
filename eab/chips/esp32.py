@@ -7,7 +7,11 @@ Uses esptool for flashing and esp_usb_jtag for OpenOCD.
 
 from __future__ import annotations
 
+import glob
+import logging
 import re
+import shutil
+from pathlib import Path
 from typing import Optional
 
 from .base import (
@@ -17,6 +21,8 @@ from .base import (
     OpenOCDConfig,
     ResetSequence,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ESP32Profile(ChipProfile):
@@ -198,6 +204,87 @@ class ESP32Profile(ChipProfile):
     def flash_tool(self) -> str:
         return "esptool.py"
 
+    @staticmethod
+    def find_espressif_openocd() -> str | None:
+        """Find the Espressif OpenOCD binary (has ESP32 board configs).
+
+        The standard Homebrew OpenOCD does NOT include esp32c6-builtin.cfg
+        or the esp_usb_jtag interface driver. Only the Espressif fork works.
+
+        Returns:
+            Path to openocd binary, or None if not found.
+        """
+        # Check ESP-IDF tools directory (installed by install.sh)
+        home = Path.home()
+        espressif_dir = home / ".espressif" / "tools" / "openocd-esp32"
+        if espressif_dir.exists():
+            # Find newest version
+            versions = sorted(espressif_dir.iterdir(), reverse=True)
+            for ver_dir in versions:
+                ocd_bin = ver_dir / "openocd-esp32" / "bin" / "openocd"
+                if ocd_bin.exists():
+                    logger.info("Found Espressif OpenOCD: %s", ocd_bin)
+                    return str(ocd_bin)
+
+        # Check if openocd in PATH has esp32 support
+        ocd_path = shutil.which("openocd")
+        if ocd_path:
+            # Quick check: does it have esp32c6-builtin.cfg?
+            ocd_dir = Path(ocd_path).parent.parent / "share" / "openocd" / "scripts" / "board"
+            if (ocd_dir / "esp32c6-builtin.cfg").exists():
+                return ocd_path
+
+        return None
+
+    @staticmethod
+    def is_usb_jtag_port(port: str) -> bool:
+        """Check if port looks like a USB-JTAG/Serial connection (not external UART bridge).
+
+        USB-JTAG ports on macOS show up as /dev/cu.usbmodemXXXX (no "serial" in name).
+        External USB-UART bridges show up as /dev/cu.usbserial-XXXX or /dev/cu.SLAB_USBtoUART.
+        """
+        if not port:
+            return False
+        port_lower = port.lower()
+        # USB-JTAG: usbmodem (macOS), ttyACM (Linux)
+        if "usbmodem" in port_lower or "ttyacm" in port_lower:
+            return True
+        return False
+
+    @staticmethod
+    def parse_flash_args(build_dir: Path) -> list[tuple[str, str]] | None:
+        """Parse ESP-IDF flash_args file for multi-partition layout.
+
+        Args:
+            build_dir: Path to ESP-IDF build directory containing flash_args.
+
+        Returns:
+            List of (address, filepath) tuples, or None if flash_args not found.
+        """
+        flash_args_file = build_dir / "flash_args"
+        if not flash_args_file.exists():
+            return None
+
+        logger = logging.getLogger(__name__)
+        partitions: list[tuple[str, str]] = []
+        try:
+            for line in flash_args_file.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith("--"):
+                    continue
+                parts = line.split()
+                if len(parts) == 2:
+                    addr, rel_path = parts
+                    abs_path = build_dir / rel_path
+                    if abs_path.exists():
+                        partitions.append((addr, str(abs_path)))
+                    else:
+                        logger.warning("flash_args: file not found: %s", abs_path)
+        except OSError:
+            return None
+
+        return partitions if partitions else None
+
     def get_flash_command(
         self,
         firmware_path: str,
@@ -205,36 +292,68 @@ class ESP32Profile(ChipProfile):
         address: str = "0x10000",
         baud: int = 921600,
         chip: str | None = None,
+        no_stub: bool = False,
         **kwargs,
     ) -> FlashCommand:
         """
         Build esptool flash command.
 
+        If firmware_path is a directory containing flash_args (ESP-IDF build dir),
+        all partitions (bootloader, partition table, app) are flashed in one command.
+
         Args:
-            firmware_path: Path to .bin file
+            firmware_path: Path to .bin file or ESP-IDF build directory
             port: Serial port
-            address: Flash address (default 0x10000 for app)
+            address: Flash address (default 0x10000 for app, ignored for build dirs)
             baud: Baud rate for flashing
             chip: Chip type (esp32, esp32s3, etc.)
+            no_stub: Use ROM bootloader instead of RAM stub (slower but more reliable)
         """
         chip = chip or self.variant or "auto"
+        usb_jtag = self.is_usb_jtag_port(port)
 
-        args = [
-            "--chip", chip,
+        # USB-JTAG benefits from usb-reset and lower baud
+        before_mode = "usb-reset" if usb_jtag else "default_reset"
+
+        args = ["--chip", chip]
+
+        if no_stub:
+            args.append("--no-stub")
+
+        args += [
             "--port", port,
             "--baud", str(baud),
-            "--before", "default_reset",
+            "--before", before_mode,
             "--after", "hard_reset",
             "write_flash",
             "--flash_mode", "dio",
             "--flash_size", "detect",
-            address, firmware_path,
         ]
+
+        # Check if firmware_path is a build directory with flash_args
+        fw_path = Path(firmware_path)
+        partitions = None
+        if fw_path.is_dir():
+            partitions = self.parse_flash_args(fw_path)
+            if not partitions:
+                # Try build/ subdirectory
+                partitions = self.parse_flash_args(fw_path / "build")
+
+        if partitions:
+            # Multi-partition flash: add all addr/file pairs
+            for addr, fpath in partitions:
+                args.extend([addr, fpath])
+        else:
+            # Single binary flash
+            args.extend([address, firmware_path])
+
+        # Longer timeout when using --no-stub (ROM loader is ~10x slower)
+        timeout = 300.0 if no_stub else 120.0
 
         return FlashCommand(
             tool="esptool.py",
             args=args,
-            timeout=120.0,
+            timeout=timeout,
         )
 
     def get_erase_command(self, port: str, **kwargs) -> FlashCommand:
@@ -257,6 +376,64 @@ class ESP32Profile(ChipProfile):
             tool="esptool.py",
             args=["--port", port, "chip_id"],
             timeout=30.0,
+        )
+
+    def get_openocd_flash_command(
+        self,
+        firmware_path: str,
+        address: str = "0x10000",
+        board_cfg: str | None = None,
+        **kwargs,
+    ) -> FlashCommand | None:
+        """Build OpenOCD program_esp command for flashing via JTAG.
+
+        Uses the JTAG transport instead of the serial bootloader protocol.
+        This is MUCH more reliable for ESP32-C6 USB-JTAG than esptool,
+        which uses the serial data stream that drops during large transfers.
+
+        Args:
+            firmware_path: Path to .bin file or ESP-IDF build directory.
+            address: Flash address (default 0x10000 for app, ignored for build dirs).
+            board_cfg: OpenOCD board config (default: auto-detected from variant).
+
+        Returns:
+            FlashCommand or None if Espressif OpenOCD is not installed.
+        """
+        openocd = self.find_espressif_openocd()
+        if not openocd:
+            logger.warning("Espressif OpenOCD not found — cannot flash via JTAG")
+            return None
+
+        # Determine board config
+        if not board_cfg:
+            variant = self.variant or "esp32c6"
+            board_cfg = f"board/{variant}-builtin.cfg"
+
+        args = ["-f", board_cfg]
+
+        # Check if firmware_path is a build directory with flash_args
+        fw_path = Path(firmware_path)
+        partitions = None
+        if fw_path.is_dir():
+            partitions = self.parse_flash_args(fw_path)
+            if not partitions:
+                partitions = self.parse_flash_args(fw_path / "build")
+
+        if partitions:
+            # Multi-partition flash: program_esp each partition
+            for addr, fpath in partitions:
+                args.extend(["-c", f"program_esp {fpath} {addr} verify"])
+        else:
+            # Single binary flash
+            args.extend(["-c", f"program_esp {firmware_path} {address} verify"])
+
+        # Reset and exit
+        args.extend(["-c", "reset run", "-c", "shutdown"])
+
+        return FlashCommand(
+            tool=openocd,
+            args=args,
+            timeout=120.0,
         )
 
     # =========================================================================

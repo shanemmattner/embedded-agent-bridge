@@ -217,11 +217,14 @@ def _parse_symbol_address(elf_path: str, function_name: str) -> Optional[int]:
         FileNotFoundError: If arm-none-eabi-nm is not on PATH
         subprocess.SubprocessError: If nm command fails
     """
-    nm_tool = shutil.which("arm-none-eabi-nm")
+    nm_tool = (
+        shutil.which("arm-none-eabi-nm")
+        or shutil.which("arm-zephyr-eabi-nm")
+    )
     if nm_tool is None:
         raise FileNotFoundError(
-            "arm-none-eabi-nm not found on PATH. "
-            "Install ARM GCC toolchain."
+            "arm-none-eabi-nm (or arm-zephyr-eabi-nm) not found on PATH. "
+            "Install ARM GCC toolchain or Zephyr SDK."
         )
 
     try:
@@ -311,7 +314,7 @@ def profile_region(
                 f"Timeout waiting for start breakpoint at 0x{start_addr:08X}"
             )
 
-        pc = jlink.register_read("PC")
+        pc = jlink.register_read("R15 (PC)")
         logger.debug("Hit start breakpoint, PC=0x%08X", pc)
 
         # Step 4: Reset cycle counter at start
@@ -326,7 +329,7 @@ def profile_region(
                 f"Timeout waiting for end breakpoint at 0x{end_addr:08X}"
             )
 
-        pc = jlink.register_read("PC")
+        pc = jlink.register_read("R15 (PC)")
         logger.debug("Hit end breakpoint, PC=0x%08X", pc)
 
         # Step 6: Read cycle count at end
@@ -462,7 +465,10 @@ def _find_function_end(elf_path: str, function_name: str, start_addr: int) -> in
     Returns:
         Address of first instruction after function (function end + 1 instruction)
     """
-    objdump_tool = shutil.which("arm-none-eabi-objdump")
+    objdump_tool = (
+        shutil.which("arm-none-eabi-objdump")
+        or shutil.which("arm-zephyr-eabi-objdump")
+    )
     if objdump_tool is None:
         # Fallback: assume function is 32 bytes (8 instructions)
         logger.warning(

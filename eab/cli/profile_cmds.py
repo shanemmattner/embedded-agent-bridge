@@ -9,7 +9,7 @@ from eab.cli.helpers import _print
 
 # CPU frequency defaults by chip type (Hz)
 CHIP_CPU_FREQ = {
-    "nrf5340": 128_000_000,  # nRF5340 Application core at 128 MHz
+    "nrf5340": 64_000_000,   # nRF5340 Application core default 64 MHz
     "nrf52840": 64_000_000,   # nRF52840 at 64 MHz
     "mcxn947": 150_000_000,   # MCXN947 at 150 MHz
     "stm32f4": 168_000_000,   # STM32F4 typical at 168 MHz

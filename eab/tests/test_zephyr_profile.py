@@ -473,3 +473,24 @@ def test_get_chip_profile_alias_matches_prefixed():
     assert bare_profile.variant == prefixed_profile.variant
     assert bare_profile.board == prefixed_profile.board
     assert bare_profile.runner == prefixed_profile.runner
+
+
+def test_get_chip_profile_error_includes_bare_zephyr_chips():
+    """Test that error message for invalid chip includes bare Zephyr chip names."""
+    with pytest.raises(ValueError) as exc_info:
+        get_chip_profile("invalid_chip_xyz")
+    
+    error_msg = str(exc_info.value)
+    
+    # Check that error message mentions "Unsupported chip"
+    assert "Unsupported chip" in error_msg
+    assert "invalid_chip_xyz" in error_msg
+    
+    # Verify all bare Zephyr chip names from BOARD_DEFAULTS are in the supported list
+    for chip_name in ZephyrProfile.BOARD_DEFAULTS.keys():
+        assert chip_name in error_msg, f"Bare chip name '{chip_name}' should be in error message"
+    
+    # Also verify some standard chips are present
+    assert "esp32" in error_msg
+    assert "stm32" in error_msg
+    assert "zephyr" in error_msg

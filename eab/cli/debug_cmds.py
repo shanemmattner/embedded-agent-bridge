@@ -194,7 +194,25 @@ def cmd_gdb(
     timeout_s: float,
     json_mode: bool,
 ) -> int:
-    # base_dir is currently unused; included for symmetry and future session logging.
+    """Execute one-shot GDB batch commands against a running GDB server.
+
+    Sends the provided commands to GDB in batch mode (non-interactive)
+    and returns the captured output. The caller is responsible for
+    starting the GDB server beforehand.
+
+    Args:
+        base_dir: Session directory (unused; kept for API symmetry).
+        chip: Chip type for GDB executable selection.
+        target: GDB server address (e.g., 'localhost:2331').
+        elf: Optional path to ELF file for GDB symbols.
+        gdb_path: Optional explicit path to GDB executable.
+        commands: List of GDB commands to execute.
+        timeout_s: Timeout in seconds for the GDB process.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success, 1 on failure.
+    """
     res = run_gdb_batch(
         chip=chip,
         target=target,
@@ -320,25 +338,11 @@ def cmd_inspect(
     Returns:
         Exit code: 0 on success, 1 on failure.
     """
-    probe_kwargs: dict = {}
-
-    if probe_type == "openocd":
-        profile = ZephyrProfile(variant=chip)
-        ocd_cfg = profile.get_openocd_config()
-        probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
-        probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        if ocd_cfg.transport:
-            probe_kwargs["transport"] = ocd_cfg.transport
-        probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
-        probe_kwargs["halt_command"] = ocd_cfg.halt_command
-    elif probe_type == "jlink" and port is not None:
-        probe_kwargs["port"] = port
-
-    probe = get_debug_probe(probe_type, base_dir=base_dir, **probe_kwargs)
+    probe = _build_probe(probe_type, base_dir, chip, port)
 
     # Start GDB server
     status = probe.start_gdb_server(device=device) if probe_type == "jlink" else probe.start_gdb_server()
-    
+
     if not status.running:
         _print(
             {
@@ -426,25 +430,11 @@ def cmd_threads(
     Returns:
         Exit code: 0 on success, 1 on failure.
     """
-    probe_kwargs: dict = {}
-
-    if probe_type == "openocd":
-        profile = ZephyrProfile(variant=chip)
-        ocd_cfg = profile.get_openocd_config()
-        probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
-        probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        if ocd_cfg.transport:
-            probe_kwargs["transport"] = ocd_cfg.transport
-        probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
-        probe_kwargs["halt_command"] = ocd_cfg.halt_command
-    elif probe_type == "jlink" and port is not None:
-        probe_kwargs["port"] = port
-
-    probe = get_debug_probe(probe_type, base_dir=base_dir, **probe_kwargs)
+    probe = _build_probe(probe_type, base_dir, chip, port)
 
     # Start GDB server
     status = probe.start_gdb_server(device=device) if probe_type == "jlink" else probe.start_gdb_server()
-    
+
     if not status.running:
         _print(
             {
@@ -531,25 +521,11 @@ def cmd_watch(
     Returns:
         Exit code: 0 on success, 1 on failure.
     """
-    probe_kwargs: dict = {}
-
-    if probe_type == "openocd":
-        profile = ZephyrProfile(variant=chip)
-        ocd_cfg = profile.get_openocd_config()
-        probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
-        probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        if ocd_cfg.transport:
-            probe_kwargs["transport"] = ocd_cfg.transport
-        probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
-        probe_kwargs["halt_command"] = ocd_cfg.halt_command
-    elif probe_type == "jlink" and port is not None:
-        probe_kwargs["port"] = port
-
-    probe = get_debug_probe(probe_type, base_dir=base_dir, **probe_kwargs)
+    probe = _build_probe(probe_type, base_dir, chip, port)
 
     # Start GDB server
     status = probe.start_gdb_server(device=device) if probe_type == "jlink" else probe.start_gdb_server()
-    
+
     if not status.running:
         _print(
             {
@@ -651,25 +627,11 @@ def cmd_memdump(
         )
         return 1
 
-    probe_kwargs: dict = {}
-
-    if probe_type == "openocd":
-        profile = ZephyrProfile(variant=chip)
-        ocd_cfg = profile.get_openocd_config()
-        probe_kwargs["interface_cfg"] = ocd_cfg.interface_cfg
-        probe_kwargs["target_cfg"] = ocd_cfg.target_cfg
-        if ocd_cfg.transport:
-            probe_kwargs["transport"] = ocd_cfg.transport
-        probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
-        probe_kwargs["halt_command"] = ocd_cfg.halt_command
-    elif probe_type == "jlink" and port is not None:
-        probe_kwargs["port"] = port
-
-    probe = get_debug_probe(probe_type, base_dir=base_dir, **probe_kwargs)
+    probe = _build_probe(probe_type, base_dir, chip, port)
 
     # Start GDB server
     status = probe.start_gdb_server(device=device) if probe_type == "jlink" else probe.start_gdb_server()
-    
+
     if not status.running:
         _print(
             {

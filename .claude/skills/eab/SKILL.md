@@ -1,15 +1,16 @@
 ---
 name: embedded-agent-bridge
 description: >
-  Managing embedded hardware (ESP32, STM32) through the EAB daemon and eabctl CLI.
-  Use when the user asks to interact with microcontrollers, flash firmware, read serial
-  output, debug crashes, send commands to devices, or manage hardware daemons.
+  Managing embedded hardware (ESP32, STM32, nRF, NXP MCX) through the EAB daemon, eabctl CLI,
+  and Python API (RTT, fault analysis). Use when the user asks to interact with microcontrollers,
+  flash firmware, read serial output, debug crashes, analyze faults, send commands, or manage
+  hardware daemons.
 ---
 
 # Embedded Agent Bridge (EAB)
 
-EAB runs a background daemon that manages the serial port, so you never need to hold open
-an interactive session. All interaction is through `eabctl` CLI commands and session files.
+EAB runs background daemons that manage serial ports, debug probes (J-Link, OpenOCD), and RTT
+streams. All interaction is through `eabctl` CLI commands, the Python API, and session files.
 
 ## Quick Start
 
@@ -100,6 +101,31 @@ eabctl gdb --chip esp32c6 --cmd "bt" --cmd "info registers"
 eabctl openocd stop
 ```
 
+### Fault analysis (Cortex-M crash decode)
+
+```bash
+# J-Link probe (nRF5340, etc.)
+eabctl fault-analyze --device NRF5340_XXAA_APP --json
+
+# OpenOCD probe (MCXN947 via CMSIS-DAP, etc.)
+eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
+```
+
+Returns JSON with decoded fault registers (CFSR, HFSR, BFAR, MMFAR), stacked PC, and human-readable suggestions.
+
+### RTT (Real-Time Transfer) — Python API only
+
+```python
+from eab.rtt import JLinkBridge
+
+bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
+bridge.start()
+# Output: rtt.log, rtt.jsonl, rtt.csv in session dir
+bridge.stop()
+```
+
+No CLI command for RTT yet — use the Python API directly.
+
 ### High-speed data streaming
 
 ```bash
@@ -114,6 +140,8 @@ eabctl stream stop
 |--------|----------|-----------|-------|
 | ESP32 | esp32, esp32s3, esp32c3, esp32c6 | esptool | OpenOCD (ESP build) |
 | STM32 | stm32l4, stm32f4, stm32h7, stm32g4, stm32mp1 | st-flash | OpenOCD + ST-Link |
+| nRF | nRF5340 (Zephyr) | west flash | J-Link SWD + RTT |
+| NXP MCX | MCXN947 (Zephyr) | west flash | OpenOCD CMSIS-DAP |
 
 ## Common Workflows
 

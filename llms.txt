@@ -1,6 +1,6 @@
 # Embedded Agent Bridge (EAB)
 
-> ESP32 serial communication daemon. ALWAYS use eabctl for ALL ESP32 operations.
+> Daemon and CLI bridging AI agents to embedded hardware (ESP32, STM32, nRF, NXP MCX). ALWAYS use eabctl for ALL hardware operations.
 
 ## CRITICAL: DO NOT USE THESE DIRECTLY
 - esptool
@@ -26,6 +26,10 @@ Flash firmware:
 
 Reset device:
     eabctl reset
+
+Fault analysis (Cortex-M crash decode):
+    eabctl fault-analyze --device NRF5340_XXAA_APP --json
+    eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
 
 Send command:
     eabctl send "text"
@@ -74,3 +78,7 @@ Check /tmp/eab-session/events.jsonl for JSONL event records (pause/resume, flash
 
 When enabled, raw bytes are written to /tmp/eab-session/data.bin.
 Binary framing is **optional** and only applies when custom firmware is allowed (see PROTOCOL.md).
+
+## SUPPORTED HARDWARE
+
+ESP32 (serial/esptool), STM32 (ST-Link/st-flash), nRF5340 (J-Link/west flash), MCXN947 (OpenOCD/west flash), any Zephyr target with J-Link or OpenOCD.

@@ -6,14 +6,11 @@
 Background daemons that manage serial ports, GDB, and OpenOCD so LLM agents (Claude Code, Cursor, Copilot, etc.) can interact with embedded hardware without hanging or wasting context tokens. The agent pings the daemon for data through a simple CLI and file interface instead of trying to hold open interactive sessions directly.
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   AI Agent      │     │  Agent Bridge   │     │   Hardware      │
-│  (Claude Code,  │     │                 │     │                 │
-│   Cursor, etc.) │     │  Serial Daemon  │     │  ESP32 / STM32  │
-│                 │     │  GDB Bridge     │     │  nRF52 / RP2040 │
-│  Read files  ◄──┼─────┤  OpenOCD Bridge ├─────┤  Any UART/JTAG  │
-│  Write cmds  ───┼─────►                 │     │  device         │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+Agent ──eabctl──► Serial Daemon ──UART──► ESP32 / STM32
+  │
+  ├──Python API──► JLinkBridge ──SWD/RTT──► nRF5340 / Zephyr targets
+  │
+  └──eabctl──► fault-analyze ──GDB──► Cortex-M registers (any probe)
 ```
 
 ## Quick Start
@@ -61,6 +58,28 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 **ESP-IDF Integration**
 - `eab-flash` wrapper: auto-pauses daemon, flashes, daemon resumes
 - Works with `idf.py flash` and `esptool` directly
+
+**RTT (Real-Time Transfer) via J-Link**
+- JLinkRTTLogger subprocess management via JLinkBridge facade
+- RTTStreamProcessor with multi-format output (rtt.log, rtt.jsonl, rtt.csv)
+- Log rotation, boot/reset detection
+- Real-time plotter (browser-based uPlot + WebSocket, parses `DATA: key=value` from RTT stream)
+
+**Cortex-M Fault Analysis**
+- `eabctl fault-analyze` reads fault registers (CFSR, HFSR, BFAR, MMFAR, SFSR, SFAR) via GDB
+- Decodes fault bits to human-readable descriptions
+- Stacked PC extraction for crash location
+- Works with any debug probe (J-Link or OpenOCD/CMSIS-DAP)
+
+**Debug Probe Abstraction**
+- Pluggable probe backends: J-Link (via JLinkGDBServer), OpenOCD (CMSIS-DAP, ST-Link)
+- Probe registry with auto-detection
+- Backward-compatible with legacy JLinkBridge API
+
+**Zephyr RTOS Support**
+- `west flash` integration for Zephyr targets
+- Chip profiles for nRF5340, MCXN947, RP2040
+- Board detection from CMakeCache.txt
 
 **Agent-Friendly Design**
 - All output in files — agents read with `cat`, `tail`, or their native file tools
@@ -111,6 +130,10 @@ eabctl openocd stop
 | `events.jsonl` | Structured event stream |
 | `status.json` | Connection and health status |
 | `data.bin` | High-speed raw data (optional) |
+| `rtt-raw.log` | Raw RTT output (unprocessed) |
+| `rtt.log` | Timestamped RTT output |
+| `rtt.csv` | RTT data in CSV format |
+| `rtt.jsonl` | RTT structured events |
 
 ## Platform Support
 
@@ -118,12 +141,15 @@ eabctl openocd stop
 |----------|--------|-------|
 | **macOS** | Tested | Primary development platform |
 | **Linux** | Expected to work | Same APIs (fcntl, pyserial), not yet tested |
-| **Windows** | Not supported | File locking uses `fcntl` (Unix-only). Contributions welcome. |
+| **Windows** | Expected to work | File locking migrated to `portalocker`. Not yet tested. |
 
 ## Supported Hardware
 
 - **ESP32** family (S3, C3, C6) — serial + USB-JTAG + ESP-IDF flash
 - **STM32** family (H7, F4, G4, L4, MP1) — serial + ST-Link + OpenOCD
+- **nRF5340** (Zephyr) — J-Link SWD + RTT + fault analysis
+- **FRDM-MCXN947** (Zephyr) — OpenOCD CMSIS-DAP + fault analysis
+- **Zephyr RTOS targets** — any board with J-Link or OpenOCD support
 - **Any UART device** — the serial daemon works with anything that shows up as `/dev/tty*` or `/dev/cu.*`
 
 ## Roadmap
@@ -135,7 +161,11 @@ eabctl openocd stop
 - [x] Chip-agnostic flash/erase/reset
 - [x] Automatic ELF-to-binary conversion for STM32
 - [x] Claude Code agent skill (`.claude/skills/eab/SKILL.md`)
-- [ ] Zephyr RTOS support ([#60](https://github.com/shanemmattner/embedded-agent-bridge/issues/60))
+- [x] Zephyr RTOS support ([#60](https://github.com/shanemmattner/embedded-agent-bridge/issues/60), [#62](https://github.com/shanemmattner/embedded-agent-bridge/issues/62))
+- [x] RTT via J-Link ([#55](https://github.com/shanemmattner/embedded-agent-bridge/issues/55), [#62](https://github.com/shanemmattner/embedded-agent-bridge/issues/62))
+- [x] Cortex-M fault analysis ([#68](https://github.com/shanemmattner/embedded-agent-bridge/issues/68))
+- [x] Debug probe abstraction ([#69](https://github.com/shanemmattner/embedded-agent-bridge/issues/69))
+- [x] Windows compatibility — portalocker ([#61](https://github.com/shanemmattner/embedded-agent-bridge/issues/61))
 - [ ] Multiple simultaneous port support
 - [ ] GDB MI protocol wrapper (persistent debugging sessions)
 - [ ] MCP server (for agents that support it)
@@ -147,6 +177,8 @@ eabctl openocd stop
 - [Agent Skill](.claude/skills/eab/SKILL.md) — Drop-in skill for Claude Code (follows [Agent Skills](https://agentskills.io) standard)
 - [Agent Guide](AGENT_GUIDE.md) — Detailed instructions for LLM agents (also serves as `llms.txt`)
 - [Protocol](PROTOCOL.md) — Binary framing format for high-speed streaming
+- [Plotter Guide](docs/plotter.md) — Real-time data visualization
+- [Examples](examples/) — Test firmware and usage examples
 - [CLI Reference](#cli-reference) — Full command documentation
 
 ## CLI Reference
@@ -182,6 +214,15 @@ eabctl chip-info --chip esp32s3      # Chip information
 eabctl openocd start --chip esp32s3  # Start OpenOCD
 eabctl gdb --chip esp32s3 --cmd "bt" # Run GDB commands
 eabctl openocd stop                  # Stop OpenOCD
+
+# Fault analysis
+eabctl fault-analyze --device NRF5340_XXAA_APP --json
+eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
+
+# RTT (Python API — no CLI yet)
+# from eab.rtt import JLinkBridge
+# bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
+# bridge.start(); bridge.stop()
 ```
 
 ## Related Projects
@@ -202,8 +243,8 @@ git clone https://github.com/shanemmattner/embedded-agent-bridge.git
 cd embedded-agent-bridge
 pip install -e .
 
-# Dependencies: just pyserial
-# Optional: openocd, gdb (for debug bridge features)
+# Dependencies: pyserial, portalocker
+# Optional: J-Link Software Pack (for RTT), openocd, gdb, west (for Zephyr), websockets (for plotter)
 ```
 
 ## Contributing

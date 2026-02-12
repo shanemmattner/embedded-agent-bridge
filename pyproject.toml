@@ -12,7 +12,7 @@ license = {text = "MIT"}
 authors = [
     {name = "Shane Mattner"}
 ]
-keywords = ["embedded", "serial", "esp32", "stm32", "debugging", "ai-agent"]
+keywords = ["embedded", "serial", "esp32", "stm32", "debugging", "ai-agent", "zephyr", "nrf", "nrf5340", "cortex-m", "fault-analysis", "rtt", "openocd", "jlink", "cmsis-dap"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

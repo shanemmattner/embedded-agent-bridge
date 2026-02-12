@@ -23,6 +23,8 @@ ioreg -p IOUSB -l | grep "USB Product Name"
 |-------|---------------|----------------|
 | ESP32-C6 DevKit | USB JTAG_serial debug unit | `/dev/cu.usbmodem1101` |
 | STM32L4 + ST-Link | STM32 STLink | `/dev/cu.usbmodem21403` |
+| nRF5340 DK | J-Link SWD | Detected by `JLinkExe` |
+| FRDM-MCXN947 | OpenOCD CMSIS-DAP | Detected by `openocd` |
 
 Set these variables for the test run:
 
@@ -55,7 +57,7 @@ python3 -m pytest eab/tests/ -v --tb=short
 ```
 
 **Pass criteria:**
-- 115+ tests pass
+- 341+ tests pass
 - `test___main___executes_daemon_main` may fail (known pre-existing issue — ignore it)
 - Zero NEW failures
 
@@ -332,7 +334,51 @@ eabctl chip-info --chip esp32c6 --port $ESP_PORT --json
 
 ---
 
-## 9. Regression Checks
+## 10. Fault Analysis E2E
+
+### 10.1 J-Link path (nRF5340)
+
+```bash
+eabctl fault-analyze --device NRF5340_XXAA_APP --json
+```
+
+**Check:** Returns JSON with `fault_registers`, `decoded_faults`, `stacked_pc` fields. If no fault active, `decoded_faults` is empty array.
+
+### 10.2 OpenOCD path (MCXN947)
+
+```bash
+eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
+```
+
+**Check:** Same JSON structure. Probe field shows `openocd`.
+
+---
+
+## 11. RTT E2E (nRF5340)
+
+### 11.1 JLinkBridge start/stop
+
+```python
+from eab.rtt import JLinkBridge
+bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
+bridge.start()
+import time; time.sleep(5)
+bridge.stop()
+```
+
+**Check:** `rtt.log` exists in session directory. Contains timestamped output lines.
+
+### 11.2 RTT output files
+
+**Check:** After RTT session, these files exist:
+- `rtt-raw.log` — raw unprocessed output
+- `rtt.log` — timestamped output
+- `rtt.csv` — if DATA: lines present
+- `rtt.jsonl` — structured events
+
+---
+
+## 12. Regression Checks
 
 These verify specific fixed bugs. If any fail, the fix was lost.
 
@@ -342,6 +388,7 @@ These verify specific fixed bugs. If any fail, the fix was lost.
 | 10.2 | ESP32 address defaulting to "esptool.py" | Test 5.1 | Address == `"0x10000"` |
 | 10.3 | Positional args broken | Test 3.2 | All three tail forms work |
 | 10.4 | ESP32-C6 no serial output | Test 5.2 | Heartbeats visible after flash |
+| 10.5 | OpenOCD MCXN947 fault analysis | Test 10.2 | Returns valid JSON with probe=openocd |
 
 ---
 

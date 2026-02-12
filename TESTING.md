@@ -8,6 +8,8 @@ Run these tests before merging any change to the EAB codebase. Unit tests run wi
 |-------|-----------|----------------|
 | ESP32-C6 DevKit | USB Serial/JTAG | `/dev/cu.usbmodem101` |
 | STM32L4 + ST-Link | USB ST-Link | `/dev/cu.usbmodem21403` |
+| nRF5340 DK | J-Link SWD | Detected by `JLinkExe` |
+| FRDM-MCXN947 | OpenOCD CMSIS-DAP | Detected by `openocd` |
 
 Adjust port paths to match your setup. Run `eabctl start --port auto` or `ls /dev/cu.usb*` to discover ports.
 
@@ -21,6 +23,8 @@ which esptool.py       # For ESP32 flash tests
 which st-flash         # For STM32 flash tests
 which arm-none-eabi-objcopy  # For STM32 ELF conversion tests
 which openocd          # For debug bridge tests
+which JLinkGDBServerCLExe  # For J-Link debug/RTT (from SEGGER J-Link Software Pack)
+which west              # For Zephyr flash tests
 ```
 
 ## Test Firmware
@@ -43,7 +47,7 @@ For STM32, use any valid ELF or binary targeting the chip. A minimal blinky work
 python3 -m pytest tests/ -v
 ```
 
-**Expected:** All tests pass (27/27). If `test_daemon_main_accepts_argv` fails on annotation checking, that's a known issue — verify the other 26 pass.
+**Expected:** All tests pass (341+/343). 2 pre-existing known failures (`test_daemon_main_accepts_argv` annotation check, `test___main___executes_daemon_main`). Zero NEW failures.
 
 ### What the unit tests cover
 
@@ -469,6 +473,95 @@ See test 3.2.
 
 Flash the test firmware and verify serial output appears. If no output, check that `sdkconfig.defaults` has `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y`.
 
+### 10.5 OpenOCD MCXN947 fault analysis
+
+```bash
+eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
+```
+
+**Verify:** Returns valid JSON with `probe: "openocd"`. Does NOT fall back to J-Link.
+
+---
+
+## 11. E2E Tests — Fault Analysis
+
+### 11.1 J-Link path (nRF5340)
+
+```bash
+eabctl fault-analyze --device NRF5340_XXAA_APP --json
+```
+
+**Verify:**
+- Returns JSON with `fault_registers` object (CFSR, HFSR, BFAR, MMFAR, etc.)
+- `decoded_faults` array with human-readable descriptions
+- `stacked_pc` field (may be null if no fault active)
+- `probe` field shows `jlink`
+
+### 11.2 OpenOCD path (MCXN947)
+
+```bash
+eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
+```
+
+**Verify:**
+- Same JSON structure as 11.1
+- `probe` field shows `openocd`
+
+### 11.3 No active fault
+
+If the device hasn't crashed, fault-analyze should still succeed:
+
+**Verify:** `decoded_faults` is empty array, registers all show 0x00000000.
+
+---
+
+## 12. E2E Tests — RTT (nRF5340)
+
+### 12.1 JLinkBridge start/stop
+
+```python
+from eab.rtt import JLinkBridge
+bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
+bridge.start()
+import time; time.sleep(5)
+bridge.stop()
+```
+
+**Verify:**
+- JLinkRTTLogger process started and stopped cleanly
+- `rtt.log` exists in session directory with timestamped lines
+- `rtt-raw.log` exists with raw output
+
+### 12.2 RTT output files
+
+After running RTT for 10+ seconds with a Zephyr app that prints `DATA: key=value`:
+
+**Verify:**
+- `rtt-raw.log` — raw unprocessed output
+- `rtt.log` — timestamped output
+- `rtt.csv` — CSV with parsed DATA: fields
+- `rtt.jsonl` — structured events
+
+---
+
+## 13. E2E Tests — Zephyr Flash
+
+### 13.1 west flash (nRF5340 via J-Link)
+
+```bash
+eabctl flash --chip nrf5340 --runner jlink --json
+```
+
+**Verify:** `"success": true`, `"tool": "west"`.
+
+### 13.2 west flash (MCXN947 via OpenOCD)
+
+```bash
+eabctl flash --chip mcxn947 --runner openocd --json
+```
+
+**Verify:** `"success": true`, `"tool": "west"`.
+
 ---
 
 ## Quick Smoke Test
@@ -496,6 +589,10 @@ eabctl flash <stm32>.elf --chip stm32l4 --json
 # - ESP32 flash command has "0x10000" address (not "esptool.py")
 # - STM32 flash command has temp .bin path (not .elf)
 # - tail/alerts/events accept positional args
+
+# 5. Fault analysis smoke check
+eabctl fault-analyze --device NRF5340_XXAA_APP --json
+# Check: returns valid JSON with fault_registers
 ```
 
 ---

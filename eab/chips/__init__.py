@@ -72,6 +72,11 @@ def get_chip_profile(chip: str, variant: str | None = None) -> ChipProfile:
         # Return ESP32 as default for now - detection happens via serial output
         return ESP32Profile(variant=variant)
 
+    # Alias mapping: bare chip names to zephyr_ prefixed versions
+    # Check if chip name matches any key in ZephyrProfile.BOARD_DEFAULTS
+    if chip_lower in ZephyrProfile.BOARD_DEFAULTS:
+        chip_lower = f"zephyr_{chip_lower}"
+
     # Special handling for Zephyr profiles
     if chip_lower.startswith("zephyr_"):
         variant_part = chip_lower[len("zephyr_"):]  # e.g., "nrf5340"
@@ -85,7 +90,10 @@ def get_chip_profile(chip: str, variant: str | None = None) -> ChipProfile:
         return ZephyrProfile(variant=variant)
 
     if chip_lower not in _PROFILES:
-        supported = ", ".join(sorted(set(k.split("_")[0] for k in _PROFILES.keys())))
+        # Build list of supported chips from _PROFILES and bare Zephyr chip names
+        profile_base_names = set(k.split("_")[0] for k in _PROFILES.keys())
+        zephyr_bare_names = set(ZephyrProfile.BOARD_DEFAULTS.keys())
+        supported = ", ".join(sorted(profile_base_names | zephyr_bare_names))
         raise ValueError(f"Unsupported chip: {chip}. Supported: {supported}")
 
     profile_class = _PROFILES[chip_lower]

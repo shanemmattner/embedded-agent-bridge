@@ -481,3 +481,122 @@ def test_zephyr_board_defaults_class_var():
     assert ZephyrProfile.BOARD_DEFAULTS["nrf5340"]["board"] == "nrf5340dk/nrf5340/cpuapp"
     assert ZephyrProfile.BOARD_DEFAULTS["nrf5340"]["runner"] == "jlink"
     assert ZephyrProfile.BOARD_DEFAULTS["rp2040"]["runner"] is None
+
+
+def test_get_chip_profile_bare_nrf5340():
+    """Test get_chip_profile("nrf5340") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("nrf5340")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "nrf5340"
+    assert profile.board == "nrf5340dk/nrf5340/cpuapp"
+    assert profile.runner == "jlink"
+
+
+def test_get_chip_profile_bare_nrf52840():
+    """Test get_chip_profile("nrf52840") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("nrf52840")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "nrf52840"
+    assert profile.board == "nrf52840dk/nrf52840"
+    assert profile.runner == "jlink"
+
+
+def test_get_chip_profile_bare_nrf52833():
+    """Test get_chip_profile("nrf52833") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("nrf52833")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "nrf52833"
+    assert profile.board == "nrf52833dk/nrf52833"
+    assert profile.runner == "jlink"
+
+
+def test_get_chip_profile_bare_rp2040():
+    """Test get_chip_profile("rp2040") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("rp2040")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "rp2040"
+    assert profile.board == "rpi_pico"
+    assert profile.runner is None
+
+
+def test_get_chip_profile_bare_mcxn947():
+    """Test get_chip_profile("mcxn947") returns ZephyrProfile with correct settings."""
+    profile = get_chip_profile("mcxn947")
+    assert isinstance(profile, ZephyrProfile)
+    assert profile.variant == "mcxn947"
+    assert profile.board == "frdm_mcxn947/mcxn947/cpu0"
+    assert profile.runner == "linkserver"
+
+
+def test_get_chip_profile_alias_matches_prefixed():
+    """Test that bare chip name aliases match the zephyr_prefixed versions."""
+    # Test nrf5340
+    bare_profile = get_chip_profile("nrf5340")
+    prefixed_profile = get_chip_profile("zephyr_nrf5340")
+    assert bare_profile.variant == prefixed_profile.variant
+    assert bare_profile.board == prefixed_profile.board
+    assert bare_profile.runner == prefixed_profile.runner
+    
+    # Test nrf52840
+    bare_profile = get_chip_profile("nrf52840")
+    prefixed_profile = get_chip_profile("zephyr_nrf52840")
+    assert bare_profile.variant == prefixed_profile.variant
+    assert bare_profile.board == prefixed_profile.board
+    assert bare_profile.runner == prefixed_profile.runner
+
+
+def test_get_chip_profile_error_includes_bare_zephyr_chips():
+    """Test that error message for invalid chip includes bare Zephyr chip names."""
+    with pytest.raises(ValueError) as exc_info:
+        get_chip_profile("invalid_chip_xyz")
+    
+    error_msg = str(exc_info.value)
+    
+    # Check that error message mentions "Unsupported chip"
+    assert "Unsupported chip" in error_msg
+    assert "invalid_chip_xyz" in error_msg
+    
+    # Verify all bare Zephyr chip names from BOARD_DEFAULTS are in the supported list
+    for chip_name in ZephyrProfile.BOARD_DEFAULTS.keys():
+        assert chip_name in error_msg, f"Bare chip name '{chip_name}' should be in error message"
+    
+    # Also verify some standard chips are present
+    assert "esp32" in error_msg
+    assert "stm32" in error_msg
+    assert "zephyr" in error_msg
+
+
+def test_get_chip_profile_case_insensitive_bare_chips():
+    """Test that bare chip names are case-insensitive (NRF5340 and nrf5340 both work)."""
+    # Test nrf5340 in lowercase
+    profile_lower = get_chip_profile("nrf5340")
+    assert isinstance(profile_lower, ZephyrProfile)
+    assert profile_lower.variant == "nrf5340"
+    assert profile_lower.board == "nrf5340dk/nrf5340/cpuapp"
+    assert profile_lower.runner == "jlink"
+    
+    # Test NRF5340 in uppercase
+    profile_upper = get_chip_profile("NRF5340")
+    assert isinstance(profile_upper, ZephyrProfile)
+    assert profile_upper.variant == "nrf5340"
+    assert profile_upper.board == "nrf5340dk/nrf5340/cpuapp"
+    assert profile_upper.runner == "jlink"
+    
+    # Test nRf5340 in mixed case
+    profile_mixed = get_chip_profile("nRf5340")
+    assert isinstance(profile_mixed, ZephyrProfile)
+    assert profile_mixed.variant == "nrf5340"
+    assert profile_mixed.board == "nrf5340dk/nrf5340/cpuapp"
+    assert profile_mixed.runner == "jlink"
+    
+    # Test another chip to verify pattern works across all bare names
+    profile_rp_lower = get_chip_profile("rp2040")
+    profile_rp_upper = get_chip_profile("RP2040")
+    assert profile_rp_lower.variant == profile_rp_upper.variant == "rp2040"
+    assert profile_rp_lower.board == profile_rp_upper.board == "rpi_pico"
+    
+    # Test mcxn947
+    profile_mcx_lower = get_chip_profile("mcxn947")
+    profile_mcx_upper = get_chip_profile("MCXN947")
+    assert profile_mcx_lower.variant == profile_mcx_upper.variant == "mcxn947"
+    assert profile_mcx_lower.board == profile_mcx_upper.board == "frdm_mcxn947/mcxn947/cpu0"

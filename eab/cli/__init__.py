@@ -375,7 +375,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_flash.add_argument("--chip", required=False, default=None, help="Chip type (esp32s3, stm32l4, etc.)")
     p_flash.add_argument("--address", default=None, help="Flash address (default: chip-specific)")
     p_flash.add_argument("--port", default=None, help="Serial port (ESP32) or ignored (STM32)")
-    p_flash.add_argument("--tool", default=None, help="Flash tool override (st-flash, esptool.py, jlink)")
+    p_flash.add_argument("--tool", default=None, help="Flash tool override (st-flash, esptool, jlink)")
     p_flash.add_argument("--baud", type=int, default=921600, help="Baud rate (ESP32 only)")
     p_flash.add_argument("--connect-under-reset", action="store_true",
                         help="STM32: Connect while holding reset (for crashed chips)")

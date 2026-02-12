@@ -11,9 +11,10 @@ Provides:
 """
 
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, Deque
 from enum import Enum
 
 
@@ -83,6 +84,9 @@ class ChipRecovery:
         "ESP-IDF",
         "boot: ESP32",
         "configsip:",
+        # Zephyr patterns
+        "*** Booting Zephyr",
+        "Zephyr OS build",
     ]
 
     # Comprehensive crash patterns from ESP-IDF Fatal Errors documentation
@@ -135,6 +139,12 @@ class ChipRecovery:
 
         # SPI flash errors
         "flash read err",
+
+        # Zephyr fatal error patterns
+        "E: ***** ",
+        "E: r0/a0:",
+        "E: Current thread:",
+        ">>> ZEPHYR FATAL ERROR",
     ]
 
     BOOTLOADER_PATTERNS = [
@@ -159,6 +169,11 @@ class ChipRecovery:
         "Returned from app_main",
         "main_task:",
         "heap_init:",  # Early but indicates successful boot
+        # Zephyr patterns
+        "<inf>",  # Zephyr info log prefix
+        "<dbg>",  # Zephyr debug log prefix
+        "<wrn>",  # Zephyr warning log prefix
+        "uart:~$",  # Zephyr shell prompt
     ]
 
     # Patterns indicating connectivity issues
@@ -177,6 +192,8 @@ class ChipRecovery:
         stuck_timeout: float = 60.0,  # Seconds without output = stuck
         crash_recovery_delay: float = 2.0,  # Wait before recovery reset
         max_recovery_attempts: int = 3,  # Give up after this many attempts
+        activity_window_seconds: float = 30.0,  # Window for activity detection
+        activity_threshold: int = 10,  # Lines needed in window for running state
     ):
         self._reset_callback = reset_callback
         self._logger = logger
@@ -184,6 +201,8 @@ class ChipRecovery:
         self._stuck_timeout = stuck_timeout
         self._crash_recovery_delay = crash_recovery_delay
         self._max_recovery_attempts = max_recovery_attempts
+        self._activity_window_seconds = activity_window_seconds
+        self._activity_threshold = activity_threshold
 
         # State tracking
         self._state = ChipState.UNKNOWN
@@ -195,6 +214,10 @@ class ChipRecovery:
         self._boot_start_time: Optional[datetime] = None
         self._last_reset_reason = ""
         self._last_boot_mode = ""
+
+        # Activity tracking for running state detection
+        self._activity_timestamps: Deque[datetime] = deque()
+
 
         # Callbacks
         self._on_state_change: Optional[Callable[[ChipState, ChipState], None]] = None
@@ -228,7 +251,11 @@ class ChipRecovery:
 
         Call this for every line received from serial.
         """
-        self._last_output_time = datetime.now()
+        now = datetime.now()
+        self._last_output_time = now
+
+        # Track activity for fallback running state detection
+        self._activity_timestamps.append(now)
 
         # Check for boot indicators
         if any(p.lower() in line.lower() for p in self.BOOT_PATTERNS):
@@ -255,6 +282,22 @@ class ChipRecovery:
         # Extract reset reason if present
         if "rst:0x" in line.lower():
             self._parse_reset_reason(line)
+
+        # Activity-based running state detection (fallback mechanism)
+        # Clean old activity timestamps outside the window
+        cutoff_time = now - timedelta(seconds=self._activity_window_seconds)
+        while self._activity_timestamps and self._activity_timestamps[0] < cutoff_time:
+            self._activity_timestamps.popleft()
+
+        # If we have enough activity and no crash, assume running
+        if (len(self._activity_timestamps) >= self._activity_threshold and
+            self._state not in (ChipState.CRASHED, ChipState.BOOTLOOP)):
+            if self._state != ChipState.RUNNING:
+                self._log(f"Activity-based running state detected ({len(self._activity_timestamps)} lines in {self._activity_window_seconds}s)")
+                self._set_state(ChipState.RUNNING)
+                self._consecutive_crashes = 0
+                self._recovery_attempts = 0
+
 
     def _handle_boot_detected(self, line: str) -> None:
         """Handle boot detection."""
@@ -438,6 +481,7 @@ class ChipRecovery:
         self._recovery_attempts = 0
         self._gave_up = False
         self._boot_events.clear()
+        self._activity_timestamps.clear()
         self._state = ChipState.UNKNOWN
 
     def set_callbacks(

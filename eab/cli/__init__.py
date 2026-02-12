@@ -69,6 +69,11 @@ from eab.cli.debug_cmds import (
     cmd_gdb,
 )
 from eab.cli.fault_cmds import cmd_fault_analyze
+from eab.cli.profile_cmds import (
+    cmd_profile_function,
+    cmd_profile_region,
+    cmd_dwt_status,
+)
 from eab.cli.stream_cmds import (
     cmd_stream_start,
     cmd_stream_stop,
@@ -199,6 +204,21 @@ def _build_parser() -> argparse.ArgumentParser:
     p_fault.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
     p_fault.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
                         help="Debug probe type (default: jlink)")
+
+    p_profile_func = sub.add_parser("profile-function", help="Profile a function using DWT cycle counter")
+    p_profile_func.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_profile_func.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
+    p_profile_func.add_argument("--function", required=True, help="Function name to profile")
+    p_profile_func.add_argument("--cpu-freq", type=int, default=None, help="CPU frequency in Hz (auto-detect if omitted)")
+
+    p_profile_region = sub.add_parser("profile-region", help="Profile an address region using DWT cycle counter")
+    p_profile_region.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_profile_region.add_argument("--start", type=lambda x: int(x, 0), required=True, help="Start address (hex or decimal)")
+    p_profile_region.add_argument("--end", type=lambda x: int(x, 0), required=True, help="End address (hex or decimal)")
+    p_profile_region.add_argument("--cpu-freq", type=int, default=None, help="CPU frequency in Hz (auto-detect if omitted)")
+
+    p_dwt_status = sub.add_parser("dwt-status", help="Display DWT register state")
+    p_dwt_status.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
 
     p_stream = sub.add_parser("stream", help="Configure high-speed data stream mode")
     p_stream.add_argument("action", choices=["start", "stop"])
@@ -411,6 +431,30 @@ def main(argv: Optional[list[str]] = None) -> int:
             elf=args.elf,
             chip=args.chip,
             probe_type=args.probe,
+            json_mode=args.json,
+        )
+    if args.cmd == "profile-function":
+        return cmd_profile_function(
+            base_dir=base_dir,
+            device=args.device,
+            elf=args.elf,
+            function=args.function,
+            cpu_freq=args.cpu_freq,
+            json_mode=args.json,
+        )
+    if args.cmd == "profile-region":
+        return cmd_profile_region(
+            base_dir=base_dir,
+            start_addr=args.start,
+            end_addr=args.end,
+            device=args.device,
+            cpu_freq=args.cpu_freq,
+            json_mode=args.json,
+        )
+    if args.cmd == "dwt-status":
+        return cmd_dwt_status(
+            base_dir=base_dir,
+            device=args.device,
             json_mode=args.json,
         )
     if args.cmd == "stream":

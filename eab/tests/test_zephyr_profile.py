@@ -301,10 +301,10 @@ def test_zephyr_openocd_config_fallback():
     """Test OpenOCD config fallback for unknown variants."""
     profile = ZephyrProfile(variant="unknown")
     config = profile.get_openocd_config()
-    
+
     assert config.interface_cfg == "interface/stlink.cfg"
     assert config.target_cfg == "target/stm32f4x.cfg"
-    assert config.transport == "swd"
+    assert config.transport is None  # ST-Link HLA driver needs no transport select
 
 
 def test_zephyr_chip_info_nrf():

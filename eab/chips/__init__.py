@@ -112,15 +112,7 @@ def detect_chip_family(line: str) -> ChipFamily | None:
     """
     line_lower = line.lower()
 
-    # Zephyr detection (before chip-specific checks)
-    # TODO(#63): Zephyr is cross-platform — this defaults to NRF52 but a Zephyr ESP32
-    # or RP2040 target would be misclassified. Needs ChipFamily.ZEPHYR or parsing
-    # the board name from surrounding boot output to disambiguate.
-    zephyr_indicators = ["booting zephyr", "zephyr version", "zephyr fatal error"]
-    if any(ind in line_lower for ind in zephyr_indicators):
-        return ChipFamily.NRF52
-
-    # ESP32 detection patterns
+    # ESP32 detection patterns (check BEFORE Zephyr to catch ESP32+Zephyr)
     esp32_indicators = [
         "esp-idf",
         "esp32",
@@ -133,7 +125,7 @@ def detect_chip_family(line: str) -> ChipFamily | None:
     if any(ind in line_lower for ind in esp32_indicators):
         return ChipFamily.ESP32
 
-    # STM32 detection patterns
+    # STM32 detection patterns (check BEFORE Zephyr to catch STM32+Zephyr)
     stm32_indicators = [
         "stm32",
         "hal_init",
@@ -146,9 +138,16 @@ def detect_chip_family(line: str) -> ChipFamily | None:
     if any(ind in line_lower for ind in stm32_indicators):
         return ChipFamily.STM32
 
-    # nRF52 detection
+    # nRF52 detection (check BEFORE Zephyr to catch nRF+Zephyr)
     nrf_indicators = ["nrf52", "nrf5340", "softdevice", "nordic"]
     if any(ind in line_lower for ind in nrf_indicators):
         return ChipFamily.NRF52
+
+    # Zephyr detection (AFTER chip-specific checks to allow chip detection first)
+    # If we see Zephyr but no chip-specific indicators, return ZEPHYR sentinel
+    # indicating Zephyr RTOS detected but architecture unknown
+    zephyr_indicators = ["booting zephyr", "zephyr version", "zephyr fatal error"]
+    if any(ind in line_lower for ind in zephyr_indicators):
+        return ChipFamily.ZEPHYR
 
     return None

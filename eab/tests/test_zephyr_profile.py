@@ -221,21 +221,42 @@ def test_get_chip_profile_zephyr():
 
 
 def test_detect_chip_family_booting_zephyr():
-    """Test detect_chip_family detects '*** Booting Zephyr' as NRF52."""
+    """Test detect_chip_family detects '*** Booting Zephyr' as ZEPHYR (arch unknown)."""
     family = detect_chip_family("*** Booting Zephyr OS build v3.5.0 ***")
-    assert family == ChipFamily.NRF52
+    assert family == ChipFamily.ZEPHYR
 
 
 def test_detect_chip_family_zephyr_version():
-    """Test detect_chip_family detects 'Zephyr version' as NRF52."""
+    """Test detect_chip_family detects 'Zephyr version' as ZEPHYR (arch unknown)."""
     family = detect_chip_family("Zephyr version 3.5.0")
-    assert family == ChipFamily.NRF52
+    assert family == ChipFamily.ZEPHYR
 
 
 def test_detect_chip_family_zephyr_fatal_error():
-    """Test detect_chip_family detects 'ZEPHYR FATAL ERROR' as NRF52."""
+    """Test detect_chip_family detects 'ZEPHYR FATAL ERROR' as ZEPHYR (arch unknown)."""
     family = detect_chip_family(">>> ZEPHYR FATAL ERROR 4 <<<")
+    assert family == ChipFamily.ZEPHYR
+
+
+def test_detect_chip_family_zephyr_esp32():
+    """Test chip-specific indicators (ESP32) take priority over Zephyr indicators."""
+    # Line contains both ESP32 and Zephyr indicators - should return ESP32
+    family = detect_chip_family("*** Booting Zephyr OS on ESP32-C6 ***")
+    assert family == ChipFamily.ESP32
+
+
+def test_detect_chip_family_zephyr_nrf():
+    """Test chip-specific indicators (nRF) take priority over Zephyr indicators."""
+    # Line contains both nRF and Zephyr indicators - should return NRF52
+    family = detect_chip_family("*** Booting Zephyr version 3.5.0 on nRF5340 ***")
     assert family == ChipFamily.NRF52
+
+
+def test_detect_chip_family_zephyr_stm32():
+    """Test chip-specific indicators (STM32) take priority over Zephyr indicators."""
+    # Line contains both STM32 and Zephyr indicators - should return STM32
+    family = detect_chip_family("Zephyr version 3.5.0 on STM32F4 Discovery")
+    assert family == ChipFamily.STM32
 
 
 def test_zephyr_erase_command_nrf():
@@ -855,3 +876,651 @@ def test_resolve_zephyr_base_invalid_cmake_path():
         )
         result = ZephyrProfile._resolve_zephyr_base(build_path)
         assert result is None
+
+
+# =========================================================================
+# Kconfig-based Architecture Detection Tests
+# =========================================================================
+
+
+def test_detect_arch_from_kconfig_esp32():
+    """Test detect_arch_from_kconfig detects ESP32 from .config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_BOARD="esp32c3_devkitm"\n'
+            'CONFIG_SOC="esp32c3"\n'
+            'CONFIG_ARCH="riscv"\n'
+            "CONFIG_SOC_FAMILY_ESP32=y\n"
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.ESP32
+
+
+def test_detect_arch_from_kconfig_nrf():
+    """Test detect_arch_from_kconfig detects nRF from .config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_BOARD="nrf5340dk/nrf5340/cpuapp"\n'
+            'CONFIG_SOC="nrf5340_cpuapp"\n'
+            'CONFIG_ARCH="arm"\n'
+            "CONFIG_SOC_FAMILY_NRF=y\n"
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.NRF52
+
+
+def test_detect_arch_from_kconfig_stm32():
+    """Test detect_arch_from_kconfig detects STM32 from .config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_BOARD="nucleo_f429zi"\n'
+            'CONFIG_SOC="stm32f429xx"\n'
+            'CONFIG_ARCH="arm"\n'
+            "CONFIG_SOC_FAMILY_STM32=y\n"
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.STM32
+
+
+def test_detect_arch_from_kconfig_rp2040():
+    """Test detect_arch_from_kconfig detects RP2040 from .config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_BOARD="rpi_pico"\n'
+            'CONFIG_SOC="rp2040"\n'
+            'CONFIG_ARCH="arm"\n'
+            "CONFIG_SOC_FAMILY_RP2XXX=y\n"
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.RP2040
+
+
+def test_detect_arch_from_kconfig_mcx():
+    """Test detect_arch_from_kconfig detects MCX from .config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_BOARD="frdm_mcxn947/mcxn947/cpu0"\n'
+            'CONFIG_SOC="mcxn947"\n'
+            'CONFIG_ARCH="arm"\n'
+            "CONFIG_SOC_FAMILY_MCXN=y\n"
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.MCX
+
+
+def test_detect_arch_from_kconfig_fallback_soc_name():
+    """Test detect_arch_from_kconfig falls back to SOC name matching."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        # .config without SOC_FAMILY flags, only SOC name
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_SOC="esp32s3"\n'
+            'CONFIG_ARCH="xtensa"\n'
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.ESP32
+
+
+def test_detect_arch_from_kconfig_fallback_board_name():
+    """Test detect_arch_from_kconfig falls back to BOARD name matching."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        # .config without SOC_FAMILY flags, only BOARD name
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_BOARD="nrf52840dk/nrf52840"\n'
+            'CONFIG_ARCH="arm"\n'
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.NRF52
+
+
+def test_detect_arch_from_kconfig_missing_file():
+    """Test detect_arch_from_kconfig returns None when .config missing."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        family = ZephyrProfile.detect_arch_from_kconfig(tmpdir)
+        assert family is None
+
+
+def test_detect_arch_from_kconfig_empty_file():
+    """Test detect_arch_from_kconfig returns None for empty .config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text("")
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family is None
+
+
+def test_detect_arch_from_kconfig_comments_only():
+    """Test detect_arch_from_kconfig returns None for comments-only .config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            "# This is just a comment file\n"
+            "# No actual config values\n"
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family is None
+
+
+def test_detect_arch_from_kconfig_unrecognized_platform():
+    """Test detect_arch_from_kconfig returns None for unrecognized platform."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_BOARD="unknown_board"\n'
+            'CONFIG_SOC="unknown_soc"\n'
+            'CONFIG_ARCH="unknown"\n'
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family is None
+
+
+def test_detect_arch_from_kconfig_unreadable_file():
+    """Test detect_arch_from_kconfig handles unreadable .config file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text("CONFIG_SOC_FAMILY_ESP32=y\n")
+        config_file.chmod(0o000)
+        
+        try:
+            family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+            assert family is None
+        finally:
+            config_file.chmod(0o644)
+
+
+def test_detect_arch_from_kconfig_quoted_values():
+    """Test detect_arch_from_kconfig correctly handles quoted config values."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_BOARD="stm32f4_disco"\n'
+            'CONFIG_SOC="stm32f407xg"\n'
+            "CONFIG_SOC_FAMILY_STM32=y\n"
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.STM32
+
+
+def test_detect_arch_from_kconfig_mixed_case():
+    """Test detect_arch_from_kconfig handles mixed case in values."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_SOC="NRF52840"\n'  # Mixed case
+            'CONFIG_ARCH="ARM"\n'
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.NRF52
+
+
+def test_detect_arch_from_kconfig_path_as_string():
+    """Test detect_arch_from_kconfig accepts string path."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            'CONFIG_SOC="esp32"\n'
+            "CONFIG_SOC_FAMILY_ESP32=y\n"
+        )
+        
+        # Pass string instead of Path
+        family = ZephyrProfile.detect_arch_from_kconfig(str(build_path))
+        assert family == ChipFamily.ESP32
+
+
+def test_detect_arch_from_kconfig_multiple_families():
+    """Test detect_arch_from_kconfig prioritizes SOC_FAMILY flags correctly."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        # Realistic case: ESP32 family flag with ESP32 SOC
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "# Zephyr .config\n"
+            'CONFIG_BOARD="esp32c3_devkitm"\n'
+            'CONFIG_SOC="esp32c3"\n'
+            'CONFIG_ARCH="riscv"\n'
+            "CONFIG_SOC_FAMILY_ESP32=y\n"
+            "# CONFIG_SOC_FAMILY_NRF is not set\n"
+            "# CONFIG_SOC_FAMILY_STM32 is not set\n"
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.ESP32
+
+
+def test_detect_arch_from_kconfig_whitespace_handling():
+    """Test detect_arch_from_kconfig handles extra whitespace."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            "  # Zephyr .config with spaces  \n"
+            '  CONFIG_SOC  =  "rp2040"  \n'
+            "  CONFIG_SOC_FAMILY_RP2XXX  =  y  \n"
+        )
+        
+        family = ZephyrProfile.detect_arch_from_kconfig(build_path)
+        assert family == ChipFamily.RP2040
+
+
+def test_detect_arch_from_build_prefers_kconfig_over_cmake():
+    """Test detect_arch_from_build prefers .config over CMakeCache.txt."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        # Create .config with ESP32 (should be preferred)
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            'CONFIG_BOARD="esp32c3_devkitm"\n'
+            'CONFIG_SOC="esp32c3"\n'
+            "CONFIG_SOC_FAMILY_ESP32=y\n"
+        )
+        
+        # Create CMakeCache.txt with nRF board (should be ignored)
+        cmake_cache = build_path / "CMakeCache.txt"
+        cmake_cache.write_text('BOARD:STRING=nrf5340dk/nrf5340/cpuapp\n')
+        
+        profile = ZephyrProfile()
+        family = profile.detect_arch_from_build(build_path)
+        
+        # Should detect ESP32 from .config, not nRF from CMakeCache
+        assert family == ChipFamily.ESP32
+
+
+def test_detect_arch_from_build_falls_back_to_cmake_when_no_kconfig():
+    """Test detect_arch_from_build falls back to CMakeCache.txt when .config missing."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        
+        # Only create CMakeCache.txt, no .config
+        cmake_cache = build_path / "CMakeCache.txt"
+        cmake_cache.write_text('BOARD:STRING=nrf5340dk/nrf5340/cpuapp\n')
+        
+        profile = ZephyrProfile()
+        family = profile.detect_arch_from_build(build_path)
+        
+        # Should detect from CMakeCache as fallback
+        assert family == ChipFamily.NRF52
+
+
+def test_detect_arch_from_build_with_both_methods_agreeing():
+    """Test detect_arch_from_build when both .config and CMakeCache agree."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        zephyr_dir = build_path / "zephyr"
+        zephyr_dir.mkdir()
+        
+        # Both point to STM32
+        config_file = zephyr_dir / ".config"
+        config_file.write_text(
+            'CONFIG_BOARD="nucleo_f429zi"\n'
+            'CONFIG_SOC="stm32f429xx"\n'
+            "CONFIG_SOC_FAMILY_STM32=y\n"
+        )
+        
+        cmake_cache = build_path / "CMakeCache.txt"
+        cmake_cache.write_text('BOARD:STRING=nucleo_f429zi\n')
+        
+        profile = ZephyrProfile()
+        family = profile.detect_arch_from_build(build_path)
+        
+        assert family == ChipFamily.STM32
+
+
+# =========================================================================
+# Board-to-Architecture Mapping Tests
+# =========================================================================
+
+
+def test_family_from_board_esp32():
+    """Test family detection from ESP32 board names."""
+    # Test various ESP32 board patterns
+    profile1 = ZephyrProfile(variant=None, board="esp32_devkitc")
+    assert profile1.family == ChipFamily.ESP32
+    
+    profile2 = ZephyrProfile(variant=None, board="esp32s3_devkitm")
+    assert profile2.family == ChipFamily.ESP32
+    
+    profile3 = ZephyrProfile(variant=None, board="esp32c6_devkitc")
+    assert profile3.family == ChipFamily.ESP32
+
+
+def test_family_from_board_stm32():
+    """Test family detection from STM32 board names."""
+    # Test various STM32 board patterns
+    profile1 = ZephyrProfile(variant=None, board="nucleo_f429zi")
+    assert profile1.family == ChipFamily.STM32
+    
+    profile2 = ZephyrProfile(variant=None, board="stm32f407_disco")
+    assert profile2.family == ChipFamily.STM32
+    
+    profile3 = ZephyrProfile(variant=None, board="stm32h743zi")
+    assert profile3.family == ChipFamily.STM32
+    
+    profile4 = ZephyrProfile(variant=None, board="disco_l475_iot1")
+    assert profile4.family == ChipFamily.STM32
+
+
+def test_family_from_board_rp2040():
+    """Test family detection from RP2040 board names."""
+    # Test various RP2040 board patterns
+    profile1 = ZephyrProfile(variant=None, board="rpi_pico")
+    assert profile1.family == ChipFamily.RP2040
+    
+    profile2 = ZephyrProfile(variant=None, board="rpi_pico/rp2040")
+    assert profile2.family == ChipFamily.RP2040
+    
+    profile3 = ZephyrProfile(variant=None, board="pico_w")
+    assert profile3.family == ChipFamily.RP2040
+
+
+def test_family_from_board_nrf():
+    """Test family detection from Nordic board names."""
+    # Test various Nordic board patterns
+    profile1 = ZephyrProfile(variant=None, board="nrf52840dk/nrf52840")
+    assert profile1.family == ChipFamily.NRF52
+    
+    profile2 = ZephyrProfile(variant=None, board="nrf5340dk/nrf5340/cpuapp")
+    assert profile2.family == ChipFamily.NRF52
+    
+    profile3 = ZephyrProfile(variant=None, board="nrf9160dk/nrf9160")
+    assert profile3.family == ChipFamily.NRF52
+
+
+def test_family_from_board_mcx():
+    """Test family detection from NXP MCX board names."""
+    # Test various MCX board patterns
+    profile1 = ZephyrProfile(variant=None, board="frdm_mcxn947/mcxn947/cpu0")
+    assert profile1.family == ChipFamily.MCX
+    
+    profile2 = ZephyrProfile(variant=None, board="mcxn947dk")
+    assert profile2.family == ChipFamily.MCX
+    
+    profile3 = ZephyrProfile(variant=None, board="frdm_mcxa153")
+    assert profile3.family == ChipFamily.MCX
+
+
+def test_family_from_variant_mcx():
+    """Test family detection from MCX variant."""
+    profile = ZephyrProfile(variant="mcxn947")
+    assert profile.family == ChipFamily.MCX
+
+
+def test_family_unknown_board_default():
+    """Test family defaults to NRF52 for unknown board names."""
+    profile = ZephyrProfile(variant=None, board="unknown_board_xyz")
+    assert profile.family == ChipFamily.NRF52
+
+
+def test_family_variant_overrides_board():
+    """Test that variant takes precedence over board name."""
+    # Variant should override board pattern matching
+    profile = ZephyrProfile(variant="esp32", board="nrf52840dk/nrf52840")
+    # Variant is esp32, so family should be ESP32 (not NRF52 from board)
+    assert profile.family == ChipFamily.ESP32
+
+
+def test_family_board_defaults_arch_key():
+    """Test that BOARD_DEFAULTS entries include 'arch' key."""
+    # Verify all BOARD_DEFAULTS entries have the 'arch' key
+    for variant, config in ZephyrProfile.BOARD_DEFAULTS.items():
+        assert "arch" in config, f"BOARD_DEFAULTS[{variant}] missing 'arch' key"
+        assert isinstance(config["arch"], ChipFamily), f"BOARD_DEFAULTS[{variant}]['arch'] should be ChipFamily"
+
+
+def test_family_from_board_defaults():
+    """Test family detection from BOARD_DEFAULTS arch hints."""
+    # When variant matches a BOARD_DEFAULTS entry but isn't recognized by variant logic
+    # (This is a fallback path, Step 3 in the family property)
+    # Test that mcxn947 variant uses the arch from BOARD_DEFAULTS
+    profile = ZephyrProfile(variant="mcxn947", board=None)
+    assert profile.family == ChipFamily.MCX
+
+
+def test_detect_arch_from_build_esp32():
+    """Test detect_arch_from_build with ESP32 board in CMakeCache.txt."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        cmake_cache = build_path / "CMakeCache.txt"
+        
+        cmake_cache.write_text(
+            "# CMake Cache\n"
+            "BOARD:STRING=esp32_devkitc\n"
+        )
+        
+        profile = ZephyrProfile()
+        arch = profile.detect_arch_from_build(build_path)
+        
+        assert arch == ChipFamily.ESP32
+
+
+def test_detect_arch_from_build_stm32():
+    """Test detect_arch_from_build with STM32 board in CMakeCache.txt."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        cmake_cache = build_path / "CMakeCache.txt"
+        
+        cmake_cache.write_text(
+            "# CMake Cache\n"
+            "BOARD:STRING=nucleo_f429zi\n"
+        )
+        
+        profile = ZephyrProfile()
+        arch = profile.detect_arch_from_build(build_path)
+        
+        assert arch == ChipFamily.STM32
+
+
+def test_detect_arch_from_build_rp2040():
+    """Test detect_arch_from_build with RP2040 board in CMakeCache.txt."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        cmake_cache = build_path / "CMakeCache.txt"
+        
+        cmake_cache.write_text(
+            "# CMake Cache\n"
+            "BOARD:STRING=rpi_pico\n"
+        )
+        
+        profile = ZephyrProfile()
+        arch = profile.detect_arch_from_build(build_path)
+        
+        assert arch == ChipFamily.RP2040
+
+
+def test_detect_arch_from_build_nrf():
+    """Test detect_arch_from_build with nRF board in CMakeCache.txt."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        cmake_cache = build_path / "CMakeCache.txt"
+        
+        cmake_cache.write_text(
+            "# CMake Cache\n"
+            "BOARD:STRING=nrf52840dk/nrf52840\n"
+        )
+        
+        profile = ZephyrProfile()
+        arch = profile.detect_arch_from_build(build_path)
+        
+        assert arch == ChipFamily.NRF52
+
+
+def test_detect_arch_from_build_mcx():
+    """Test detect_arch_from_build with MCX board in CMakeCache.txt."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        cmake_cache = build_path / "CMakeCache.txt"
+        
+        cmake_cache.write_text(
+            "# CMake Cache\n"
+            "BOARD:STRING=frdm_mcxn947/mcxn947/cpu0\n"
+        )
+        
+        profile = ZephyrProfile()
+        arch = profile.detect_arch_from_build(build_path)
+        
+        assert arch == ChipFamily.MCX
+
+
+def test_detect_arch_from_build_unknown_board():
+    """Test detect_arch_from_build with unknown board defaults to NRF52."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        cmake_cache = build_path / "CMakeCache.txt"
+        
+        cmake_cache.write_text(
+            "# CMake Cache\n"
+            "BOARD:STRING=unknown_custom_board\n"
+        )
+        
+        profile = ZephyrProfile()
+        arch = profile.detect_arch_from_build(build_path)
+        
+        # Should default to NRF52 for unknown boards
+        assert arch == ChipFamily.NRF52
+
+
+def test_detect_arch_from_build_missing_cmake():
+    """Test detect_arch_from_build returns None when CMakeCache.txt is missing."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        profile = ZephyrProfile()
+        arch = profile.detect_arch_from_build(tmpdir)
+        
+        assert arch is None
+
+
+def test_detect_arch_from_build_no_board_line():
+    """Test detect_arch_from_build returns None when BOARD line is missing."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        cmake_cache = build_path / "CMakeCache.txt"
+        
+        cmake_cache.write_text(
+            "# CMake Cache\n"
+            "CMAKE_BUILD_TYPE:STRING=Debug\n"
+        )
+        
+        profile = ZephyrProfile()
+        arch = profile.detect_arch_from_build(build_path)
+        
+        assert arch is None
+
+
+def test_board_arch_map_completeness():
+    """Test BOARD_ARCH_MAP covers major board families."""
+    # Verify the map includes key patterns for all supported families
+    map_families = set(ZephyrProfile.BOARD_ARCH_MAP.values())
+    
+    # All ChipFamily values should be represented in the map
+    assert ChipFamily.ESP32 in map_families
+    assert ChipFamily.STM32 in map_families
+    assert ChipFamily.NRF52 in map_families
+    assert ChipFamily.RP2040 in map_families
+    assert ChipFamily.MCX in map_families
+
+
+def test_family_case_insensitive_board_matching():
+    """Test that board name matching is case-insensitive."""
+    # Test uppercase board name
+    profile1 = ZephyrProfile(variant=None, board="ESP32_DEVKITC")
+    assert profile1.family == ChipFamily.ESP32
+    
+    # Test mixed case
+    profile2 = ZephyrProfile(variant=None, board="Nucleo_F429ZI")
+    assert profile2.family == ChipFamily.STM32
+    
+    # Test lowercase (original)
+    profile3 = ZephyrProfile(variant=None, board="rpi_pico")
+    assert profile3.family == ChipFamily.RP2040

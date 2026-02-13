@@ -85,6 +85,10 @@ from eab.cli.stream_cmds import (
     cmd_recv,
     cmd_recv_latest,
 )
+from eab.cli.var_cmds import (
+    cmd_vars,
+    cmd_read_vars,
+)
 
 
 def _preprocess_argv(argv: list[str]) -> list[str]:
@@ -281,6 +285,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p_memdump.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
                         help="Debug probe type (default: jlink)")
     p_memdump.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    # Variable inspection commands
+    p_vars = sub.add_parser("vars", help="List global/static variables from ELF symbol table")
+    p_vars.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
+    p_vars.add_argument("--map", dest="map_file", default=None, help="Optional GNU ld .map file for richer info")
+    p_vars.add_argument("--filter", dest="filter_pattern", default=None, help="Glob pattern to filter names (e.g., 'g_*')")
+
+    p_read_vars = sub.add_parser("read-vars", help="Read variable values from target via debug probe")
+    p_read_vars.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
+    p_read_vars.add_argument("--var", dest="var_names", action="append", default=[], help="Variable name (repeatable)")
+    p_read_vars.add_argument("--all", dest="read_all", action="store_true", help="Read all variables from ELF")
+    p_read_vars.add_argument("--filter", dest="filter_pattern", default=None, help="Glob pattern when using --all")
+    p_read_vars.add_argument("--device", default=None, help="Device string for J-Link (e.g., NRF5340_XXAA_APP)")
+    p_read_vars.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_read_vars.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_read_vars.add_argument("--port", type=int, default=None, help="GDB server port override")
 
     p_stream = sub.add_parser("stream", help="Configure high-speed data stream mode")
     p_stream.add_argument("action", choices=["start", "stop"])
@@ -579,6 +600,29 @@ def main(argv: Optional[list[str]] = None) -> int:
             elf=args.elf,
             chip=args.chip,
             output_path=args.output_path,
+            probe_type=args.probe,
+            port=args.port,
+            json_mode=args.json,
+        )
+    if args.cmd == "vars":
+        return cmd_vars(
+            elf=args.elf,
+            map_file=args.map_file,
+            filter_pattern=args.filter_pattern,
+            json_mode=args.json,
+        )
+    if args.cmd == "read-vars":
+        if not args.var_names and not args.read_all:
+            _print({"error": "Specify --var <name> or --all"}, json_mode=args.json)
+            return 2
+        return cmd_read_vars(
+            base_dir=base_dir,
+            elf=args.elf,
+            var_names=args.var_names,
+            read_all=args.read_all,
+            filter_pattern=args.filter_pattern,
+            device=args.device,
+            chip=args.chip,
             probe_type=args.probe,
             port=args.port,
             json_mode=args.json,

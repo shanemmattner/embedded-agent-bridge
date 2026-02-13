@@ -43,7 +43,7 @@ def bin_firmware():
 
 def test_cmd_flash_jlink_hex_success(hex_firmware):
     """Test cmd_flash with --tool jlink successfully flashes .hex file."""
-    with patch("subprocess.run") as mock_run:
+    with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
         # Mock successful flash
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -83,7 +83,7 @@ def test_cmd_flash_jlink_hex_success(hex_firmware):
 
 def test_cmd_flash_jlink_bin_success(bin_firmware):
     """Test cmd_flash with --tool jlink successfully flashes .bin file."""
-    with patch("subprocess.run") as mock_run:
+    with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "J-Link flash successful"
@@ -109,7 +109,7 @@ def test_cmd_flash_jlink_bin_success(bin_firmware):
 
 def test_cmd_flash_jlink_net_core_no_reset(hex_firmware):
     """Test cmd_flash with --tool jlink and NET core (no reset)."""
-    with patch("subprocess.run") as mock_run:
+    with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "J-Link flash successful"
@@ -179,7 +179,7 @@ def test_cmd_flash_jlink_missing_file_error():
 
 def test_cmd_flash_jlink_default_device(hex_firmware):
     """Test cmd_flash with --tool jlink uses default device when not specified."""
-    with patch("subprocess.run") as mock_run:
+    with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "Success"
@@ -205,7 +205,7 @@ def test_cmd_flash_jlink_default_device(hex_firmware):
 
 def test_cmd_flash_jlink_script_cleanup(hex_firmware):
     """Test that J-Link script file is cleaned up after flash."""
-    with patch("subprocess.run") as mock_run:
+    with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "Success"
@@ -248,7 +248,7 @@ def test_cmd_flash_jlink_script_cleanup(hex_firmware):
 
 def test_cmd_flash_jlink_method_in_output(hex_firmware):
     """Test that flash method is reported as 'jlink_direct' in output."""
-    with patch("subprocess.run") as mock_run:
+    with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "Success"
@@ -286,7 +286,7 @@ def test_cmd_flash_jlink_different_variants():
     
     try:
         for variant in variants:
-            with patch("subprocess.run") as mock_run:
+            with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
                 mock_result = MagicMock()
                 mock_result.returncode = 0
                 mock_result.stdout = "Success"
@@ -313,7 +313,7 @@ def test_cmd_flash_jlink_different_variants():
 
 def test_cmd_flash_jlink_handles_subprocess_error(hex_firmware):
     """Test cmd_flash with --tool jlink handles subprocess errors gracefully."""
-    with patch("subprocess.run") as mock_run:
+    with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
         mock_result = MagicMock()
         mock_result.returncode = 1
         mock_result.stdout = ""
@@ -341,7 +341,7 @@ def test_cmd_flash_jlink_timeout_handling(hex_firmware):
     """Test cmd_flash with --tool jlink handles timeout errors."""
     import subprocess
     
-    with patch("subprocess.run") as mock_run:
+    with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
         mock_run.side_effect = subprocess.TimeoutExpired(
             cmd=["JLinkExe"],
             timeout=120.0

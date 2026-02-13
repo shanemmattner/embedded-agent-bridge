@@ -480,7 +480,7 @@ class ZephyrProfile(ChipProfile):
         try:
             # Build J-Link script commands
             script_lines = [
-                f"connect",
+                "connect",
                 f"device {device}",
                 "si SWD",
                 "speed 4000",
@@ -501,25 +501,20 @@ class ZephyrProfile(ChipProfile):
             
             script_lines.append("exit")
             
-            # Write script to temp file
-            with open(script_path, "w") as f:
+            # Write script to temp file using os.fdopen to wrap the file descriptor
+            import os
+            with os.fdopen(fd, "w") as f:
                 for line in script_lines:
                     f.write(line + "\n")
         except Exception:
             # Clean up temp file if script creation fails
             try:
                 import os
+                os.close(fd)
                 os.unlink(script_path)
-            except Exception:
+            except OSError:
                 pass
             raise
-        finally:
-            # Close the file descriptor
-            try:
-                import os
-                os.close(fd)
-            except Exception:
-                pass
         
         # Return FlashCommand that runs JLinkExe with the script
         return FlashCommand(
@@ -563,11 +558,6 @@ class ZephyrProfile(ChipProfile):
             # APP core or other nRF variants: proceed with recover
             args = ["--recover"]
             
-            # Add --coprocessor for nRF5340 NET core (though blocked above, this shows intent)
-            if "5340" in variant_lower and core.lower() == "net":
-                args.append("--coprocessor")
-                args.append("CP_NETWORK")
-            
             return FlashCommand(
                 tool="nrfjprog",
                 args=args,
@@ -588,7 +578,7 @@ class ZephyrProfile(ChipProfile):
             f"Use 'west flash' to overwrite or consult Zephyr docs for your board."
         )
 
-    def check_approtect(self, core: str = "app") -> dict[str, bool | str]:
+    def check_approtect(self, core: str = "app") -> dict[str, bool | str | None]:
         """
         Check APPROTECT status on nRF5340 using nrfjprog.
 
@@ -807,13 +797,13 @@ class ZephyrProfile(ChipProfile):
             try:
                 fd, script_path = tempfile.mkstemp(prefix="jlink_reset_", suffix=".jlink", text=True)
                 with open(fd, "w") as f:
-                    f.write(f"connect\n")
+                    f.write("connect\n")
                     f.write(f"device {device}\n")
-                    f.write(f"si SWD\n")
-                    f.write(f"speed 4000\n")
-                    f.write(f"r\n")  # Reset
-                    f.write(f"g\n")  # Go (resume execution)
-                    f.write(f"exit\n")
+                    f.write("si SWD\n")
+                    f.write("speed 4000\n")
+                    f.write("r\n")  # Reset
+                    f.write("g\n")  # Go (resume execution)
+                    f.write("exit\n")
                 
                 return FlashCommand(
                     tool="JLinkExe",

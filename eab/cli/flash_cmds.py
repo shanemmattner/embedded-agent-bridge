@@ -93,7 +93,26 @@ def cmd_flash(
     net_firmware: Optional[str] = None,
     json_mode: bool,
 ) -> int:
-    """Flash firmware to device using chip-specific tool."""
+    """Flash firmware to device using chip-specific tool.
+    
+    Args:
+        firmware: Path to firmware file or build directory
+        chip: Chip type identifier (e.g., "esp32", "nrf5340", "stm32l4")
+        address: Flash address offset (chip-specific defaults if None)
+        port: Serial port path (for serial-based flashing)
+        tool: Flash tool override (e.g., "jlink" for J-Link direct flash)
+        baud: Baud rate for serial flashing
+        connect_under_reset: Use connect-under-reset for STM32 targets
+        board: Zephyr board name override
+        runner: Zephyr flash runner override (e.g., "jlink", "openocd")
+        device: J-Link device string (e.g., "NRF5340_XXAA_APP") for J-Link flash
+        reset_after: Whether to reset device after flashing (default: True)
+        net_firmware: Path to NET core firmware for dual-core targets (e.g., nRF5340)
+        json_mode: Emit machine-parseable JSON output
+        
+    Returns:
+        Exit code: 0 on success, 1 on failure, 2 for invalid chip
+    """
     started = time.time()
     temp_bin_path = None
     converted_from_elf = False
@@ -736,7 +755,20 @@ def cmd_erase(
     core: str = "app",
     json_mode: bool,
 ) -> int:
-    """Erase flash memory using chip-specific tool."""
+    """Erase flash memory using chip-specific tool.
+    
+    Args:
+        chip: Chip type identifier (e.g., "nrf5340", "stm32l4")
+        port: Serial port (ignored for most targets)
+        tool: Flash tool override
+        connect_under_reset: Use connect-under-reset for STM32 targets
+        runner: Flash runner override (e.g., "jlink", "openocd")
+        core: Target core for multi-core chips ("app" or "net", default: "app")
+        json_mode: Emit machine-parseable JSON output
+        
+    Returns:
+        Exit code: 0 on success, 1 on failure, 2 for invalid chip
+    """
     started = time.time()
 
     try:

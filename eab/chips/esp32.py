@@ -292,6 +292,7 @@ class ESP32Profile(ChipProfile):
         baud: int = 921600,
         chip: str | None = None,
         no_stub: bool = False,
+        extra_args: list[str] | None = None,
         **kwargs,
     ) -> FlashCommand:
         """
@@ -307,6 +308,7 @@ class ESP32Profile(ChipProfile):
             baud: Baud rate for flashing
             chip: Chip type (esp32, esp32s3, etc.)
             no_stub: Use ROM bootloader instead of RAM stub (slower but more reliable)
+            extra_args: Additional arguments to pass to esptool (e.g., ['--no-compress', '--verify'])
         """
         chip = chip or self.variant or "auto"
         usb_jtag = self.is_usb_jtag_port(port)
@@ -345,6 +347,10 @@ class ESP32Profile(ChipProfile):
         else:
             # Single binary flash
             args.extend([address, firmware_path])
+
+        # Append extra_args if provided
+        if extra_args:
+            args.extend(extra_args)
 
         # Longer timeout when using --no-stub (ROM loader is ~10x slower)
         timeout = 300.0 if no_stub else 120.0

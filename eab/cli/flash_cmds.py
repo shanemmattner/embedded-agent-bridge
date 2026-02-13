@@ -485,9 +485,6 @@ def cmd_flash(
             esp32_retried = True
             retry_baud = 115200
             retry_kwargs = {**kwargs, "no_stub": True, "baud": retry_baud}
-            # Preserve extra_args in retry kwargs
-            if extra_esptool_args:
-                retry_kwargs["extra_args"] = extra_esptool_args
 
             for retry_num in range(_ESP32_MAX_RETRIES):
                 logger.info(

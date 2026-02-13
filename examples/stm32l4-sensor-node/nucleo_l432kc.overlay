@@ -1,0 +1,15 @@
+/*
+ * Enable ADC1 and USART1 for sensor node.
+ * USART1 (PA9 TX / PA10 RX) is the data link to nRF5340.
+ * ADC1 reads internal temp sensor (ch17) and VREFINT (ch0).
+ */
+
+&adc1 {
+	status = "okay";
+	st,adc-clock-source = "SYNC";
+	st,adc-prescaler = <4>;
+};
+
+&usart1 {
+	status = "okay";
+};

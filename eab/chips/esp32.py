@@ -356,7 +356,7 @@ class ESP32Profile(ChipProfile):
         )
 
     def get_erase_command(self, port: str, **kwargs) -> FlashCommand:
-        """Build esptool erase_flash command."""
+        """Build esptool erase-flash command."""
         chip = kwargs.get("chip") or self.variant or "auto"
 
         return FlashCommand(
@@ -370,7 +370,7 @@ class ESP32Profile(ChipProfile):
         )
 
     def get_chip_info_command(self, port: str, **kwargs) -> FlashCommand:
-        """Build esptool chip_id command."""
+        """Build esptool chip-id command."""
         return FlashCommand(
             tool="esptool",
             args=["--port", port, "chip-id"],

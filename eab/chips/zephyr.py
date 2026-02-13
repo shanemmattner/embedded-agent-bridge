@@ -42,36 +42,164 @@ class ZephyrProfile(ChipProfile):
         self.runner = runner
 
     # Default board names for known Zephyr variants (used by get_chip_profile registry)
-    BOARD_DEFAULTS: dict[str, dict[str, str | None]] = {
-        "nrf5340": {"board": "nrf5340dk/nrf5340/cpuapp", "runner": "jlink"},
-        "nrf52840": {"board": "nrf52840dk/nrf52840", "runner": "jlink"},
-        "nrf52833": {"board": "nrf52833dk/nrf52833", "runner": "jlink"},
-        "rp2040": {"board": "rpi_pico", "runner": None},
-        "mcxn947": {"board": "frdm_mcxn947/mcxn947/cpu0", "runner": "linkserver"},
+    BOARD_DEFAULTS: dict[str, dict[str, str | None | ChipFamily]] = {
+        "nrf5340": {"board": "nrf5340dk/nrf5340/cpuapp", "runner": "jlink", "arch": ChipFamily.NRF52},
+        "nrf52840": {"board": "nrf52840dk/nrf52840", "runner": "jlink", "arch": ChipFamily.NRF52},
+        "nrf52833": {"board": "nrf52833dk/nrf52833", "runner": "jlink", "arch": ChipFamily.NRF52},
+        "rp2040": {"board": "rpi_pico", "runner": None, "arch": ChipFamily.RP2040},
+        "mcxn947": {"board": "frdm_mcxn947/mcxn947/cpu0", "runner": "linkserver", "arch": ChipFamily.MCX},
     }
+
+    # Board name patterns mapped to chip families
+    # Used when variant is absent or unrecognized
+    BOARD_ARCH_MAP: dict[str, ChipFamily] = {
+        # ESP32 boards
+        "esp32": ChipFamily.ESP32,
+        "esp32s2": ChipFamily.ESP32,
+        "esp32s3": ChipFamily.ESP32,
+        "esp32c3": ChipFamily.ESP32,
+        "esp32c6": ChipFamily.ESP32,
+        # STM32 boards
+        "nucleo": ChipFamily.STM32,
+        "stm32": ChipFamily.STM32,
+        "disco": ChipFamily.STM32,  # Discovery boards
+        "stm32f4": ChipFamily.STM32,
+        "stm32f7": ChipFamily.STM32,
+        "stm32h7": ChipFamily.STM32,
+        "stm32l4": ChipFamily.STM32,
+        "stm32g4": ChipFamily.STM32,
+        # RP2040 boards
+        "rpi_pico": ChipFamily.RP2040,
+        "rp2040": ChipFamily.RP2040,
+        "pico": ChipFamily.RP2040,
+        # Nordic boards
+        "nrf52": ChipFamily.NRF52,
+        "nrf53": ChipFamily.NRF52,
+        "nrf91": ChipFamily.NRF52,
+        # NXP MCX boards
+        "frdm_mcx": ChipFamily.MCX,
+        "mcx": ChipFamily.MCX,
+        "mcxn947": ChipFamily.MCX,
+        "mcxa": ChipFamily.MCX,
+        "mcxw": ChipFamily.MCX,
+    }
+
+    @staticmethod
+    def detect_arch_from_kconfig(build_dir: str | Path) -> ChipFamily | None:
+        """
+        Detect chip family from Zephyr .config file.
+
+        Reads build/zephyr/.config and extracts CONFIG_ARCH, CONFIG_SOC,
+        CONFIG_SOC_FAMILY, and CONFIG_BOARD to determine the chip family.
+        This is the most reliable detection method since it comes directly
+        from Zephyr's build system.
+
+        Args:
+            build_dir: Path to Zephyr build directory
+
+        Returns:
+            ChipFamily enum or None if not detected
+
+        Example .config entries:
+            CONFIG_BOARD="esp32c3_devkitm"
+            CONFIG_SOC="esp32c3"
+            CONFIG_ARCH="riscv"
+            CONFIG_SOC_FAMILY_ESP32=y
+            CONFIG_SOC_FAMILY_NRF=y
+            CONFIG_SOC_FAMILY_STM32=y
+            CONFIG_SOC_FAMILY_RP2XXX=y
+            CONFIG_SOC_FAMILY_MCXN=y
+        """
+        build_path = Path(build_dir)
+        config_file = build_path / "zephyr" / ".config"
+
+        if not config_file.exists():
+            return None
+
+        try:
+            content = config_file.read_text()
+        except (OSError, UnicodeDecodeError):
+            return None
+
+        # Extract relevant config values
+        config_values: dict[str, str] = {}
+        
+        for line in content.splitlines():
+            line = line.strip()
+            
+            # Skip comments and empty lines
+            if not line or line.startswith("#"):
+                continue
+            
+            # Parse CONFIG_KEY=value or CONFIG_KEY="value" or CONFIG_KEY=y
+            if "=" in line:
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip('"')
+                config_values[key] = value
+
+        # Detect family from SOC_FAMILY flags (most reliable)
+        if config_values.get("CONFIG_SOC_FAMILY_ESP32") == "y":
+            return ChipFamily.ESP32
+        if config_values.get("CONFIG_SOC_FAMILY_NRF") == "y":
+            return ChipFamily.NRF52
+        if config_values.get("CONFIG_SOC_FAMILY_STM32") == "y":
+            return ChipFamily.STM32
+        if config_values.get("CONFIG_SOC_FAMILY_RP2XXX") == "y":
+            return ChipFamily.RP2040
+        if config_values.get("CONFIG_SOC_FAMILY_MCXN") == "y":
+            return ChipFamily.MCX
+
+        # Fallback: detect from SOC or BOARD names
+        soc = config_values.get("CONFIG_SOC", "").lower()
+        board = config_values.get("CONFIG_BOARD", "").lower()
+        
+        if "esp32" in soc or "esp32" in board:
+            return ChipFamily.ESP32
+        if "nrf" in soc or "nrf" in board:
+            return ChipFamily.NRF52
+        if "stm32" in soc or "stm32" in board:
+            return ChipFamily.STM32
+        if "rp2040" in soc or "rp2040" in board or "rpi_pico" in board:
+            return ChipFamily.RP2040
+        if "mcx" in soc or "mcx" in board:
+            return ChipFamily.MCX
+
+        return None
 
     @property
     def family(self) -> ChipFamily:
-        """Infer chip family from variant string."""
-        if not self.variant:
-            return ChipFamily.NRF52  # Default for Zephyr
+        """Infer chip family from variant string or board name."""
+        # Step 1: Check variant first (existing logic)
+        if self.variant:
+            variant_lower = self.variant.lower()
+            
+            # Map variant prefixes to chip families
+            if "nrf52" in variant_lower or "nrf53" in variant_lower:
+                return ChipFamily.NRF52
+            elif "stm32" in variant_lower:
+                return ChipFamily.STM32
+            elif "esp32" in variant_lower:
+                return ChipFamily.ESP32
+            elif "rp2040" in variant_lower:
+                return ChipFamily.RP2040
+            elif "mcx" in variant_lower:
+                return ChipFamily.MCX
         
-        variant_lower = self.variant.lower()
+        # Step 2: If variant is None or unrecognized, check board name against BOARD_ARCH_MAP
+        if self.board:
+            board_lower = self.board.lower()
+            for pattern, arch in self.BOARD_ARCH_MAP.items():
+                if pattern in board_lower:
+                    return arch
         
-        # Map variant prefixes to chip families
-        if "nrf52" in variant_lower or "nrf53" in variant_lower:
-            return ChipFamily.NRF52
-        elif "stm32" in variant_lower:
-            return ChipFamily.STM32
-        elif "esp32" in variant_lower:
-            return ChipFamily.ESP32
-        elif "rp2040" in variant_lower:
-            return ChipFamily.RP2040
-        elif "mcx" in variant_lower:
-            # NXP MCX series — Cortex-M33, same debug family as nRF53
-            return ChipFamily.NRF52
-
-        # Default fallback
+        # Step 3: Check BOARD_DEFAULTS for arch hints (if variant matches a known default)
+        if self.variant and self.variant.lower() in self.BOARD_DEFAULTS:
+            defaults = self.BOARD_DEFAULTS[self.variant.lower()]
+            if "arch" in defaults and isinstance(defaults["arch"], ChipFamily):
+                return defaults["arch"]
+        
+        # Step 4: Default fallback
         return ChipFamily.NRF52
 
     @property
@@ -201,6 +329,33 @@ class ZephyrProfile(ChipProfile):
             pass
         
         return None
+
+    def detect_arch_from_build(self, build_dir: str | Path) -> ChipFamily | None:
+        """
+        Detect chip architecture from build directory.
+
+        First tries Zephyr .config file (most reliable), then falls back to
+        CMakeCache.txt board name parsing.
+
+        Args:
+            build_dir: Path to Zephyr build directory
+
+        Returns:
+            ChipFamily enum value or None if not detected
+        """
+        # Step 1: Try Kconfig-based detection (most reliable)
+        family = self.detect_arch_from_kconfig(build_dir)
+        if family is not None:
+            return family
+        
+        # Step 2: Fallback to CMakeCache.txt board name parsing
+        board = self.detect_board_from_build(build_dir)
+        if not board:
+            return None
+        
+        # Create a temporary profile with the detected board to infer architecture
+        temp_profile = ZephyrProfile(variant=None, board=board)
+        return temp_profile.family
 
     def get_flash_command(
         self,

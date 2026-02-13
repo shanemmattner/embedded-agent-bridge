@@ -23,6 +23,8 @@ class ChipFamily(Enum):
     STM32 = "stm32"
     NRF52 = "nrf52"  # Future
     RP2040 = "rp2040"  # Future
+    MCX = "mcx"  # NXP MCX series (MCXN947, etc.)
+    ZEPHYR = "zephyr"  # Zephyr RTOS detected but specific architecture unknown
 
 
 @dataclass

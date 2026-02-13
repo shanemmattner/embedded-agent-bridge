@@ -375,12 +375,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p_flash.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
     p_flash.add_argument("--address", default=None, help="Flash address (default: chip-specific)")
     p_flash.add_argument("--port", default=None, help="Serial port (ESP32) or ignored (STM32)")
-    p_flash.add_argument("--tool", default=None, help="Flash tool override (st-flash, esptool.py)")
+    p_flash.add_argument("--tool", default=None, help="Flash tool override (st-flash, esptool.py, jlink)")
     p_flash.add_argument("--baud", type=int, default=921600, help="Baud rate (ESP32 only)")
     p_flash.add_argument("--connect-under-reset", action="store_true",
                         help="STM32: Connect while holding reset (for crashed chips)")
     p_flash.add_argument("--board", default=None, help="Zephyr board name (e.g., nrf5340dk/nrf5340/cpuapp)")
     p_flash.add_argument("--runner", default=None, help="Flash runner override (jlink, openocd, nrfjprog)")
+    p_flash.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP, NRF5340_XXAA_NET)")
+    p_flash.add_argument("--reset-after", action="store_true", default=None,
+                        help="J-Link: Reset and run after flash (default: True, use --no-reset-after for NET core)")
+    p_flash.add_argument("--no-reset-after", dest="reset_after", action="store_false",
+                        help="J-Link: Skip reset after flash (for NET core)")
+    p_flash.add_argument("--net-firmware", default=None, help="NET core firmware path (nRF5340 dual-core only)")
 
     p_erase = sub.add_parser("erase", help="Erase flash memory")
     p_erase.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
@@ -389,6 +395,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_erase.add_argument("--connect-under-reset", action="store_true",
                         help="STM32: Connect while holding reset (for crashed chips)")
     p_erase.add_argument("--runner", default=None, help="Flash runner override (jlink, openocd, nrfjprog)")
+    p_erase.add_argument("--core", choices=["app", "net"], default="app",
+                        help="Target core for multi-core chips (nRF5340: app or net, default: app)")
 
     p_chip_info = sub.add_parser("chip-info", help="Get chip information")
     p_chip_info.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
@@ -399,6 +407,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_reset.add_argument("--method", choices=["hard", "soft", "bootloader"], default="hard")
     p_reset.add_argument("--connect-under-reset", action="store_true",
                         help="STM32: Connect while holding reset (for crashed chips)")
+    p_reset.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP, MCXN947)")
 
     # Hardware verification (preflight check)
     p_preflight = sub.add_parser("preflight-hw", help="Verify hardware by flashing stock firmware")
@@ -692,6 +701,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             connect_under_reset=getattr(args, "connect_under_reset", False),
             board=args.board,
             runner=args.runner,
+            device=getattr(args, "device", None),
+            reset_after=getattr(args, "reset_after", True),
+            net_firmware=getattr(args, "net_firmware", None),
             json_mode=args.json,
         )
     if args.cmd == "erase":
@@ -701,6 +713,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             tool=args.tool,
             connect_under_reset=getattr(args, "connect_under_reset", False),
             runner=args.runner,
+            core=getattr(args, "core", "app"),
             json_mode=args.json,
         )
     if args.cmd == "chip-info":
@@ -714,6 +727,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             chip=args.chip,
             method=args.method,
             connect_under_reset=getattr(args, "connect_under_reset", False),
+            device=getattr(args, "device", None),
             json_mode=args.json,
         )
     if args.cmd == "preflight-hw":

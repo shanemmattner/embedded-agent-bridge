@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -600,3 +601,197 @@ def test_get_chip_profile_case_insensitive_bare_chips():
     profile_mcx_upper = get_chip_profile("MCXN947")
     assert profile_mcx_lower.variant == profile_mcx_upper.variant == "mcxn947"
     assert profile_mcx_lower.board == profile_mcx_upper.board == "frdm_mcxn947/mcxn947/cpu0"
+
+
+# =========================================================================
+# APPROTECT and NET Core Erase Tests
+# =========================================================================
+
+
+def test_erase_nrf5340_app_core_allowed():
+    """Test that APP core erase on nRF5340 is allowed."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    # APP core erase should work normally
+    cmd = profile.get_erase_command(port="", core="app")
+    
+    assert cmd.tool == "nrfjprog"
+    assert "--recover" in cmd.args
+    # Should NOT have --coprocessor flag for APP core
+    assert "--coprocessor" not in cmd.args
+
+
+def test_erase_nrf5340_net_core_blocked():
+    """Test that NET core erase on nRF5340 raises RuntimeError."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    # NET core erase should raise RuntimeError with APPROTECT warning
+    with pytest.raises(RuntimeError) as exc_info:
+        profile.get_erase_command(port="", core="net")
+    
+    error_msg = str(exc_info.value)
+    assert "CRITICAL" in error_msg
+    assert "NET core" in error_msg
+    assert "APPROTECT" in error_msg
+    assert "loadfile" in error_msg
+
+
+def test_erase_nrf52840_no_core_restriction():
+    """Test that nRF52840 (non-5340) has no NET core restriction."""
+    profile = ZephyrProfile(variant="nrf52840")
+    
+    # nRF52840 doesn't have NET core, but should still accept core arg without error
+    cmd = profile.get_erase_command(port="", core="app")
+    
+    assert cmd.tool == "nrfjprog"
+    assert "--recover" in cmd.args
+
+
+def test_check_approtect_disabled():
+    """Test check_approtect detects disabled APPROTECT (0xFFFFFF00)."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    # Mock subprocess to simulate disabled APPROTECT
+    import unittest.mock as mock
+    with mock.patch("subprocess.run") as mock_run:
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "0x00FF8000: FFFFFF00"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+        
+        result = profile.check_approtect(core="app")
+        
+        assert result["enabled"] is False
+        assert "disabled" in result["status"].lower()
+        assert result["raw_value"] == "0xFFFFFF00"
+        assert result["error"] is None
+
+
+def test_check_approtect_enabled():
+    """Test check_approtect detects enabled APPROTECT (non-0xFFFFFF00)."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    import unittest.mock as mock
+    with mock.patch("subprocess.run") as mock_run:
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "0x00FF8000: 12345678"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+        
+        result = profile.check_approtect(core="app")
+        
+        assert result["enabled"] is True
+        assert "enabled" in result["status"].lower()
+        assert result["raw_value"] == "0x12345678"
+        assert result["error"] is None
+
+
+def test_check_approtect_readback_protection():
+    """Test check_approtect detects APPROTECT when nrfjprog fails with readback protection."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    import unittest.mock as mock
+    with mock.patch("subprocess.run") as mock_run:
+        mock_result = mock.Mock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "ERROR: Readback protection enabled"
+        mock_run.return_value = mock_result
+        
+        result = profile.check_approtect(core="app")
+        
+        assert result["enabled"] is True
+        assert "readback protection" in result["status"].lower()
+        assert result["error"] is None
+
+
+def test_check_approtect_net_core():
+    """Test check_approtect adds --coprocessor flag for NET core."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    import unittest.mock as mock
+    with mock.patch("subprocess.run") as mock_run:
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "0x00FF8000: FFFFFF00"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+        
+        result = profile.check_approtect(core="net")
+        
+        # Verify --coprocessor flag was added
+        call_args = mock_run.call_args[0][0]
+        assert "--coprocessor" in call_args
+        assert "CP_NETWORK" in call_args
+
+
+def test_check_approtect_non_nrf_chip():
+    """Test check_approtect returns not applicable for non-nRF chips."""
+    profile = ZephyrProfile(variant="stm32f4")
+    
+    result = profile.check_approtect(core="app")
+    
+    assert result["enabled"] is False
+    assert "not applicable" in result["status"]
+
+
+def test_check_approtect_nrfjprog_not_found():
+    """Test check_approtect handles nrfjprog not installed."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    import unittest.mock as mock
+    with mock.patch("subprocess.run") as mock_run:
+        mock_run.side_effect = FileNotFoundError()
+        
+        result = profile.check_approtect(core="app")
+        
+        assert result["enabled"] is None
+        assert "not found" in result["status"].lower()
+        assert "not installed" in result["error"]
+
+
+def test_check_approtect_timeout():
+    """Test check_approtect handles timeout."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    import unittest.mock as mock
+    with mock.patch("subprocess.run") as mock_run:
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd=["nrfjprog"], timeout=10.0)
+        
+        result = profile.check_approtect(core="app")
+        
+        assert result["enabled"] is None
+        assert "Timeout" in result["status"]
+        assert "timed out" in result["error"]
+
+
+def test_check_approtect_parse_error():
+    """Test check_approtect handles unparseable output."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    import unittest.mock as mock
+    with mock.patch("subprocess.run") as mock_run:
+        mock_result = mock.Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "unexpected format"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+        
+        result = profile.check_approtect(core="app")
+        
+        assert result["enabled"] is None
+        assert "Could not parse" in result["status"]
+        assert "Unexpected output" in result["error"]
+
+
+def test_erase_command_core_parameter_default():
+    """Test erase command uses default 'app' core when not specified."""
+    profile = ZephyrProfile(variant="nrf5340")
+    
+    # Should default to app core (no exception)
+    cmd = profile.get_erase_command(port="")
+    
+    assert cmd.tool == "nrfjprog"
+    assert "--recover" in cmd.args

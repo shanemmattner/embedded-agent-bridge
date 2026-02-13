@@ -371,8 +371,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Flash operations (chip-agnostic)
     p_flash = sub.add_parser("flash", help="Flash firmware to device")
-    p_flash.add_argument("firmware", help="Path to firmware binary (.bin/.hex)")
-    p_flash.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_flash.add_argument("firmware", help="Path to firmware binary (.bin/.hex/.elf) or ESP-IDF project directory")
+    p_flash.add_argument("--chip", required=False, default=None, help="Chip type (esp32s3, stm32l4, etc.)")
     p_flash.add_argument("--address", default=None, help="Flash address (default: chip-specific)")
     p_flash.add_argument("--port", default=None, help="Serial port (ESP32) or ignored (STM32)")
     p_flash.add_argument("--tool", default=None, help="Flash tool override (st-flash, esptool.py, jlink)")

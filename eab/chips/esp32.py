@@ -559,20 +559,20 @@ class ESP32Profile(ChipProfile):
             return None
 
         # If CMakeLists.txt exists, verify it's an ESP-IDF project
-        if has_cmakelists:
+        # (unless we have sdkconfig files which are sufficient on their own)
+        if has_cmakelists and not (has_sdkconfig or has_sdkconfig_defaults):
             try:
                 cmake_content = (project_path / "CMakeLists.txt").read_text()
                 # Look for ESP-IDF specific CMake functions
                 is_esp_idf = (
                     "idf_component_register" in cmake_content
-                    or "project(" in cmake_content
                     or "IDF_PATH" in cmake_content
                 )
                 if not is_esp_idf:
-                    # Has CMakeLists.txt but doesn't look like ESP-IDF
+                    # Has CMakeLists.txt but doesn't look like ESP-IDF and no sdkconfig
                     return None
-            except OSError:
-                pass
+            except OSError as e:
+                logger.warning("Could not read CMakeLists.txt in %s: %s", project_path, e)
 
         # Detect chip variant from sdkconfig
         chip = ESP32Profile.detect_chip_from_sdkconfig(project_path)

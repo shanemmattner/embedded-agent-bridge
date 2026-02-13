@@ -96,6 +96,7 @@ def cmd_flash(
     original_firmware_path = firmware  # Track original path for reporting
 
     # Detect ESP-IDF project directories and auto-detect chip
+    is_esp_idf_project = False
     if os.path.isdir(firmware):
         from eab.chips.esp32 import ESP32Profile
         
@@ -103,6 +104,7 @@ def cmd_flash(
         
         if project_info is not None:
             # It's an ESP-IDF project
+            is_esp_idf_project = True
             if not project_info.get("has_flash_args"):
                 # Project exists but not built
                 _print(
@@ -123,12 +125,18 @@ def cmd_flash(
             )
             return 1
     
-    # If chip is still None (binary file without --chip), return error
+    # If chip is still None, return appropriate error
     if chip is None:
-        _print(
-            {"error": "--chip is required when flashing a binary file"},
-            json_mode=json_mode
-        )
+        if is_esp_idf_project:
+            _print(
+                {"error": "Could not detect chip from sdkconfig. Specify --chip explicitly."},
+                json_mode=json_mode
+            )
+        else:
+            _print(
+                {"error": "--chip is required when flashing a binary file"},
+                json_mode=json_mode
+            )
         return 1
 
     try:

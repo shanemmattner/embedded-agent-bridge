@@ -137,6 +137,15 @@ class RealFileSystem(FileSystemInterface):
         if os.path.exists(path):
             os.remove(path)
 
+    def file_size(self, path: str) -> int:
+        return os.path.getsize(path)
+
+    def rename_file(self, old_path: str, new_path: str) -> None:
+        os.rename(old_path, new_path)
+
+    def list_dir(self, path: str) -> List[str]:
+        return os.listdir(path)
+
 
 class RealClock(ClockInterface):
     """

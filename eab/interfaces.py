@@ -127,6 +127,33 @@ class FileSystemInterface(ABC):
         """Delete a file."""
         pass
 
+    @abstractmethod
+    def file_size(self, path: str) -> int:
+        """Return file size in bytes.
+
+        Raises:
+            FileNotFoundError: If *path* does not exist.
+        """
+        pass
+
+    @abstractmethod
+    def rename_file(self, old_path: str, new_path: str) -> None:
+        """Rename (move) a file from *old_path* to *new_path*.
+
+        If *new_path* already exists it is silently overwritten on POSIX
+        systems (``os.rename`` semantics).
+
+        Raises:
+            FileNotFoundError: If *old_path* does not exist.
+            OSError: If the rename fails (e.g. cross-filesystem move).
+        """
+        pass
+
+    @abstractmethod
+    def list_dir(self, path: str) -> List[str]:
+        """List filenames in a directory."""
+        pass
+
 
 class ClockInterface(ABC):
     """

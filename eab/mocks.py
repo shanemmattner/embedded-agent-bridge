@@ -177,6 +177,40 @@ class MockFileSystem(FileSystemInterface):
         if path in self._mtimes:
             del self._mtimes[path]
 
+    def file_size(self, path: str) -> int:
+        if path not in self._files:
+            raise FileNotFoundError(f"No such file: {path}")
+        return len(self._files[path].encode('utf-8'))
+
+    def rename_file(self, old_path: str, new_path: str) -> None:
+        if old_path not in self._files:
+            raise FileNotFoundError(f"No such file: {old_path}")
+        # Handle renaming to same path (no-op)
+        if old_path == new_path:
+            return
+        self._files[new_path] = self._files[old_path]
+        self._mtimes[new_path] = self._mtimes.get(old_path, datetime.now().timestamp())
+        del self._files[old_path]
+        if old_path in self._mtimes:
+            del self._mtimes[old_path]
+
+    def list_dir(self, path: str) -> List[str]:
+        # Normalize path (ensure it ends with /)
+        if not path.endswith('/'):
+            path = path + '/'
+        
+        # Find all files that are direct children of this directory
+        files = set()
+        for file_path in self._files.keys():
+            if file_path.startswith(path):
+                # Get the part after the directory prefix
+                remainder = file_path[len(path):]
+                # Only include direct children (no further slashes)
+                if '/' not in remainder:
+                    files.add(remainder)
+        
+        return sorted(list(files))
+
     # Test helper methods
 
     def get_all_files(self) -> Dict[str, str]:

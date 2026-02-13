@@ -22,7 +22,7 @@ from typing import Optional
 from .implementations import RealSerialPort, RealFileSystem, RealClock, ConsoleLogger
 from .command_file import append_command, drain_commands
 from .reconnection import ReconnectionManager
-from .session_logger import SessionLogger
+from .session_logger import SessionLogger, LogRotationConfig
 from .pattern_matcher import PatternMatcher, AlertLogger
 from .status_manager import StatusManager
 from .event_emitter import EventEmitter
@@ -64,6 +64,9 @@ class SerialDaemon:
         filesystem: Optional[FileSystemInterface] = None,
         clock: Optional[ClockInterface] = None,
         logger: Optional[LoggerInterface] = None,
+        log_max_size_mb: int = 100,
+        log_max_files: int = 5,
+        log_compress: bool = True,
     ):
         self._port = port
         self._baud = baud
@@ -95,6 +98,11 @@ class SerialDaemon:
             filesystem=self._fs,
             clock=self._clock,
             base_dir=base_dir,
+            rotation_config=LogRotationConfig(
+                max_size_bytes=log_max_size_mb * 1_000_000,
+                max_files=log_max_files,
+                compress=log_compress,
+            ),
         )
 
         self._pattern_matcher = PatternMatcher(
@@ -1055,6 +1063,25 @@ Examples:
         metavar="LINES",
         help="Show last N alert lines (default: 20)",
     )
+    parser.add_argument(
+        "--log-max-size",
+        type=int,
+        default=100,
+        metavar="MB",
+        help="Max log size in MB before rotation (default: 100)",
+    )
+    parser.add_argument(
+        "--log-max-files",
+        type=int,
+        default=5,
+        metavar="COUNT",
+        help="Max rotated log files to keep (default: 5)",
+    )
+    parser.add_argument(
+        "--no-log-compress",
+        action="store_true",
+        help="Disable compression of rotated logs",
+    )
 
     args = parser.parse_args(argv)
 
@@ -1225,6 +1252,9 @@ Examples:
         port=args.port,
         baud=args.baud,
         base_dir=args.base_dir,
+        log_max_size_mb=args.log_max_size,
+        log_max_files=args.log_max_files,
+        log_compress=not args.no_log_compress,
     )
 
     # Handle signals

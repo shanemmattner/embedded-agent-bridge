@@ -175,10 +175,10 @@ class DeviceController:
 
             # Build esptool command
             cmd = [
-                "esptool.py",
+                "esptool",
                 "--port", self._port_name,
                 "--baud", "460800",
-                "write_flash",
+                "write-flash",
                 address,
                 firmware_path,
             ]
@@ -214,10 +214,10 @@ class DeviceController:
                 self._on_flash_end(False)
             return "ERROR: Flash timeout"
         except FileNotFoundError:
-            self._log_error("esptool.py not found")
+            self._log_error("esptool not found")
             if self._on_flash_end:
                 self._on_flash_end(False)
-            return "ERROR: esptool.py not found. Install with: pip install esptool"
+            return "ERROR: esptool not found. Install with: pip install esptool"
         except Exception as e:
             self._log_error(f"Flash error: {e}")
             if self._on_flash_end:
@@ -234,9 +234,9 @@ class DeviceController:
                 self._serial.close()
 
             cmd = [
-                "esptool.py",
+                "esptool",
                 "--port", self._port_name,
-                "chip_id",
+                "chip-id",
             ]
 
             result = subprocess.run(
@@ -270,9 +270,9 @@ class DeviceController:
                 self._serial.close()
 
             cmd = [
-                "esptool.py",
+                "esptool",
                 "--port", self._port_name,
-                "erase_flash",
+                "erase-flash",
             ]
 
             result = subprocess.run(

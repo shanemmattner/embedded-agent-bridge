@@ -201,7 +201,7 @@ class ESP32Profile(ChipProfile):
 
     @property
     def flash_tool(self) -> str:
-        return "esptool.py"
+        return "esptool"
 
     @staticmethod
     def find_espressif_openocd() -> str | None:
@@ -312,7 +312,7 @@ class ESP32Profile(ChipProfile):
         usb_jtag = self.is_usb_jtag_port(port)
 
         # USB-JTAG benefits from usb-reset and lower baud
-        before_mode = "usb-reset" if usb_jtag else "default_reset"
+        before_mode = "usb-reset" if usb_jtag else "default-reset"
 
         args = ["--chip", chip]
 
@@ -323,10 +323,10 @@ class ESP32Profile(ChipProfile):
             "--port", port,
             "--baud", str(baud),
             "--before", before_mode,
-            "--after", "hard_reset",
-            "write_flash",
-            "--flash_mode", "dio",
-            "--flash_size", "detect",
+            "--after", "hard-reset",
+            "write-flash",
+            "--flash-mode", "dio",
+            "--flash-size", "detect",
         ]
 
         # Check if firmware_path is a build directory with flash_args
@@ -350,30 +350,30 @@ class ESP32Profile(ChipProfile):
         timeout = 300.0 if no_stub else 120.0
 
         return FlashCommand(
-            tool="esptool.py",
+            tool="esptool",
             args=args,
             timeout=timeout,
         )
 
     def get_erase_command(self, port: str, **kwargs) -> FlashCommand:
-        """Build esptool erase_flash command."""
+        """Build esptool erase-flash command."""
         chip = kwargs.get("chip") or self.variant or "auto"
 
         return FlashCommand(
-            tool="esptool.py",
+            tool="esptool",
             args=[
                 "--chip", chip,
                 "--port", port,
-                "erase_flash",
+                "erase-flash",
             ],
             timeout=60.0,
         )
 
     def get_chip_info_command(self, port: str, **kwargs) -> FlashCommand:
-        """Build esptool chip_id command."""
+        """Build esptool chip-id command."""
         return FlashCommand(
-            tool="esptool.py",
-            args=["--port", port, "chip_id"],
+            tool="esptool",
+            args=["--port", port, "chip-id"],
             timeout=30.0,
         )
 

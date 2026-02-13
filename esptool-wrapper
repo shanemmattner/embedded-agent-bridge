@@ -39,7 +39,7 @@ fi
 IS_WRITE_OP=false
 for arg in "$@"; do
     case "$arg" in
-        write_flash|erase_flash|erase_region|read_flash)
+        write_flash|erase_flash|erase_region|read_flash|write-flash|erase-flash|erase-region|read-flash)
             IS_WRITE_OP=true
             break
             ;;

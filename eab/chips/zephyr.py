@@ -558,19 +558,16 @@ class ZephyrProfile(ChipProfile):
         return None
 
     @staticmethod
-    def _find_workspace(start: Path, build_path: Path | None = None) -> Path | None:
+    def _find_workspace(start: Path) -> Path | None:
         """Walk up from *start* looking for a directory containing ``.west/``.
-        
+
         WHY 20: Safety limit to prevent infinite loops if start path is malformed
         or filesystem has unusual structure. 20 levels is deeper than any reasonable
         Zephyr workspace nesting (typical depth is 2-4 from build dir to workspace root).
-        
+
         Args:
-            start: Starting path to search from
-            build_path: Optional build directory containing CMakeCache.txt.
-                       If directory walk fails and build_path is provided, attempts
-                       to derive workspace from ZEPHYR_BASE in CMakeCache.txt.
-        
+            start: Starting path to search from.
+
         Returns:
             Path to workspace root (containing .west/), or None if not found.
         """
@@ -582,16 +579,7 @@ class ZephyrProfile(ChipProfile):
             if parent == current:
                 break
             current = parent
-        
-        # Directory walk failed. If build_path provided, try CMakeCache.txt approach.
-        if build_path is not None:
-            zephyr_base = ZephyrProfile._read_zephyr_base_from_cmake(build_path)
-            if zephyr_base is not None:
-                # ZEPHYR_BASE is typically <workspace>/zephyr
-                workspace_candidate = zephyr_base.parent
-                if (workspace_candidate / ".west").is_dir():
-                    return workspace_candidate
-        
+
         return None
 
     @staticmethod
@@ -599,11 +587,11 @@ class ZephyrProfile(ChipProfile):
         """Resolve ZEPHYR_BASE from workspace or CMakeCache.txt.
 
         Two-step resolution:
-        1. Try to find workspace root (contains `.west/`) and derive `workspace/zephyr`
+        1. Try to find workspace root (contains ``.west/``) and derive ``workspace/zephyr``
         2. If no workspace found, fall back to reading ZEPHYR_BASE from CMakeCache.txt
 
         This handles both in-tree builds (within Zephyr workspace) and out-of-tree
-        builds (e.g., `west build --build-dir /tmp/build-nrf5340`).
+        builds (e.g., ``west build --build-dir /tmp/build-nrf5340``).
 
         Args:
             build_path: Path to the Zephyr build directory.
@@ -611,16 +599,19 @@ class ZephyrProfile(ChipProfile):
         Returns:
             String path to ZEPHYR_BASE directory, or None if not resolvable.
         """
-        # Try workspace detection first (with CMakeCache fallback)
-        workspace = ZephyrProfile._find_workspace(build_path, build_path=build_path)
+        # Step 1: directory walk — works for in-tree builds
+        workspace = ZephyrProfile._find_workspace(build_path)
         if workspace:
             return str(workspace / "zephyr")
-        
-        # Fallback: read from CMakeCache.txt
+
+        # Step 2: CMakeCache.txt fallback — works for out-of-tree builds
+        # WHY separate from _find_workspace: CMakeCache gives us ZEPHYR_BASE
+        # directly (no workspace needed), keeping _find_workspace focused on
+        # the single job of walking up to find .west/.
         zephyr_base = ZephyrProfile._read_zephyr_base_from_cmake(build_path)
         if zephyr_base:
             return str(zephyr_base)
-        
+
         return None
 
     def get_jlink_flash_command(

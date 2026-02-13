@@ -203,15 +203,32 @@ class SessionLogger:
         return recent[-count:] if count < len(recent) else recent
 
     def _check_rotation(self) -> None:
-        """Check if log rotation is needed and trigger if necessary."""
+        """Check if log rotation is needed and trigger if necessary.
+
+        Called after every log write operation to ensure no single write
+        can push the file far beyond the configured size limit. The
+        per-operation cost is negligible (one integer comparison) while
+        guaranteeing data safety — rotation happens promptly rather than
+        relying on a periodic timer that could miss a burst of output.
+        """
         if self._bytes_written >= self._rotation_config.max_size_bytes:
             self._rotate()
 
     def _rotate(self) -> None:
-        """Rotate log files: latest.log → latest.log.1 → latest.log.2 etc."""
+        """Rotate log files: latest.log -> latest.log.1 -> latest.log.2 etc.
+
+        Rotates backwards from max_files down to 1 so that each file is
+        moved to its new slot before the slot is needed by the next file.
+        Forward iteration would overwrite .2 with .1 before .2 could be
+        moved to .3, losing data.
+
+        The current log file is always rotated to .1 (optionally compressed),
+        and the byte counter is reset so the next write starts a fresh file.
+        """
         max_files = self._rotation_config.max_files
 
-        # Delete oldest file if it exists
+        # WHY both extensions: compression setting may change between runs,
+        # so previously uncompressed files may coexist with compressed ones.
         for ext in ['', '.gz']:
             oldest = f"{self._log_path}.{max_files}{ext}"
             if self._fs.file_exists(oldest):
@@ -239,11 +256,25 @@ class SessionLogger:
         MockFileSystem files are prefixed with ``[GZIP]`` as a test marker;
         real files are simply renamed (true gzip would require binary I/O
         support in the filesystem interface).
+
+        Args:
+            src: Source file path (must exist).
+            dst: Destination file path. If compression is enabled, ``.gz``
+                is appended automatically.
+
+        Raises:
+            FileNotFoundError: If *src* does not exist.
         """
         if self._rotation_config.compress:
             gz_dst = f"{dst}.gz"
+            # WHY hasattr check: detects MockFileSystem (which stores files
+            # in an in-memory dict) so we can simulate compression with a
+            # text marker instead of real gzip binary I/O.
             if hasattr(self._fs, '_files'):  # MockFileSystem
                 content = self._fs.read_file(src)
+                # WHY [GZIP] marker: MockFileSystem doesn't support binary
+                # I/O, so we use a text prefix to verify compression logic
+                # in tests without requiring real gzip encoding.
                 self._fs.write_file(gz_dst, f"[GZIP]{content}")
                 self._fs.delete_file(src)
             else:

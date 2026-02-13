@@ -129,12 +129,24 @@ class FileSystemInterface(ABC):
 
     @abstractmethod
     def file_size(self, path: str) -> int:
-        """Return file size in bytes. Raises FileNotFoundError if missing."""
+        """Return file size in bytes.
+
+        Raises:
+            FileNotFoundError: If *path* does not exist.
+        """
         pass
 
     @abstractmethod
     def rename_file(self, old_path: str, new_path: str) -> None:
-        """Rename a file."""
+        """Rename (move) a file from *old_path* to *new_path*.
+
+        If *new_path* already exists it is silently overwritten on POSIX
+        systems (``os.rename`` semantics).
+
+        Raises:
+            FileNotFoundError: If *old_path* does not exist.
+            OSError: If the rename fails (e.g. cross-filesystem move).
+        """
         pass
 
     @abstractmethod

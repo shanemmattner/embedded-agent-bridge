@@ -795,3 +795,63 @@ def test_erase_command_core_parameter_default():
     
     assert cmd.tool == "nrfjprog"
     assert "--recover" in cmd.args
+
+
+# =========================================================================
+# _resolve_zephyr_base Tests
+# =========================================================================
+
+
+def test_resolve_zephyr_base_workspace_exists():
+    """Test _resolve_zephyr_base returns workspace/zephyr when .west/ exists above build_path."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+        (workspace / ".west").mkdir()
+        (workspace / "zephyr").mkdir()
+        build_dir = workspace / "app" / "build"
+        build_dir.mkdir(parents=True)
+
+        result = ZephyrProfile._resolve_zephyr_base(build_dir)
+        assert result == str(workspace.resolve() / "zephyr")
+
+
+def test_resolve_zephyr_base_cmake_cache_fallback():
+    """Test _resolve_zephyr_base returns CMakeCache ZEPHYR_BASE when .west/ not found but CMakeCache exists."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        # Create a separate 'zephyr_ws' dir to simulate the real workspace
+        zephyr_ws = build_path / "zephyr_ws"
+        zephyr_base = zephyr_ws / "zephyr"
+        zephyr_base.mkdir(parents=True)
+
+        # Create an out-of-tree build dir (no .west/ above it)
+        out_of_tree = build_path / "out_build"
+        out_of_tree.mkdir()
+        (out_of_tree / "CMakeCache.txt").write_text(
+            f"ZEPHYR_BASE:PATH={zephyr_base}\n"
+            "BOARD:STRING=nrf5340dk/nrf5340/cpuapp\n"
+        )
+
+        result = ZephyrProfile._resolve_zephyr_base(out_of_tree)
+        assert result == str(zephyr_base)
+
+
+def test_resolve_zephyr_base_neither_exists():
+    """Test _resolve_zephyr_base returns None when neither .west/ nor CMakeCache exists."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir) / "build"
+        build_path.mkdir()
+
+        result = ZephyrProfile._resolve_zephyr_base(build_path)
+        assert result is None
+
+
+def test_resolve_zephyr_base_invalid_cmake_path():
+    """Test _resolve_zephyr_base returns None when CMakeCache ZEPHYR_BASE path doesn't exist."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir)
+        (build_path / "CMakeCache.txt").write_text(
+            "ZEPHYR_BASE:PATH=/nonexistent/path/zephyr\n"
+        )
+        result = ZephyrProfile._resolve_zephyr_base(build_path)
+        assert result is None

@@ -390,6 +390,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_flash.add_argument("--no-reset-after", dest="reset_after", action="store_false",
                         help="J-Link: Skip reset after flash (for NET core)")
     p_flash.add_argument("--net-firmware", default=None, help="NET core firmware path (nRF5340 dual-core only)")
+    p_flash.add_argument("--no-stub", action="store_true",
+                        help="ESP32: Use ROM bootloader directly (slower but more reliable for USB-JTAG)")
+    p_flash.add_argument("--extra-esptool-args", nargs='*', default=[],
+                        help="ESP32: Extra arguments to pass through to esptool (e.g., --no-compress --verify)")
 
     p_erase = sub.add_parser("erase", help="Erase flash memory")
     p_erase.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
@@ -710,6 +714,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             device=getattr(args, "device", None),
             reset_after=getattr(args, "reset_after", True),
             net_firmware=getattr(args, "net_firmware", None),
+            no_stub=args.no_stub,
+            extra_esptool_args=getattr(args, 'extra_esptool_args', []),
             json_mode=args.json,
         )
     if args.cmd == "erase":

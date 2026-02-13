@@ -91,6 +91,8 @@ def cmd_flash(
     device: Optional[str] = None,
     reset_after: bool = True,
     net_firmware: Optional[str] = None,
+    no_stub: bool = False,
+    extra_esptool_args: Optional[list[str]] = None,
     json_mode: bool,
 ) -> int:
     """Flash firmware to device using chip-specific tool.
@@ -108,6 +110,8 @@ def cmd_flash(
         device: J-Link device string (e.g., "NRF5340_XXAA_APP") for J-Link flash
         reset_after: Whether to reset device after flashing (default: True)
         net_firmware: Path to NET core firmware for dual-core targets (e.g., nRF5340)
+        no_stub: Use ROM bootloader instead of RAM stub for ESP32 (slower but more reliable)
+        extra_esptool_args: Additional arguments to pass to esptool for ESP32 flashing
         json_mode: Emit machine-parseable JSON output
         
     Returns:
@@ -242,6 +246,12 @@ def cmd_flash(
         kwargs["runner"] = runner
     if net_firmware:
         kwargs["net_core_firmware"] = net_firmware
+    # Add ESP32-specific options
+    if chip and chip.lower().startswith("esp"):
+        if no_stub:
+            kwargs["no_stub"] = True
+        if extra_esptool_args:
+            kwargs["extra_args"] = extra_esptool_args
 
     # Use chip-appropriate default address when none specified
     if not address and chip.lower().startswith("stm32"):
@@ -584,6 +594,7 @@ def cmd_flash(
         "retried_with_connect_under_reset": retried_with_cur,
         "retried_with_no_stub": esp32_retried,
         "approtect_recovery_performed": approtect_recovery_performed,
+        "no_stub": no_stub,
         "stdout": stdout,
         "stderr": stderr,
         "duration_ms": duration_ms,

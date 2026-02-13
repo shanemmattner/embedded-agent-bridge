@@ -152,7 +152,7 @@ def test_cmd_flash_with_esp_idf_project_auto_detects_chip(tmp_path: Path, capsys
     call_args = mock_run.call_args[0][0]
     
     # Verify esptool command includes correct chip and all partitions
-    assert "esptool.py" in call_args[0]
+    assert call_args[0] == "esptool"
     assert "--chip" in call_args
     chip_idx = call_args.index("--chip")
     assert call_args[chip_idx + 1] == "esp32c6"
@@ -354,7 +354,7 @@ def test_cmd_flash_with_binary_file_and_chip_still_works(tmp_path: Path, capsys)
     call_args = mock_run.call_args[0][0]
     
     # Verify esptool command includes chip and firmware path
-    assert "esptool.py" in call_args[0]
+    assert call_args[0] == "esptool"
     assert "--chip" in call_args
     chip_idx = call_args.index("--chip")
     assert call_args[chip_idx + 1] == "esp32c6"
@@ -443,3 +443,197 @@ def test_cmd_flash_with_esp_project_no_sdkconfig_requires_explicit_chip(tmp_path
     output = json.loads(captured.out)
     assert "error" in output
     assert "not an ESP-IDF project" in output["error"]
+
+
+def test_cmd_flash_with_no_stub_flag(tmp_path: Path, capsys):
+    """Test that --no-stub flag is passed to esptool when specified."""
+    firmware_bin = tmp_path / "firmware.bin"
+    firmware_bin.write_bytes(b"\x00" * 100)
+    
+    # Mock subprocess.run
+    mock_result = Mock()
+    mock_result.returncode = 0
+    mock_result.stdout = "Flash successful"
+    mock_result.stderr = ""
+    
+    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+        result = cmd_flash(
+            firmware=str(firmware_bin),
+            chip="esp32c6",
+            address="0x10000",
+            port="/dev/ttyUSB0",
+            tool=None,
+            baud=921600,
+            connect_under_reset=False,
+            board=None,
+            runner=None,
+            no_stub=True,  # Enable --no-stub
+            json_mode=True,
+        )
+    
+    # Verify success
+    assert result == 0
+    
+    # Verify subprocess.run was called
+    assert mock_run.called
+    call_args = mock_run.call_args[0][0]
+    
+    # Verify esptool command includes --no-stub flag
+    assert call_args[0] == "esptool"
+    assert "--no-stub" in call_args
+    
+    # Verify JSON output
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+    assert output["success"] is True
+    assert output["chip"] == "esp32c6"
+
+
+def test_cmd_flash_no_stub_in_json_output(tmp_path: Path, capsys):
+    """Test that JSON output includes no_stub field."""
+    firmware_bin = tmp_path / "firmware.bin"
+    firmware_bin.write_bytes(b"\x00" * 100)
+    
+    # Mock subprocess.run
+    mock_result = Mock()
+    mock_result.returncode = 0
+    mock_result.stdout = "Flash successful"
+    mock_result.stderr = ""
+    
+    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+        # Test with no_stub=True
+        result = cmd_flash(
+            firmware=str(firmware_bin),
+            chip="esp32c6",
+            address="0x10000",
+            port="/dev/ttyUSB0",
+            tool=None,
+            baud=921600,
+            connect_under_reset=False,
+            board=None,
+            runner=None,
+            no_stub=True,
+            json_mode=True,
+        )
+    
+    # Verify JSON output includes no_stub field
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+    assert "no_stub" in output
+    assert output["no_stub"] is True
+    
+    # Test with no_stub=False (default)
+    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+        result = cmd_flash(
+            firmware=str(firmware_bin),
+            chip="esp32c6",
+            address="0x10000",
+            port="/dev/ttyUSB0",
+            tool=None,
+            baud=921600,
+            connect_under_reset=False,
+            board=None,
+            runner=None,
+            no_stub=False,
+            json_mode=True,
+        )
+    
+    # Verify JSON output includes no_stub field set to False
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+    assert "no_stub" in output
+    assert output["no_stub"] is False
+
+
+def test_cmd_flash_with_extra_esptool_args(tmp_path: Path, capsys):
+    """Test that extra_esptool_args are passed to esptool when specified."""
+    firmware_bin = tmp_path / "firmware.bin"
+    firmware_bin.write_bytes(b"\x00" * 100)
+    
+    # Mock subprocess.run
+    mock_result = Mock()
+    mock_result.returncode = 0
+    mock_result.stdout = "Flash successful"
+    mock_result.stderr = ""
+    
+    extra_args = ["--no-compress", "--verify"]
+    
+    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+        result = cmd_flash(
+            firmware=str(firmware_bin),
+            chip="esp32c6",
+            address="0x10000",
+            port="/dev/ttyUSB0",
+            tool=None,
+            baud=921600,
+            connect_under_reset=False,
+            board=None,
+            runner=None,
+            extra_esptool_args=extra_args,
+            json_mode=True,
+        )
+    
+    # Verify success
+    assert result == 0
+    
+    # Verify subprocess.run was called
+    assert mock_run.called
+    call_args = mock_run.call_args[0][0]
+    
+    # Verify esptool command includes extra args
+    assert call_args[0] == "esptool"
+    assert "--no-compress" in call_args
+    assert "--verify" in call_args
+    
+    # Verify JSON output
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+    assert output["success"] is True
+
+
+def test_cmd_flash_with_no_stub_and_extra_args_together(tmp_path: Path, capsys):
+    """Test that both no_stub and extra_esptool_args can be used together."""
+    firmware_bin = tmp_path / "firmware.bin"
+    firmware_bin.write_bytes(b"\x00" * 100)
+    
+    # Mock subprocess.run
+    mock_result = Mock()
+    mock_result.returncode = 0
+    mock_result.stdout = "Flash successful"
+    mock_result.stderr = ""
+    
+    extra_args = ["--verify"]
+    
+    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+        result = cmd_flash(
+            firmware=str(firmware_bin),
+            chip="esp32c6",
+            address="0x10000",
+            port="/dev/ttyUSB0",
+            tool=None,
+            baud=921600,
+            connect_under_reset=False,
+            board=None,
+            runner=None,
+            no_stub=True,
+            extra_esptool_args=extra_args,
+            json_mode=True,
+        )
+    
+    # Verify success
+    assert result == 0
+    
+    # Verify subprocess.run was called
+    assert mock_run.called
+    call_args = mock_run.call_args[0][0]
+    
+    # Verify esptool command includes both --no-stub and extra args
+    assert call_args[0] == "esptool"
+    assert "--no-stub" in call_args
+    assert "--verify" in call_args
+    
+    # Verify JSON output includes no_stub field
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+    assert output["success"] is True
+    assert output["no_stub"] is True

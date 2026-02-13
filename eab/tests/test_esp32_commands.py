@@ -218,6 +218,65 @@ class TestESP32FlashCommands:
         assert "--flash-size" in cmd.args
         assert "detect" in cmd.args
 
+    def test_flash_command_extra_args_appended(self, profile: ESP32Profile):
+        """Verify extra_args like ['--no-compress', '--verify'] appear in the generated command."""
+        extra_args = ['--no-compress', '--verify']
+        cmd = profile.get_flash_command(
+            firmware_path="/path/to/firmware.bin",
+            port="/dev/ttyUSB0",
+            extra_args=extra_args,
+        )
+        # Verify both extra args are present in the command
+        assert '--no-compress' in cmd.args
+        assert '--verify' in cmd.args
+        
+        # Verify they appear after the main flash arguments
+        # The firmware path should still be in the args
+        assert "/path/to/firmware.bin" in cmd.args
+
+    def test_flash_command_extra_args_none_by_default(self, profile: ESP32Profile):
+        """Verify empty/None extra_args don't add anything."""
+        # Test with None (default)
+        cmd_none = profile.get_flash_command(
+            firmware_path="/path/to/firmware.bin",
+            port="/dev/ttyUSB0",
+            extra_args=None,
+        )
+        
+        # Test with empty list
+        cmd_empty = profile.get_flash_command(
+            firmware_path="/path/to/firmware.bin",
+            port="/dev/ttyUSB0",
+            extra_args=[],
+        )
+        
+        # Both should produce the same command (no extra args added)
+        # Just verify basic structure is intact
+        assert "--chip" in cmd_none.args
+        assert "--port" in cmd_none.args
+        assert "write-flash" in cmd_none.args
+        
+        assert "--chip" in cmd_empty.args
+        assert "--port" in cmd_empty.args
+        assert "write-flash" in cmd_empty.args
+
+    def test_flash_command_no_stub_with_extra_args(self, profile: ESP32Profile):
+        """Verify both --no-stub and extra args can coexist."""
+        extra_args = ['--compress']
+        cmd = profile.get_flash_command(
+            firmware_path="/path/to/firmware.bin",
+            port="/dev/ttyUSB0",
+            no_stub=True,
+            extra_args=extra_args,
+        )
+        
+        # Both --no-stub and --compress should be present
+        assert '--no-stub' in cmd.args
+        assert '--compress' in cmd.args
+        
+        # Timeout should still be extended for --no-stub
+        assert cmd.timeout == 300.0
+
 
 class TestESP32EraseCommands:
     """Test erase command generation for ESP32."""
@@ -506,6 +565,28 @@ class TestEabctlESP32Commands:
         assert result.returncode == 0
         assert "--chip" in result.stdout
         assert "--address" in result.stdout
+
+    def test_eabctl_flash_help_includes_no_stub(self):
+        """Verify --no-stub flag appears in flash help output."""
+        result = subprocess.run(
+            [sys.executable, "-m", "eab.control", "flash", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "--no-stub" in result.stdout
+        assert "ROM bootloader" in result.stdout or "USB-JTAG" in result.stdout
+
+    def test_eabctl_flash_help_includes_extra_esptool_args(self):
+        """Verify --extra-esptool-args flag appears in flash help output."""
+        result = subprocess.run(
+            [sys.executable, "-m", "eab.control", "flash", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "--extra-esptool-args" in result.stdout
+        assert "esptool" in result.stdout
 
     def test_eabctl_erase_help(self):
         """Verify erase subcommand exists."""

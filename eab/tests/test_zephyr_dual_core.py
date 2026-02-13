@@ -277,3 +277,52 @@ def test_get_flash_commands_empty_net_firmware():
     
     # Empty string is falsy, should return single command
     assert len(cmds) == 1
+
+
+def test_get_flash_commands_dual_core_out_of_tree_with_cmake():
+    """Test dual-core out-of-tree scenario: both APP and NET build dirs in /tmp/ with CMakeCache.txt."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        
+        # Create a separate workspace with ZEPHYR_BASE
+        workspace = root / "zephyr_workspace"
+        zephyr_base = workspace / "zephyr"
+        zephyr_base.mkdir(parents=True)
+        
+        # Create out-of-tree APP build dir (not inside workspace)
+        app_build = root / "build_app"
+        app_build.mkdir()
+        (app_build / "CMakeCache.txt").write_text(
+            f"ZEPHYR_BASE:PATH={zephyr_base}\n"
+            "BOARD:STRING=nrf5340dk/nrf5340/cpuapp\n"
+        )
+        
+        # Create out-of-tree NET build dir (not inside workspace)
+        net_build = root / "build_net"
+        net_build.mkdir()
+        (net_build / "CMakeCache.txt").write_text(
+            f"ZEPHYR_BASE:PATH={zephyr_base}\n"
+            "BOARD:STRING=nrf5340dk/nrf5340/cpunet\n"
+        )
+        
+        profile = ZephyrProfile(variant="nrf5340")
+        cmds = profile.get_flash_commands(
+            firmware_path=str(app_build),
+            port="",
+            net_core_firmware=str(net_build),
+        )
+        
+        assert len(cmds) == 2
+        
+        # Both commands should have ZEPHYR_BASE in their env
+        for cmd in cmds:
+            assert "ZEPHYR_BASE" in cmd.env
+            assert cmd.env["ZEPHYR_BASE"] == str(zephyr_base)
+        
+        # NET core (first command) should use net_build
+        net_build_idx = cmds[0].args.index("--build-dir") + 1
+        assert str(net_build) == cmds[0].args[net_build_idx]
+        
+        # APP core (second command) should use app_build
+        app_build_idx = cmds[1].args.index("--build-dir") + 1
+        assert str(app_build) == cmds[1].args[app_build_idx]

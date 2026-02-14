@@ -126,6 +126,13 @@ class JLinkBridge:
     def stop_rtt(self, timeout_s: float = 5.0) -> JLinkRTTStatus:
         return self._rtt.stop(timeout_s)
 
+    def reset_rtt_target(self, wait_after_reset_s: float = 1.0) -> JLinkRTTStatus:
+        """Stop RTT, reset target via pylink, restart RTT.
+
+        Only works when RTT is active. Returns error status otherwise.
+        """
+        return self._rtt.reset_target(wait_after_reset_s)
+
     # =========================================================================
     # SWO Viewer (subprocess)
     # =========================================================================

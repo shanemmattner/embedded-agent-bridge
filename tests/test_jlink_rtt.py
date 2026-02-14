@@ -103,58 +103,67 @@ class TestJLinkRTTManager:
     def test_stdout_reader_parses_channels(self, tmp_path):
         """_stdout_reader() should parse channel count from JLinkRTTLogger output."""
         manager = JLinkRTTManager(tmp_path)
-        
-        # Mock process with stdout that yields RTT channel detection line
+
+        # Write stdout content to file (stdout reader now tails a file)
+        stdout_path = tmp_path / "rtt-stdout.log"
+        stdout_path.write_text("3 up-channels found:\n")
+        manager._stdout_path = stdout_path
+
+        # Mock process as exited so reader stops after reading
         mock_proc = MagicMock()
-        mock_proc.stdout = [b"3 up-channels found:\n"]
+        mock_proc.poll.return_value = 0
         manager._proc = mock_proc
-        
-        # Run the stdout reader
+
         manager._stdout_reader()
-        
+
         assert manager._num_up == 3
 
     def test_stdout_reader_detects_failure(self, tmp_path):
         """_stdout_reader() should detect RTT control block not found error."""
         manager = JLinkRTTManager(tmp_path)
-        
-        # Mock process with stdout that yields error message
+
+        stdout_path = tmp_path / "rtt-stdout.log"
+        stdout_path.write_text("RTT Control Block not found\n")
+        manager._stdout_path = stdout_path
+
         mock_proc = MagicMock()
-        mock_proc.stdout = [b"RTT Control Block not found\n"]
+        mock_proc.poll.return_value = 0
         manager._proc = mock_proc
-        
-        # Run the stdout reader
+
         manager._stdout_reader()
-        
+
         assert manager._last_error == "RTT control block not found"
 
     def test_stdout_reader_handles_invalid_channel_count(self, tmp_path):
         """_stdout_reader() should handle malformed channel count lines gracefully."""
         manager = JLinkRTTManager(tmp_path)
-        
-        # Mock process with malformed output
+
+        stdout_path = tmp_path / "rtt-stdout.log"
+        stdout_path.write_text("invalid up-channels found:\n")
+        manager._stdout_path = stdout_path
+
         mock_proc = MagicMock()
-        mock_proc.stdout = [b"invalid up-channels found:\n"]
+        mock_proc.poll.return_value = 0
         manager._proc = mock_proc
-        
-        # Should not crash
+
         manager._stdout_reader()
-        
-        # Channel count should remain 0
+
         assert manager._num_up == 0
 
     def test_stdout_reader_logs_transfer_rate(self, tmp_path):
         """_stdout_reader() should process transfer rate updates without error."""
         manager = JLinkRTTManager(tmp_path)
-        
-        # Mock process with transfer rate line
+
+        stdout_path = tmp_path / "rtt-stdout.log"
+        stdout_path.write_text("Transfer rate: 100 KB/s\n")
+        manager._stdout_path = stdout_path
+
         mock_proc = MagicMock()
-        mock_proc.stdout = [b"Transfer rate: 100 KB/s\n"]
+        mock_proc.poll.return_value = 0
         manager._proc = mock_proc
-        
-        # Should not crash or set error
+
         manager._stdout_reader()
-        
+
         assert manager._last_error is None
 
     def test_stop_cleans_up_resources(self, tmp_path):
@@ -197,6 +206,7 @@ class TestJLinkRTTManager:
         # Mock successful process launch
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # Process running
+        mock_proc.pid = 12345
         mock_popen.return_value = mock_proc
         
         # Mock thread instances

@@ -29,9 +29,6 @@ def cmd_resets(base_dir: str, lines: int, json_mode: bool) -> int:
     try:
         with open(status_path, 'r') as f:
             status = json.load(f)
-    except FileNotFoundError:
-        _print({"error": "status.json not found", "path": status_path}, json_mode=json_mode)
-        return 1
     except Exception as e:
         _print({"error": f"Failed to read status.json: {e}"}, json_mode=json_mode)
         return 1

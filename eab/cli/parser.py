@@ -1,0 +1,378 @@
+"""Argument parser for eabctl CLI."""
+
+from __future__ import annotations
+
+import argparse
+
+from eab.openocd_bridge import DEFAULT_TELNET_PORT, DEFAULT_GDB_PORT, DEFAULT_TCL_PORT
+
+from eab.cli.helpers import DEFAULT_BASE_DIR
+
+
+def _preprocess_argv(argv: list[str]) -> list[str]:
+    """Reorder global flags (--json, --base-dir) before the subcommand.
+
+    Agent ergonomics: allow global flags anywhere (before or after subcommand).
+    argparse doesn't support this reliably with subparsers, so we reorder.
+
+    Args:
+        argv: Raw argument list (without ``sys.argv[0]``).
+
+    Returns:
+        Reordered argument list with global flags moved to the front.
+    """
+    global_args: list[str] = []
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--json":
+            global_args.append(token)
+            i += 1
+            continue
+        if token.startswith("--base-dir="):
+            global_args.append(token)
+            i += 1
+            continue
+        if token == "--base-dir":
+            # Needs a value.
+            if i + 1 >= len(argv):
+                rest.append(token)
+                i += 1
+                continue
+            global_args.extend([token, argv[i + 1]])
+            i += 2
+            continue
+
+        rest.append(token)
+        i += 1
+
+    return global_args + rest
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the full argparse parser with all subcommands."""
+    parser = argparse.ArgumentParser(prog="eabctl", description="EAB agent-friendly CLI")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="%(prog)s 1.0.0 (embedded-agent-bridge)",
+    )
+    parser.add_argument("--json", action="store_true", help="Output machine-parseable JSON")
+    parser.add_argument(
+        "--base-dir",
+        default=None,
+        help=f"Override session dir (default: daemon base_dir or {DEFAULT_BASE_DIR})",
+    )
+
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("status", help="Show daemon + device status")
+
+    p_tail = sub.add_parser("tail", help="Show last N lines of latest.log")
+    p_tail.add_argument("lines_pos", type=int, nargs="?", default=None, help="Number of lines (positional)")
+    p_tail.add_argument("-n", "--lines", type=int, default=None, dest="lines_flag")
+
+    p_alerts = sub.add_parser("alerts", help="Show last N lines of alerts.log")
+    p_alerts.add_argument("lines_pos", type=int, nargs="?", default=None, help="Number of lines (positional)")
+    p_alerts.add_argument("-n", "--lines", type=int, default=None, dest="lines_flag")
+
+    p_resets = sub.add_parser("resets", help="Show reset history and statistics")
+    p_resets.add_argument("lines_pos", type=int, nargs="?", default=10, help="Number of recent resets to show (positional)")
+    p_resets.add_argument("-n", "--lines", type=int, default=None, dest="lines_flag")
+
+    p_send = sub.add_parser("send", help="Queue a command to the device")
+    p_send.add_argument("text")
+    p_send.add_argument("--await", dest="await_ack", action="store_true", help="Wait for daemon to log the command")
+    p_send.add_argument(
+        "--await-event",
+        action="store_true",
+        help="Wait for events.jsonl to confirm the command was sent",
+    )
+    p_send.add_argument("--timeout", type=float, default=10.0)
+
+    p_wait = sub.add_parser("wait", help="Wait for a regex to appear in latest.log")
+    p_wait.add_argument("pattern")
+    p_wait.add_argument("--timeout", type=float, default=30.0)
+
+    p_events = sub.add_parser("events", help="Show last N events from events.jsonl")
+    p_events.add_argument("lines_pos", type=int, nargs="?", default=None, help="Number of lines (positional)")
+    p_events.add_argument("-n", "--lines", type=int, default=None, dest="lines_flag")
+
+    p_wait_event = sub.add_parser("wait-event", help="Wait for an event in events.jsonl")
+    p_wait_event.add_argument("--type", dest="event_type", help="Event type to match")
+    p_wait_event.add_argument("--contains", help="Substring to match in serialized event")
+    p_wait_event.add_argument("--command", help="Match data.command exactly")
+    p_wait_event.add_argument("--timeout", type=float, default=30.0)
+
+    p_pause = sub.add_parser("pause", help="Pause daemon (release port) for N seconds")
+    p_pause.add_argument("seconds", type=int, nargs="?", default=120)
+
+    sub.add_parser("resume", help="Resume daemon early (remove pause file)")
+
+    p_openocd = sub.add_parser("openocd", help="Manage OpenOCD (USB-JTAG) through EAB")
+    p_openocd.add_argument("action", choices=["status", "start", "stop", "cmd"])
+    p_openocd.add_argument("--chip", default="esp32s3")
+    p_openocd.add_argument("--vid", default="0x303a")
+    p_openocd.add_argument("--pid", default="0x1001")
+    p_openocd.add_argument("--telnet-port", type=int, default=DEFAULT_TELNET_PORT)
+    p_openocd.add_argument("--gdb-port", type=int, default=DEFAULT_GDB_PORT)
+    p_openocd.add_argument("--tcl-port", type=int, default=DEFAULT_TCL_PORT)
+    p_openocd.add_argument("--timeout", type=float, default=2.0)
+    p_openocd.add_argument("--command", default="", help="Command for 'openocd cmd'")
+
+    p_gdb = sub.add_parser("gdb", help="Run one-shot GDB commands through EAB (requires OpenOCD)")
+    p_gdb.add_argument("--chip", default="esp32s3")
+    p_gdb.add_argument("--target", default=f"localhost:{DEFAULT_GDB_PORT}")
+    p_gdb.add_argument("--elf", default=None)
+    p_gdb.add_argument("--gdb", dest="gdb_path", default=None)
+    p_gdb.add_argument("--timeout", type=float, default=60.0)
+    p_gdb.add_argument("--cmd", dest="commands", action="append", default=[], help="GDB command (repeatable)")
+
+    p_fault = sub.add_parser("fault-analyze", help="Analyze Cortex-M fault registers via debug probe")
+    p_fault.add_argument("--device", default="NRF5340_XXAA_APP", help="Device string (e.g., NRF5340_XXAA_APP, MCXN947)")
+    p_fault.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_fault.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_fault.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+
+    p_profile_func = sub.add_parser("profile-function", help="Profile a function using DWT cycle counter")
+    p_profile_func.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_profile_func.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
+    p_profile_func.add_argument("--function", required=True, help="Function name to profile")
+    p_profile_func.add_argument("--cpu-freq", type=int, default=None, help="CPU frequency in Hz (auto-detect if omitted)")
+    p_profile_func.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_profile_func.add_argument("--chip", default=None, help="Chip type for OpenOCD config (e.g., stm32l4, mcxn947)")
+
+    p_profile_region = sub.add_parser("profile-region", help="Profile an address region using DWT cycle counter")
+    p_profile_region.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_profile_region.add_argument("--start", type=lambda x: int(x, 0), required=True, help="Start address (hex or decimal)")
+    p_profile_region.add_argument("--end", type=lambda x: int(x, 0), required=True, help="End address (hex or decimal)")
+    p_profile_region.add_argument("--cpu-freq", type=int, default=None, help="CPU frequency in Hz (auto-detect if omitted)")
+    p_profile_region.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_profile_region.add_argument("--chip", default=None, help="Chip type for OpenOCD config (e.g., stm32l4, mcxn947)")
+
+    p_dwt_status = sub.add_parser("dwt-status", help="Display DWT register state")
+    p_dwt_status.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_dwt_status.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_dwt_status.add_argument("--chip", default=None, help="Chip type for OpenOCD config (e.g., stm32l4, mcxn947)")
+
+    p_gdb_script = sub.add_parser("gdb-script", help="Execute custom GDB Python script via debug probe")
+    p_gdb_script.add_argument("script_path", help="Path to GDB Python script")
+    p_gdb_script.add_argument("--device", default=None, help="Device string for J-Link (e.g., NRF5340_XXAA_APP)")
+    p_gdb_script.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_gdb_script.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_gdb_script.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_gdb_script.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    p_inspect = sub.add_parser("inspect", help="Inspect a struct variable via GDB")
+    p_inspect.add_argument("variable", help="Variable name to inspect (e.g., _kernel)")
+    p_inspect.add_argument("--device", default=None, help="Device string for J-Link")
+    p_inspect.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_inspect.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_inspect.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_inspect.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    p_threads = sub.add_parser("threads", help="List RTOS threads via GDB")
+    p_threads.add_argument("--device", default=None, help="Device string for J-Link")
+    p_threads.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_threads.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_threads.add_argument("--rtos", default="zephyr", help="RTOS type (default: zephyr)")
+    p_threads.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_threads.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    p_watch = sub.add_parser("watch", help="Set watchpoint on variable and log hits")
+    p_watch.add_argument("variable", help="Variable name to watch (e.g., g_counter)")
+    p_watch.add_argument("--device", default=None, help="Device string for J-Link")
+    p_watch.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_watch.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_watch.add_argument("--max-hits", type=int, default=100, help="Maximum hits to log (default: 100)")
+    p_watch.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_watch.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    p_memdump = sub.add_parser("memdump", help="Dump memory region to file via GDB")
+    p_memdump.add_argument("start_addr", help="Starting address (hex like 0x20000000)")
+    p_memdump.add_argument("size", type=int, help="Number of bytes to dump")
+    p_memdump.add_argument("output_path", help="Output file path")
+    p_memdump.add_argument("--device", default=None, help="Device string for J-Link")
+    p_memdump.add_argument("--elf", default=None, help="ELF file for GDB symbols")
+    p_memdump.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_memdump.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_memdump.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    # Variable inspection commands
+    p_vars = sub.add_parser("vars", help="List global/static variables from ELF symbol table")
+    p_vars.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
+    p_vars.add_argument("--map", dest="map_file", default=None, help="Optional GNU ld .map file for richer info")
+    p_vars.add_argument("--filter", dest="filter_pattern", default=None, help="Glob pattern to filter names (e.g., 'g_*')")
+
+    p_read_vars = sub.add_parser("read-vars", help="Read variable values from target via debug probe")
+    p_read_vars.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
+    p_read_vars.add_argument("--var", dest="var_names", action="append", default=[], help="Variable name (repeatable)")
+    p_read_vars.add_argument("--all", dest="read_all", action="store_true", help="Read all variables from ELF")
+    p_read_vars.add_argument("--filter", dest="filter_pattern", default=None, help="Glob pattern when using --all")
+    p_read_vars.add_argument("--device", default=None, help="Device string for J-Link (e.g., NRF5340_XXAA_APP)")
+    p_read_vars.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
+    p_read_vars.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+                        help="Debug probe type (default: jlink)")
+    p_read_vars.add_argument("--port", type=int, default=None, help="GDB server port override")
+
+    p_stream = sub.add_parser("stream", help="Configure high-speed data stream mode")
+    p_stream.add_argument("action", choices=["start", "stop"])
+    p_stream.add_argument("--mode", choices=["raw", "base64"], default="raw")
+    p_stream.add_argument("--chunk", type=int, default=16384, help="Chunk size for raw reads")
+    p_stream.add_argument("--marker", default=None, help="Marker line to start streaming")
+    p_stream.add_argument(
+        "--no-patterns",
+        action="store_true",
+        help="Disable pattern matching while streaming",
+    )
+    p_stream.add_argument(
+        "--truncate",
+        action="store_true",
+        help="Truncate data.bin when enabling stream",
+    )
+
+    p_recv = sub.add_parser("recv", help="Read bytes from data.bin")
+    p_recv.add_argument("--offset", type=int, required=True)
+    p_recv.add_argument("--length", type=int, required=True)
+    p_recv.add_argument("--out", dest="output_path", default=None)
+    p_recv.add_argument("--base64", action="store_true")
+
+    p_recv_latest = sub.add_parser("recv-latest", help="Read last N bytes from data.bin")
+    p_recv_latest.add_argument("--bytes", dest="length", type=int, required=True)
+    p_recv_latest.add_argument("--out", dest="output_path", default=None)
+    p_recv_latest.add_argument("--base64", action="store_true")
+
+    p_start = sub.add_parser("start", help="Start daemon in background (logs to /tmp)")
+    p_start.add_argument("--port", default="auto")
+    p_start.add_argument("--baud", type=int, default=115200)
+    p_start.add_argument("--force", action="store_true")
+    p_start.add_argument("--log-max-size", type=int, default=100, help="Max log size in MB before rotation (default: 100)")
+    p_start.add_argument("--log-max-files", type=int, default=5, help="Max rotated log files to keep (default: 5)")
+    p_start.add_argument("--no-log-compress", action="store_true", help="Disable compression of rotated logs")
+
+    sub.add_parser("stop", help="Stop running daemon")
+
+    p_capture = sub.add_parser(
+        "capture-between",
+        help="Capture payload lines between markers (defaults to base64-only) and write to a file",
+    )
+    p_capture.add_argument("start_marker")
+    p_capture.add_argument("end_marker")
+    p_capture.add_argument("output")
+    p_capture.add_argument("--timeout", type=float, default=120.0)
+    p_capture.add_argument(
+        "--from-start",
+        action="store_true",
+        help="Scan from start of log instead of tailing new lines",
+    )
+    p_capture.add_argument(
+        "--no-strip-timestamps",
+        action="store_true",
+        help="Do not remove [HH:MM:SS.mmm] prefixes before filtering",
+    )
+    p_capture.add_argument(
+        "--filter",
+        choices=["base64", "none"],
+        default="base64",
+        help="Payload filter mode (default: base64)",
+    )
+    p_capture.add_argument(
+        "--decode-base64",
+        action="store_true",
+        help="Base64-decode captured payload and write bytes to output file",
+    )
+
+    sub.add_parser("diagnose", help="Run basic health checks and print recommendations")
+
+    # Flash operations (chip-agnostic)
+    p_flash = sub.add_parser("flash", help="Flash firmware to device")
+    p_flash.add_argument("firmware", help="Path to firmware binary (.bin/.hex/.elf) or ESP-IDF project directory")
+    p_flash.add_argument("--chip", required=False, default=None, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_flash.add_argument("--address", default=None, help="Flash address (default: chip-specific)")
+    p_flash.add_argument("--port", default=None, help="Serial port (ESP32) or ignored (STM32)")
+    p_flash.add_argument("--tool", default=None, help="Flash tool override (st-flash, esptool, jlink)")
+    p_flash.add_argument("--baud", type=int, default=921600, help="Baud rate (ESP32 only)")
+    p_flash.add_argument("--connect-under-reset", action="store_true",
+                        help="STM32: Connect while holding reset (for crashed chips)")
+    p_flash.add_argument("--board", default=None, help="Zephyr board name (e.g., nrf5340dk/nrf5340/cpuapp)")
+    p_flash.add_argument("--runner", default=None, help="Flash runner override (jlink, openocd, nrfjprog)")
+    p_flash.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP, NRF5340_XXAA_NET)")
+    p_flash.add_argument("--reset-after", action="store_true", default=None,
+                        help="J-Link: Reset and run after flash (default: True, use --no-reset-after for NET core)")
+    p_flash.add_argument("--no-reset-after", dest="reset_after", action="store_false",
+                        help="J-Link: Skip reset after flash (for NET core)")
+    p_flash.add_argument("--net-firmware", default=None, help="NET core firmware path (nRF5340 dual-core only)")
+    p_flash.add_argument("--no-stub", action="store_true",
+                        help="ESP32: Use ROM bootloader directly (slower but more reliable for USB-JTAG)")
+    p_flash.add_argument("--extra-esptool-args", nargs='*', default=[],
+                        help="ESP32: Extra arguments to pass through to esptool (e.g., --no-compress --verify)")
+
+    p_erase = sub.add_parser("erase", help="Erase flash memory")
+    p_erase.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_erase.add_argument("--port", default=None, help="Serial port (ESP32) or ignored (STM32)")
+    p_erase.add_argument("--tool", default=None, help="Erase tool override")
+    p_erase.add_argument("--connect-under-reset", action="store_true",
+                        help="STM32: Connect while holding reset (for crashed chips)")
+    p_erase.add_argument("--runner", default=None, help="Flash runner override (jlink, openocd, nrfjprog)")
+    p_erase.add_argument("--core", choices=["app", "net"], default="app",
+                        help="Target core for multi-core chips (nRF5340: app or net, default: app)")
+
+    p_chip_info = sub.add_parser("chip-info", help="Get chip information")
+    p_chip_info.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_chip_info.add_argument("--port", default=None, help="Serial port (ESP32) or ignored (STM32)")
+
+    p_reset = sub.add_parser("reset", help="Hardware reset device")
+    p_reset.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_reset.add_argument("--method", choices=["hard", "soft", "bootloader"], default="hard")
+    p_reset.add_argument("--connect-under-reset", action="store_true",
+                        help="STM32: Connect while holding reset (for crashed chips)")
+    p_reset.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP, MCXN947)")
+
+    # Hardware verification (preflight check)
+    p_preflight = sub.add_parser("preflight-hw", help="Verify hardware by flashing stock firmware")
+    p_preflight.add_argument("stock_firmware", help="Path to known-good stock firmware binary")
+    p_preflight.add_argument("--chip", required=True, help="Chip type (esp32s3, stm32l4, etc.)")
+    p_preflight.add_argument("--address", default=None, help="Flash address (default: chip-specific)")
+    p_preflight.add_argument("--timeout", type=int, default=10, help="Boot timeout in seconds")
+
+    # Backtrace decoding
+    p_decode_bt = sub.add_parser("decode-backtrace", help="Decode backtrace addresses to source locations")
+    p_decode_bt.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
+    p_decode_bt.add_argument("--text", default=None, help="Backtrace text to decode (reads from stdin if omitted)")
+    p_decode_bt.add_argument("--arch", default="arm", help="Architecture hint (arm, xtensa, riscv, esp32, nrf, stm32, etc.)")
+    p_decode_bt.add_argument("--toolchain", default=None, help="Explicit path to addr2line binary")
+    p_decode_bt.add_argument("--show-raw", action="store_true", help="Include raw backtrace lines in output")
+
+    # RTT commands (J-Link RTT via JLinkRTTLogger)
+    p_rtt = sub.add_parser("rtt", help="J-Link RTT streaming (start/stop/reset/tail)")
+    rtt_sub = p_rtt.add_subparsers(dest="rtt_action", required=True)
+
+    p_rtt_start = rtt_sub.add_parser("start", help="Start RTT streaming via JLinkRTTLogger")
+    p_rtt_start.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_rtt_start.add_argument("--interface", default="SWD", choices=["SWD", "JTAG"], help="Debug interface (default: SWD)")
+    p_rtt_start.add_argument("--speed", type=int, default=4000, help="Interface speed in kHz (default: 4000)")
+    p_rtt_start.add_argument("--channel", type=int, default=0, help="RTT channel number (default: 0)")
+    p_rtt_start.add_argument("--block-address", type=lambda x: int(x, 0), default=None,
+                             help="RTT control block address (hex, e.g., 0x20000410)")
+
+    rtt_sub.add_parser("stop", help="Stop RTT streaming")
+    rtt_sub.add_parser("status", help="Get RTT streaming status")
+
+    p_rtt_reset = rtt_sub.add_parser("reset", help="Stop RTT, reset target, restart RTT")
+    p_rtt_reset.add_argument("--wait", type=float, default=1.0,
+                             help="Seconds to wait after reset before restarting RTT (default: 1.0)")
+
+    p_rtt_tail = rtt_sub.add_parser("tail", help="Show last N lines of rtt.log")
+    p_rtt_tail.add_argument("lines", type=int, nargs="?", default=50, help="Number of lines (default: 50)")
+
+    return parser

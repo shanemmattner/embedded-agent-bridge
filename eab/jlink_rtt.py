@@ -519,17 +519,18 @@ class JLinkRTTManager:
                         logger.warning(self._last_error)
                         break
 
+                    # 8KB read chunks: balances syscall overhead vs memory usage
                     data = f.read(8192)
                     if data:
                         self._bytes_read += len(data)
                         processor.feed_text(data)
                         last_data_time = time.monotonic()
                     else:
-                        # No new data — flush if idle for >200ms
+                        # 200ms idle threshold: flush buffered data if no new RTT data arrives
                         if time.monotonic() - last_data_time > 0.2:
                             processor.flush()
                             last_data_time = time.monotonic()
-                        time.sleep(0.01)  # 100Hz tail poll
+                        time.sleep(0.01)  # 100Hz poll rate: fast enough for real-time display, low CPU cost
 
         except Exception as e:
             self._last_error = f"Tailer error: {e}"

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from eab.cli.profile_cmds import (
+from eab.cli.profile._helpers import (
     _detect_cpu_freq,
     CHIP_CPU_FREQ,
 )
@@ -83,10 +83,10 @@ class TestCmdProfileFunction:
 
         with patch.dict("sys.modules", {"pylink": mock_pylink_module}):
             with patch("eab.dwt_profiler.profile_function", return_value=test_result):
-                from eab.cli.profile_cmds import cmd_profile_function
+                from eab.cli.profile import cmd_profile_function
 
                 output_lines = []
-                with patch("eab.cli.profile_cmds._print") as mock_print:
+                with patch("eab.cli.profile.function_cmds._print") as mock_print:
                     mock_print.side_effect = lambda obj, json_mode: output_lines.append(obj)
 
                     result = cmd_profile_function(
@@ -129,10 +129,10 @@ class TestCmdProfileFunction:
 
         with patch.dict("sys.modules", {"pylink": mock_pylink_module}):
             with patch("eab.dwt_profiler.profile_function", return_value=test_result):
-                from eab.cli.profile_cmds import cmd_profile_function
+                from eab.cli.profile import cmd_profile_function
 
                 output_lines = []
-                with patch("eab.cli.profile_cmds._print") as mock_print:
+                with patch("eab.cli.profile.function_cmds._print") as mock_print:
                     mock_print.side_effect = lambda obj, json_mode: output_lines.append(obj)
 
                     result = cmd_profile_function(
@@ -162,10 +162,10 @@ class TestCmdProfileFunction:
         cmd_profile_function, not at module import time.
         """
         # Create a mock that will fail when we try to use it
-        from eab.cli.profile_cmds import cmd_profile_function
+        from eab.cli.profile import cmd_profile_function
 
         output_lines = []
-        with patch("eab.cli.profile_cmds._print") as mock_print:
+        with patch("eab.cli.profile.function_cmds._print") as mock_print:
             mock_print.side_effect = lambda obj, json_mode: output_lines.append(obj)
 
             # Mock the import inside the function to raise ImportError
@@ -191,10 +191,10 @@ class TestCmdProfileFunction:
         mock_pylink_module = MagicMock()
         
         with patch.dict("sys.modules", {"pylink": mock_pylink_module}):
-            from eab.cli.profile_cmds import cmd_profile_function
+            from eab.cli.profile import cmd_profile_function
 
             output_lines = []
-            with patch("eab.cli.profile_cmds._print") as mock_print:
+            with patch("eab.cli.profile.function_cmds._print") as mock_print:
                 mock_print.side_effect = lambda obj, json_mode: output_lines.append(obj)
 
                 result = cmd_profile_function(
@@ -221,10 +221,10 @@ class TestCmdProfileFunction:
 
         with patch.dict("sys.modules", {"pylink": mock_pylink_module}):
             with patch("eab.dwt_profiler.profile_function", side_effect=TimeoutError("Timeout")):
-                from eab.cli.profile_cmds import cmd_profile_function
+                from eab.cli.profile import cmd_profile_function
 
                 output_lines = []
-                with patch("eab.cli.profile_cmds._print") as mock_print:
+                with patch("eab.cli.profile.function_cmds._print") as mock_print:
                     mock_print.side_effect = lambda obj, json_mode: output_lines.append(obj)
 
                     result = cmd_profile_function(
@@ -265,10 +265,10 @@ class TestCmdProfileRegion:
 
         with patch.dict("sys.modules", {"pylink": mock_pylink_module}):
             with patch("eab.dwt_profiler.profile_region", return_value=test_result):
-                from eab.cli.profile_cmds import cmd_profile_region
+                from eab.cli.profile import cmd_profile_region
 
                 output_lines = []
-                with patch("eab.cli.profile_cmds._print") as mock_print:
+                with patch("eab.cli.profile.region_cmds._print") as mock_print:
                     mock_print.side_effect = lambda obj, json_mode: output_lines.append(obj)
 
                     result = cmd_profile_region(
@@ -312,10 +312,10 @@ class TestCmdDwtStatus:
 
         with patch.dict("sys.modules", {"pylink": mock_pylink_module}):
             with patch("eab.dwt_profiler.get_dwt_status", return_value=test_status):
-                from eab.cli.profile_cmds import cmd_dwt_status
+                from eab.cli.profile import cmd_dwt_status
 
                 output_lines = []
-                with patch("eab.cli.profile_cmds._print") as mock_print:
+                with patch("eab.cli.profile.dwt_cmds._print") as mock_print:
                     mock_print.side_effect = lambda obj, json_mode: output_lines.append(obj)
 
                     result = cmd_dwt_status(
@@ -350,10 +350,10 @@ class TestCmdDwtStatus:
 
         with patch.dict("sys.modules", {"pylink": mock_pylink_module}):
             with patch("eab.dwt_profiler.get_dwt_status", return_value=test_status):
-                from eab.cli.profile_cmds import cmd_dwt_status
+                from eab.cli.profile import cmd_dwt_status
 
                 output_lines = []
-                with patch("eab.cli.profile_cmds._print") as mock_print:
+                with patch("eab.cli.profile.dwt_cmds._print") as mock_print:
                     mock_print.side_effect = lambda obj, json_mode: output_lines.append(obj)
 
                     result = cmd_dwt_status(

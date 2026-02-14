@@ -20,12 +20,12 @@ FAILED_TESTS=()
 # Helper functions
 pass() {
     echo -e "${GREEN}✓${NC} $1"
-    ((TESTS_PASSED++))
+    ((TESTS_PASSED++)) || true
 }
 
 fail() {
     echo -e "${RED}✗${NC} $1"
-    ((TESTS_FAILED++))
+    ((TESTS_FAILED++)) || true
     FAILED_TESTS+=("$1")
 }
 

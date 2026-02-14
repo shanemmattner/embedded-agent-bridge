@@ -2,6 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-green.svg)](https://python.org)
+[![CI](https://github.com/shanemmattner/embedded-agent-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/shanemmattner/embedded-agent-bridge/actions/workflows/ci.yml)
+[![Lint](https://github.com/shanemmattner/embedded-agent-bridge/actions/workflows/lint.yml/badge.svg)](https://github.com/shanemmattner/embedded-agent-bridge/actions/workflows/lint.yml)
 
 Background daemons that manage serial ports, GDB, and OpenOCD so LLM agents (Claude Code, Cursor, Copilot, etc.) can interact with embedded hardware without hanging or wasting context tokens. The agent pings the daemon for data through a simple CLI and file interface instead of trying to hold open interactive sessions directly.
 

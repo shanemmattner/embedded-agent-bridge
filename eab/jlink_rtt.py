@@ -90,6 +90,11 @@ class JLinkRTTManager:
         self._processor: Optional[RTTStreamProcessor] = None
         self._bytes_read = 0
         self._device: Optional[str] = None
+        self._interface: str = "SWD"
+        self._speed: int = 4000
+        self._channel: int = 0
+        self._block_address: Optional[int] = None
+        self._queue: Optional[asyncio.Queue] = None
         self._num_up: int = 0
         self._last_error: Optional[str] = None
 
@@ -137,6 +142,11 @@ class JLinkRTTManager:
             return cur
 
         self._device = device
+        self._interface = interface
+        self._speed = speed
+        self._channel = rtt_channel
+        self._block_address = block_address
+        self._queue = queue
         self._last_error = None
         self._bytes_read = 0
         self._stop_event.clear()
@@ -258,6 +268,72 @@ class JLinkRTTManager:
 
         self._write_status({"running": False})
         return self.status()
+
+    def reset_target(self, wait_after_reset_s: float = 1.0) -> JLinkRTTStatus:
+        """Stop RTT, reset target via pylink, restart RTT.
+
+        Works around J-Link single-client limitation: JLinkRTTLogger holds
+        the connection so you can't reset via JLinkExe simultaneously.
+        This method stops RTT, opens a fresh pylink connection to reset,
+        then restarts RTT with the same config.
+
+        Args:
+            wait_after_reset_s: Seconds to wait after reset before
+                restarting RTT (allows boot to reach RTT init).
+
+        Returns:
+            JLinkRTTStatus after restart (or error status if not running).
+        """
+        if not self.status().running:
+            self._last_error = "RTT not running — nothing to reset"
+            return self.status()
+
+        # Save current config
+        saved_device = self._device
+        saved_interface = self._interface
+        saved_speed = self._speed
+        saved_channel = self._channel
+        saved_block_address = self._block_address
+        saved_queue = self._queue
+
+        t0 = time.monotonic()
+
+        # Stop RTT (kills JLinkRTTLogger)
+        self.stop()
+
+        # Reset target via pylink
+        try:
+            import pylink
+            jlink = pylink.JLink()
+            jlink.open()
+            if saved_interface.upper() == "SWD":
+                jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
+            else:
+                jlink.set_tif(pylink.enums.JLinkInterfaces.JTAG)
+            jlink.connect(saved_device, speed=saved_speed)
+            jlink.reset(halt=False)
+            jlink.close()
+        except Exception as e:
+            self._last_error = f"pylink reset failed: {e}"
+            logger.error("Failed to reset target via pylink: %s", e)
+            return self.status()
+
+        time.sleep(wait_after_reset_s)
+
+        # Restart RTT with saved config
+        result = self.start(
+            device=saved_device,
+            interface=saved_interface,
+            speed=saved_speed,
+            rtt_channel=saved_channel,
+            block_address=saved_block_address,
+            queue=saved_queue,
+        )
+
+        downtime_ms = int((time.monotonic() - t0) * 1000)
+        logger.info("RTT reset complete: downtime=%dms", downtime_ms)
+
+        return result
 
     def _stdout_reader(self) -> None:
         """Parse JLinkRTTLogger stdout for connection status and errors.

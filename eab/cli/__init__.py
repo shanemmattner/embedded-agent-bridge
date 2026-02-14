@@ -89,6 +89,31 @@ from eab.cli.var_cmds import (
     cmd_vars,
     cmd_read_vars,
 )
+from eab.cli.reset_cmds import cmd_resets
+from eab.cli.backtrace_cmds import cmd_decode_backtrace
+from eab.cli.rtt_cmds import (
+    cmd_rtt_start,
+    cmd_rtt_stop,
+    cmd_rtt_status,
+    cmd_rtt_reset,
+    cmd_rtt_tail,
+)
+# NOTE: These imports temporarily commented out due to missing dependencies
+# from eab.cli.reset_cmds import cmd_resets
+# from eab.cli.probe_rs_cmds import (
+#     cmd_probe_rs_list,
+#     cmd_probe_rs_info,
+#     cmd_probe_rs_rtt,
+#     cmd_probe_rs_flash,
+#     cmd_probe_rs_reset,
+# )
+# from eab.cli.swo_cmds import (
+#     cmd_swo_start,
+#     cmd_swo_stop,
+#     cmd_swo_status,
+#     cmd_swo_tail,
+#     cmd_swo_exceptions,
+# )
 
 
 def _preprocess_argv(argv: list[str]) -> list[str]:
@@ -158,6 +183,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_alerts = sub.add_parser("alerts", help="Show last N lines of alerts.log")
     p_alerts.add_argument("lines_pos", type=int, nargs="?", default=None, help="Number of lines (positional)")
     p_alerts.add_argument("-n", "--lines", type=int, default=None, dest="lines_flag")
+
+    p_resets = sub.add_parser("resets", help="Show reset history and statistics")
+    p_resets.add_argument("lines_pos", type=int, nargs="?", default=10, help="Number of recent resets to show (positional)")
+    p_resets.add_argument("-n", "--lines", type=int, default=None, dest="lines_flag")
 
     p_send = sub.add_parser("send", help="Queue a command to the device")
     p_send.add_argument("text")
@@ -423,6 +452,83 @@ def _build_parser() -> argparse.ArgumentParser:
     p_preflight.add_argument("--address", default=None, help="Flash address (default: chip-specific)")
     p_preflight.add_argument("--timeout", type=int, default=10, help="Boot timeout in seconds")
 
+    # Backtrace decoding
+    p_decode_bt = sub.add_parser("decode-backtrace", help="Decode backtrace addresses to source locations")
+    p_decode_bt.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
+    p_decode_bt.add_argument("--text", default=None, help="Backtrace text to decode (reads from stdin if omitted)")
+    p_decode_bt.add_argument("--arch", default="arm", help="Architecture hint (arm, xtensa, riscv, esp32, nrf, stm32, etc.)")
+    p_decode_bt.add_argument("--toolchain", default=None, help="Explicit path to addr2line binary")
+    p_decode_bt.add_argument("--show-raw", action="store_true", help="Include raw backtrace lines in output")
+
+    # probe-rs commands (unified debug interface)
+    p_probe_rs = sub.add_parser("probe-rs", help="Unified debug interface via probe-rs")
+    probe_rs_sub = p_probe_rs.add_subparsers(dest="probe_rs_action", required=True)
+    
+    probe_rs_sub.add_parser("list", help="List connected debug probes")
+    
+    p_probe_rs_info = probe_rs_sub.add_parser("info", help="Get chip information")
+    p_probe_rs_info.add_argument("--chip", required=True, help="Chip identifier (e.g., nrf52840, stm32f407vg)")
+    
+    p_probe_rs_rtt = probe_rs_sub.add_parser("rtt", help="Start/stop RTT streaming")
+    p_probe_rs_rtt.add_argument("--chip", required=True, help="Chip identifier")
+    p_probe_rs_rtt.add_argument("--channel", type=int, default=0, help="RTT up channel (default: 0)")
+    p_probe_rs_rtt.add_argument("--probe", default=None, help="Probe selector (VID:PID:Serial)")
+    p_probe_rs_rtt.add_argument("--stop", action="store_true", help="Stop RTT streaming")
+    
+    p_probe_rs_flash = probe_rs_sub.add_parser("flash", help="Flash firmware via probe-rs")
+    p_probe_rs_flash.add_argument("firmware", help="Path to firmware file (.bin, .elf, .hex)")
+    p_probe_rs_flash.add_argument("--chip", required=True, help="Chip identifier")
+    p_probe_rs_flash.add_argument("--verify", action="store_true", default=True, help="Verify flash (default: True)")
+    p_probe_rs_flash.add_argument("--no-verify", dest="verify", action="store_false", help="Skip flash verification")
+    p_probe_rs_flash.add_argument("--reset-halt", action="store_true", help="Reset and halt after flash")
+    p_probe_rs_flash.add_argument("--probe", default=None, help="Probe selector (VID:PID:Serial)")
+    
+    p_probe_rs_reset = probe_rs_sub.add_parser("reset", help="Reset target via probe-rs")
+    p_probe_rs_reset.add_argument("--chip", required=True, help="Chip identifier")
+    p_probe_rs_reset.add_argument("--halt", action="store_true", help="Halt after reset")
+    p_probe_rs_reset.add_argument("--probe", default=None, help="Probe selector (VID:PID:Serial)")
+
+    # SWO trace commands
+    p_swo = sub.add_parser("swo", help="SWO trace capture and ITM decoding")
+    swo_sub = p_swo.add_subparsers(dest="swo_action", required=True)
+    
+    p_swo_start = swo_sub.add_parser("start", help="Start SWO capture via J-Link")
+    p_swo_start.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_swo_start.add_argument("--speed", type=int, default=4000000, help="SWO frequency in Hz (default: 4000000)")
+    p_swo_start.add_argument("--cpu-freq", type=int, default=None, help="CPU frequency in Hz (auto-detected if omitted)")
+    p_swo_start.add_argument("--itm-port", type=int, default=0, help="ITM port number (default: 0)")
+    
+    swo_sub.add_parser("stop", help="Stop SWO capture")
+    swo_sub.add_parser("status", help="Get SWO capture status")
+    
+    p_swo_tail = swo_sub.add_parser("tail", help="Show last N lines of SWO decoded output")
+    p_swo_tail.add_argument("lines", type=int, nargs="?", default=50, help="Number of lines (default: 50)")
+    
+    p_swo_exceptions = swo_sub.add_parser("exceptions", help="Show exception trace log")
+    p_swo_exceptions.add_argument("lines", type=int, nargs="?", default=50, help="Number of lines (default: 50)")
+
+    # RTT commands (J-Link RTT via JLinkRTTLogger)
+    p_rtt = sub.add_parser("rtt", help="J-Link RTT streaming (start/stop/reset/tail)")
+    rtt_sub = p_rtt.add_subparsers(dest="rtt_action", required=True)
+
+    p_rtt_start = rtt_sub.add_parser("start", help="Start RTT streaming via JLinkRTTLogger")
+    p_rtt_start.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_rtt_start.add_argument("--interface", default="SWD", choices=["SWD", "JTAG"], help="Debug interface (default: SWD)")
+    p_rtt_start.add_argument("--speed", type=int, default=4000, help="Interface speed in kHz (default: 4000)")
+    p_rtt_start.add_argument("--channel", type=int, default=0, help="RTT channel number (default: 0)")
+    p_rtt_start.add_argument("--block-address", type=lambda x: int(x, 0), default=None,
+                             help="RTT control block address (hex, e.g., 0x20000410)")
+
+    rtt_sub.add_parser("stop", help="Stop RTT streaming")
+    rtt_sub.add_parser("status", help="Get RTT streaming status")
+
+    p_rtt_reset = rtt_sub.add_parser("reset", help="Stop RTT, reset target, restart RTT")
+    p_rtt_reset.add_argument("--wait", type=float, default=1.0,
+                             help="Seconds to wait after reset before restarting RTT (default: 1.0)")
+
+    p_rtt_tail = rtt_sub.add_parser("tail", help="Show last N lines of rtt.log")
+    p_rtt_tail.add_argument("lines", type=int, nargs="?", default=50, help="Number of lines (default: 50)")
+
     return parser
 
 
@@ -455,6 +561,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.cmd == "alerts":
         lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 20)
         return cmd_alerts(base_dir=base_dir, lines=lines, json_mode=args.json)
+    if args.cmd == "resets":
+        lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 10)
+        return cmd_resets(base_dir=base_dir, lines=lines, json_mode=args.json)
     if args.cmd == "events":
         lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 50)
         return cmd_events(base_dir=base_dir, lines=lines, json_mode=args.json)
@@ -751,6 +860,119 @@ def main(argv: Optional[list[str]] = None) -> int:
             timeout=args.timeout,
             json_mode=args.json,
         )
+    if args.cmd == "decode-backtrace":
+        return cmd_decode_backtrace(
+            elf=args.elf,
+            text=args.text,
+            arch=args.arch,
+            toolchain=args.toolchain,
+            show_raw=args.show_raw,
+            json_mode=args.json,
+        )
+    if args.cmd == "probe-rs":
+        if args.probe_rs_action == "list":
+            return cmd_probe_rs_list(
+                base_dir=base_dir,
+                json_mode=args.json,
+            )
+        if args.probe_rs_action == "info":
+            return cmd_probe_rs_info(
+                base_dir=base_dir,
+                chip=args.chip,
+                json_mode=args.json,
+            )
+        if args.probe_rs_action == "rtt":
+            return cmd_probe_rs_rtt(
+                base_dir=base_dir,
+                chip=args.chip,
+                channel=args.channel,
+                probe=args.probe,
+                stop=args.stop,
+                json_mode=args.json,
+            )
+        if args.probe_rs_action == "flash":
+            return cmd_probe_rs_flash(
+                base_dir=base_dir,
+                firmware=args.firmware,
+                chip=args.chip,
+                verify=args.verify,
+                reset_halt=args.reset_halt,
+                probe=args.probe,
+                json_mode=args.json,
+            )
+        if args.probe_rs_action == "reset":
+            return cmd_probe_rs_reset(
+                base_dir=base_dir,
+                chip=args.chip,
+                halt=args.halt,
+                probe=args.probe,
+                json_mode=args.json,
+            )
+    if args.cmd == "rtt":
+        if args.rtt_action == "start":
+            return cmd_rtt_start(
+                base_dir=base_dir,
+                device=args.device,
+                interface=args.interface,
+                speed=args.speed,
+                channel=args.channel,
+                block_address=args.block_address,
+                json_mode=args.json,
+            )
+        if args.rtt_action == "stop":
+            return cmd_rtt_stop(
+                base_dir=base_dir,
+                json_mode=args.json,
+            )
+        if args.rtt_action == "status":
+            return cmd_rtt_status(
+                base_dir=base_dir,
+                json_mode=args.json,
+            )
+        if args.rtt_action == "reset":
+            return cmd_rtt_reset(
+                base_dir=base_dir,
+                wait=args.wait,
+                json_mode=args.json,
+            )
+        if args.rtt_action == "tail":
+            return cmd_rtt_tail(
+                base_dir=base_dir,
+                lines=args.lines,
+                json_mode=args.json,
+            )
+    if args.cmd == "swo":
+        if args.swo_action == "start":
+            return cmd_swo_start(
+                base_dir=base_dir,
+                device=args.device,
+                speed=args.speed,
+                cpu_freq=args.cpu_freq,
+                itm_port=args.itm_port,
+                json_mode=args.json,
+            )
+        if args.swo_action == "stop":
+            return cmd_swo_stop(
+                base_dir=base_dir,
+                json_mode=args.json,
+            )
+        if args.swo_action == "status":
+            return cmd_swo_status(
+                base_dir=base_dir,
+                json_mode=args.json,
+            )
+        if args.swo_action == "tail":
+            return cmd_swo_tail(
+                base_dir=base_dir,
+                lines=args.lines,
+                json_mode=args.json,
+            )
+        if args.swo_action == "exceptions":
+            return cmd_swo_exceptions(
+                base_dir=base_dir,
+                lines=args.lines,
+                json_mode=args.json,
+            )
 
     parser.error(f"Unknown command: {args.cmd}")
     return 2

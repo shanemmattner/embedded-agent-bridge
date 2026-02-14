@@ -248,7 +248,7 @@ Zephyr targets: Any board with J-Link or OpenOCD support can be used via chip pr
 EAB emits a JSONL event stream at:
 
 ```
-/tmp/eab-session/events.jsonl
+/tmp/eab-devices/<device>/events.jsonl
 ```
 
 Each line is a JSON object with:
@@ -270,7 +270,7 @@ eabctl wait-event --type command_sent --timeout 10
 When enabled, the daemon writes raw bytes to:
 
 ```
-/tmp/eab-session/data.bin
+/tmp/eab-devices/<device>/data.bin
 ```
 
 Enable streaming (armed on marker):
@@ -315,7 +315,7 @@ eabctl capture-between "===WAV_START===" "===WAV_END===" out.wav --decode-base64
 ### Status JSON
 
 ```bash
-cat /tmp/eab-session/status.json
+cat /tmp/eab-devices/<device>/status.json
 ```
 
 Example output:
@@ -380,25 +380,25 @@ For direct file-based interaction:
 
 | File | Purpose |
 |------|---------|
-| `/tmp/eab-session/latest.log` | All serial output with timestamps |
-| `/tmp/eab-session/alerts.log` | Filtered alerts (crashes, errors) |
-| `/tmp/eab-session/status.json` | Connection state, counters |
-| `/tmp/eab-session/cmd.txt` | Write commands here (low-level) |
+| `/tmp/eab-devices/<device>/latest.log` | All serial output with timestamps |
+| `/tmp/eab-devices/<device>/alerts.log` | Filtered alerts (crashes, errors) |
+| `/tmp/eab-devices/<device>/status.json` | Connection state, counters |
+| `/tmp/eab-devices/<device>/cmd.txt` | Write commands here (low-level) |
 
 ### Special Commands (via cmd.txt)
 
 ```bash
 # Reset device
-printf '!RESET' > /tmp/eab-session/cmd.txt
+printf '!RESET' > /tmp/eab-devices/<device>/cmd.txt
 
 # Enter bootloader
-printf '!BOOTLOADER' > /tmp/eab-session/cmd.txt
+printf '!BOOTLOADER' > /tmp/eab-devices/<device>/cmd.txt
 
 # Get chip info
-printf '!CHIP_INFO' > /tmp/eab-session/cmd.txt
+printf '!CHIP_INFO' > /tmp/eab-devices/<device>/cmd.txt
 
 # Erase flash
-printf '!ERASE' > /tmp/eab-session/cmd.txt
+printf '!ERASE' > /tmp/eab-devices/<device>/cmd.txt
 ```
 
 ## Daemon Management

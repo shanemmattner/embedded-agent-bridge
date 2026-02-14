@@ -65,18 +65,18 @@ Flash failed        -> eabctl preflight (diagnose issues)
 
 ## STATUS FILE
 
-Check /tmp/eab-session/status.json for:
+Check /tmp/eab-devices/<device>/status.json for:
 - connection.status: connected/reconnecting/disconnected
 - health.status: healthy/idle/stuck/disconnected
 - health.idle_seconds: seconds since last activity
 
 ## EVENT STREAM
 
-Check /tmp/eab-session/events.jsonl for JSONL event records (pause/resume, flash, alerts, commands).
+Check /tmp/eab-devices/<device>/events.jsonl for JSONL event records (pause/resume, flash, alerts, commands).
 
 ## DATA STREAM
 
-When enabled, raw bytes are written to /tmp/eab-session/data.bin.
+When enabled, raw bytes are written to /tmp/eab-devices/<device>/data.bin.
 Binary framing is **optional** and only applies when custom firmware is allowed (see PROTOCOL.md).
 
 ## SUPPORTED HARDWARE

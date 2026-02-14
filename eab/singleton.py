@@ -53,26 +53,17 @@ class SingletonDaemon:
         # Cleanup on exit (automatic via atexit)
     """
 
-    # Legacy global singleton paths (backward compat)
-    LEGACY_PID_FILE = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-daemon.pid")
-    LEGACY_INFO_FILE = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-daemon.info")
-
-    def __init__(self, logger: object = None, device_name: str = ""):
+    def __init__(self, logger: object = None, device_name: str = "default"):
         self._logger = logger
         self._lock_fd: Optional[int] = None
         self._owns_lock = False
         self._device_name = device_name
 
-        if device_name:
-            # Per-device mode: PID/info files inside device session dir
-            from eab.device_registry import _get_devices_dir
-            device_dir = os.path.join(_get_devices_dir(), device_name)
-            self.PID_FILE = os.path.join(device_dir, "daemon.pid")
-            self.INFO_FILE = os.path.join(device_dir, "daemon.info")
-        else:
-            # Legacy global singleton mode
-            self.PID_FILE = self.LEGACY_PID_FILE
-            self.INFO_FILE = self.LEGACY_INFO_FILE
+        # Always per-device: PID/info files inside device session dir
+        from eab.device_registry import _get_devices_dir
+        device_dir = os.path.join(_get_devices_dir(), device_name)
+        self.PID_FILE = os.path.join(device_dir, "daemon.pid")
+        self.INFO_FILE = os.path.join(device_dir, "daemon.info")
 
     def _log(self, msg: str) -> None:
         if self._logger:
@@ -280,21 +271,21 @@ class SingletonDaemon:
         self._log("Released singleton lock")
 
 
-def check_singleton(device_name: str = "") -> Optional[ExistingDaemon]:
+def check_singleton(device_name: str = "default") -> Optional[ExistingDaemon]:
     """Quick check if a daemon is already running.
 
     Args:
-        device_name: If set, check for a per-device daemon. Otherwise check legacy global.
+        device_name: Device name to check (default: "default").
     """
     return SingletonDaemon(device_name=device_name).get_existing()
 
 
-def kill_existing_daemon(timeout: float = 5.0, device_name: str = "") -> bool:
+def kill_existing_daemon(timeout: float = 5.0, device_name: str = "default") -> bool:
     """Kill any existing daemon.
 
     Args:
         timeout: Seconds to wait for process to die.
-        device_name: If set, kill the per-device daemon. Otherwise kill legacy global.
+        device_name: Device name to kill (default: "default").
     """
     singleton = SingletonDaemon(device_name=device_name)
     existing = singleton.get_existing()
@@ -313,12 +304,3 @@ def kill_existing_daemon(timeout: float = 5.0, device_name: str = "") -> bool:
 
     return singleton._kill_process(existing.pid, timeout)
 
-
-
-# Backward-compat re-exports — callers should migrate to eab.device_registry
-from eab.device_registry import (  # noqa: F401, E402
-    list_devices,
-    register_device,
-    unregister_device,
-    _get_devices_dir,
-)

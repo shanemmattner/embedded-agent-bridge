@@ -28,9 +28,9 @@ if [ -z "$REAL_ESPTOOL" ]; then
 fi
 
 # Check if EAB daemon is running
-if [ -f /tmp/eab-session/status.json ]; then
+if [ -f /tmp/eab-devices/default/status.json ]; then
     EAB_RUNNING=true
-    EAB_PORT=$(cat /tmp/eab-session/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
+    EAB_PORT=$(cat /tmp/eab-devices/default/status.json 2>/dev/null | grep -o '"port": "[^"]*"' | cut -d'"' -f4)
 else
     EAB_RUNNING=false
 fi

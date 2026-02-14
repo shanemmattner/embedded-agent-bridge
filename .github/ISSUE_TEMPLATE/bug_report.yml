@@ -1,0 +1,67 @@
+name: Bug Report
+description: Report a bug
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug
+      placeholder: Tell us what went wrong
+    validations:
+      required: true
+  
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Detailed steps to reproduce the behavior
+      placeholder: |
+        1. Run command '...'
+        2. See error '...'
+    validations:
+      required: true
+  
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen
+      placeholder: Describe the expected behavior
+    validations:
+      required: true
+  
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Hardware Platform
+      description: Which hardware platform are you using?
+      options:
+        - ESP32
+        - STM32
+        - nRF5340
+        - NXP MCX
+        - Other
+    validations:
+      required: true
+  
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      description: Output of `python --version`
+      placeholder: e.g., Python 3.11.5
+  
+  - type: input
+    id: eab-version
+    attributes:
+      label: EAB Version
+      description: Output of `eabctl --version`
+      placeholder: e.g., 0.1.0
+  
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log output (from `eabctl tail` or daemon logs)
+      render: shell

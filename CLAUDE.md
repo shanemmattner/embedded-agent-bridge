@@ -211,7 +211,7 @@ eabctl diagnose --json
 
 ## Status JSON
 
-Check `/tmp/eab-session/status.json` for:
+Check `/tmp/eab-devices/<device>/status.json` for:
 - `connection.status`: "connected", "reconnecting", "disconnected"
 - `health.status`: "healthy", "idle", "stuck", "disconnected"
 - `health.idle_seconds`: Seconds since last serial activity
@@ -219,7 +219,7 @@ Check `/tmp/eab-session/status.json` for:
 
 ## Event Stream (JSONL)
 
-Check `/tmp/eab-session/events.jsonl` for non-blocking system events:
+Check `/tmp/eab-devices/<device>/events.jsonl` for non-blocking system events:
 - daemon_starting/daemon_started/daemon_stopped
 - command_sent/command_result
 - paused/resumed/flash_start/flash_end

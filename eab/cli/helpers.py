@@ -8,10 +8,7 @@ import re
 import time
 from typing import Any, Optional
 
-from eab.singleton import check_singleton
-from eab.device_registry import list_devices, _get_devices_dir
-
-DEFAULT_BASE_DIR = "/tmp/eab-session"
+from eab.device_registry import _get_devices_dir
 
 
 def _now_iso() -> str:
@@ -34,30 +31,11 @@ def _resolve_base_dir(override: Optional[str], device: Optional[str] = None) -> 
 
     Priority:
     1. Explicit --base-dir override
-    2. --device name → /tmp/eab-devices/<name>/
-    3. Single running device in /tmp/eab-devices/ → use it
-    4. Legacy global singleton → its base_dir
-    5. Default /tmp/eab-session/
+    2. /tmp/eab-devices/{device or "default"}/
     """
     if override:
         return override
-    if device:
-        return os.path.join(_get_devices_dir(), device)
-
-    # Fall back to legacy global singleton first (cheap — single PID file check)
-    existing = check_singleton()
-    if existing and existing.is_alive and existing.base_dir and existing.base_dir != "unknown":
-        return existing.base_dir
-
-    # Auto-detect: scan devices dir only when no legacy singleton is running
-    devices_dir = _get_devices_dir()
-    if os.path.isdir(devices_dir):
-        devices = list_devices()
-        running = [d for d in devices if d.is_alive]
-        if len(running) == 1:
-            return running[0].base_dir
-
-    return DEFAULT_BASE_DIR
+    return os.path.join(_get_devices_dir(), device or "default")
 
 
 def _read_text(path: str) -> str:

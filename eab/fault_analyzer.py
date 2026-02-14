@@ -62,67 +62,42 @@ def _parse_gdb_backtrace(output: str) -> str:
     return "\n".join(bt_lines)
 
 
-def _wrap_legacy_bridge(probe_or_bridge):
-    """If given a JLinkBridge, wrap it in JLinkProbe for backward compat."""
-    if isinstance(probe_or_bridge, DebugProbe):
-        return probe_or_bridge, None
-
-    # Legacy JLinkBridge — wrap it
-    from .debug_probes.jlink import JLinkProbe
-    wrapped = JLinkProbe(bridge=probe_or_bridge)
-    return wrapped, probe_or_bridge
-
-
 # =============================================================================
 # Main Analysis Pipeline
 # =============================================================================
 
 def analyze_fault(
-    probe,
+    probe: DebugProbe,
     device: str,
     *,
     decoder: Optional[FaultDecoder] = None,
     elf: Optional[str] = None,
     chip: str = "nrf5340",
-    port: int = 2331,
     restart_rtt: bool = False,
     rtt_bridge=None,
 ) -> FaultReport:
     """Full fault analysis pipeline: start GDB server, read registers, decode, stop.
 
-    Supports both the DebugProbe abstraction and legacy JLinkBridge for
-    backward compatibility:
-    - DebugProbe: uses probe.start_gdb_server() / stop_gdb_server() / gdb_port
-    - JLinkBridge: auto-wrapped in JLinkProbe, RTT handled via rtt_bridge
-
     J-Link single-client constraint (issue #66):
-    RTT stop/start only happens if rtt_bridge is provided (or if probe is a
-    legacy JLinkBridge, which auto-sets rtt_bridge). OpenOCD doesn't have
-    this constraint.
+    RTT stop/start only happens if rtt_bridge is provided. OpenOCD doesn't
+    have this constraint.
 
     Args:
-        probe: DebugProbe instance or JLinkBridge (backward compat)
+        probe: DebugProbe instance.
         device: Device string (e.g., NRF5340_XXAA_APP, MCXN947)
         decoder: Optional FaultDecoder override (defaults to chip-based lookup)
         elf: Optional path to ELF file for symbols
         chip: Chip type for GDB selection and decoder lookup (default: nrf5340)
-        port: GDB server port (default: 2331, ignored if probe is DebugProbe)
         restart_rtt: Whether to restart RTT after analysis
         rtt_bridge: Separate RTT bridge for J-Link RTT stop/start (optional)
 
     Returns:
         FaultReport with decoded fault information
     """
-    # Backward compat: wrap JLinkBridge in JLinkProbe
-    probe, legacy_bridge = _wrap_legacy_bridge(probe)
-    if legacy_bridge is not None and rtt_bridge is None:
-        rtt_bridge = legacy_bridge
-
     if decoder is None:
         decoder = get_fault_decoder(chip)
 
-    # Use probe's port unless caller provided one explicitly via legacy path
-    effective_port = probe.gdb_port if legacy_bridge is None else port
+    effective_port = probe.gdb_port
 
     report = FaultReport()
     rtt_was_running = False

@@ -18,6 +18,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+pytest_asyncio = pytest.importorskip("pytest_asyncio", reason="pytest-asyncio required")
+
 from eab.plotter.server import (
     _BUFFER_CAP,
     _enqueue,

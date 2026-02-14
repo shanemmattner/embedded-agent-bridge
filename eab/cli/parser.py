@@ -6,7 +6,6 @@ import argparse
 
 from eab.openocd_bridge import DEFAULT_TELNET_PORT, DEFAULT_GDB_PORT, DEFAULT_TCL_PORT
 
-from eab.cli.helpers import DEFAULT_BASE_DIR
 
 
 def _preprocess_argv(argv: list[str]) -> list[str]:
@@ -89,7 +88,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--base-dir",
         default=None,
-        help=f"Override session dir (default: daemon base_dir or {DEFAULT_BASE_DIR})",
+        help="Override session dir (default: /tmp/eab-devices/<device>/)",
     )
     parser.add_argument(
         "--device",

@@ -1,3 +1,0 @@
-pytest>=9
-pytest-cov>=6
-pyserial>=3.5

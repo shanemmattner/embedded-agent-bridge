@@ -17,7 +17,6 @@ from typing import Optional
 
 from .toolchain import which_or_sdk
 
-# Re-export pattern types and parsers so existing imports keep working
 from .backtrace_patterns import (
     BacktraceEntry,
     BacktraceResult,

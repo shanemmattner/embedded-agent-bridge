@@ -36,11 +36,11 @@ Requires J-Link Software Pack installed (provides `JLinkRTTLogger`).
 ```bash
 # Via Python — uses JLinkRTTLogger subprocess (no pylink needed)
 from eab.jlink_bridge import JLinkBridge
-bridge = JLinkBridge("/tmp/eab-session")
+bridge = JLinkBridge("/tmp/eab-devices/default")
 bridge.start_rtt(device="NRF5340_XXAA_APP")
 
 # Output files:
-cat /tmp/eab-session/rtt.log    # cleaned text
-cat /tmp/eab-session/rtt.csv    # DATA records as CSV
-cat /tmp/eab-session/rtt.jsonl  # structured JSON
+cat /tmp/eab-devices/default/rtt.log    # cleaned text
+cat /tmp/eab-devices/default/rtt.csv    # DATA records as CSV
+cat /tmp/eab-devices/default/rtt.jsonl  # structured JSON
 ```

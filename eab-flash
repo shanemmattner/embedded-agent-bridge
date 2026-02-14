@@ -31,7 +31,7 @@
 #
 # ENVIRONMENT VARIABLES:
 #   IDF_PATH        - Path to ESP-IDF installation (default: $HOME/esp/esp-idf)
-#   EAB_SESSION_DIR - EAB session directory (default: /tmp/eab-session)
+#   EAB_SESSION_DIR - EAB session directory (default: /tmp/eab-devices/default)
 #
 # EXIT CODES:
 #   0 - Flash completed successfully
@@ -64,7 +64,7 @@ readonly VERSION="1.2.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly EAB_DIR="$SCRIPT_DIR"
-readonly EAB_SESSION_DIR="${EAB_SESSION_DIR:-/tmp/eab-session}"
+readonly EAB_SESSION_DIR="${EAB_SESSION_DIR:-/tmp/eab-devices/default}"
 
 # -----------------------------------------------------------------------------
 # Terminal colors (disabled if not a TTY)
@@ -386,7 +386,7 @@ EXAMPLES:
 
 ENVIRONMENT VARIABLES:
     IDF_PATH            Path to ESP-IDF (default: $HOME/esp/esp-idf)
-    EAB_SESSION_DIR     EAB session directory (default: /tmp/eab-session)
+    EAB_SESSION_DIR     EAB session directory (default: /tmp/eab-devices/default)
 
 EXIT CODES:
     0    Flash completed successfully

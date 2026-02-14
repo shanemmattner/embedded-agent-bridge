@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from eab.jlink_bridge import JLinkBridge
+from eab.process_utils import read_pid_file
 
 
 class TestJLinkBridge:
@@ -103,7 +104,7 @@ class TestJLinkBridge:
         assert status.device is None
         assert status.log_path == str(tmp_path / "swo.log")
 
-    @patch("eab.jlink_bridge._pid_alive")
+    @patch("eab.jlink_bridge.pid_alive")
     def test_swo_status_with_dead_pid(self, mock_pid_alive, tmp_path):
         """swo_status() should clean up stale PID files."""
         bridge = JLinkBridge(str(tmp_path))
@@ -130,7 +131,7 @@ class TestJLinkBridge:
         assert status.device is None
         assert status.port == 2331
 
-    @patch("eab.jlink_bridge._pid_alive")
+    @patch("eab.jlink_bridge.pid_alive")
     def test_gdb_status_with_dead_pid(self, mock_pid_alive, tmp_path):
         """gdb_status() should clean up stale PID files."""
         bridge = JLinkBridge(str(tmp_path))
@@ -147,7 +148,7 @@ class TestJLinkBridge:
         assert not bridge.gdb_pid_path.exists()
 
     @patch("eab.jlink_bridge.subprocess.Popen")
-    @patch("eab.jlink_bridge._pid_alive")
+    @patch("eab.jlink_bridge.pid_alive")
     def test_start_swo_success(self, mock_pid_alive, mock_popen, tmp_path):
         """start_swo() should launch JLinkSWOViewerCLExe and track PID."""
         mock_proc = MagicMock()
@@ -176,16 +177,18 @@ class TestJLinkBridge:
         assert status.pid == 12345
         assert status.device == "TEST_DEVICE"
 
-    @patch("eab.jlink_bridge.os.kill")
-    @patch("eab.jlink_bridge._pid_alive")
-    def test_stop_swo(self, mock_pid_alive, mock_kill, tmp_path):
+    @patch("eab.process_utils.os.kill")
+    @patch("eab.jlink_bridge.pid_alive")
+    @patch("eab.process_utils.pid_alive")
+    def test_stop_swo(self, mock_pu_pid_alive, mock_jb_pid_alive, mock_kill, tmp_path):
         """stop_swo() should terminate process and clean up PID file."""
         bridge = JLinkBridge(str(tmp_path))
         
         # Simulate running process
         bridge.swo_pid_path.write_text("12345")
-        # _pid_alive is called multiple times: initial check says alive, then dead after SIGTERM
-        mock_pid_alive.side_effect = [True, False, False, False]
+        # pid_alive is called multiple times: initial check says alive, then dead after SIGTERM
+        mock_jb_pid_alive.side_effect = [True, False, False, False]
+        mock_pu_pid_alive.side_effect = [True, False, False, False]
         
         status = bridge.stop_swo()
         
@@ -204,7 +207,7 @@ class TestJLinkBridge:
         assert status.pid is None
 
     @patch("eab.jlink_bridge.subprocess.Popen")
-    @patch("eab.jlink_bridge._pid_alive")
+    @patch("eab.jlink_bridge.pid_alive")
     def test_start_gdb_server_success(self, mock_pid_alive, mock_popen, tmp_path):
         """start_gdb_server() should launch JLinkGDBServer with correct args."""
         mock_proc = MagicMock()
@@ -240,16 +243,18 @@ class TestJLinkBridge:
         assert status.device == "TEST_DEVICE"
         assert status.port == 2331
 
-    @patch("eab.jlink_bridge.os.kill")
-    @patch("eab.jlink_bridge._pid_alive")
-    def test_stop_gdb_server(self, mock_pid_alive, mock_kill, tmp_path):
+    @patch("eab.process_utils.os.kill")
+    @patch("eab.jlink_bridge.pid_alive")
+    @patch("eab.process_utils.pid_alive")
+    def test_stop_gdb_server(self, mock_pu_pid_alive, mock_jb_pid_alive, mock_kill, tmp_path):
         """stop_gdb_server() should terminate process and clean up PID file."""
         bridge = JLinkBridge(str(tmp_path))
         
         # Simulate running process
         bridge.gdb_pid_path.write_text("67890")
-        # _pid_alive is called multiple times: initial check says alive, then dead after SIGTERM
-        mock_pid_alive.side_effect = [True, False, False, False]
+        # pid_alive is called multiple times: initial check says alive, then dead after SIGTERM
+        mock_jb_pid_alive.side_effect = [True, False, False, False]
+        mock_pu_pid_alive.side_effect = [True, False, False, False]
         
         status = bridge.stop_gdb_server()
         
@@ -268,29 +273,25 @@ class TestJLinkBridge:
         assert status.pid is None
 
     def test_read_pid_missing_file(self, tmp_path):
-        """_read_pid() should return None when PID file doesn't exist."""
-        bridge = JLinkBridge(str(tmp_path))
-        
-        pid = bridge._read_pid(tmp_path / "nonexistent.pid")
+        """read_pid_file() should return None when PID file doesn't exist."""
+        pid = read_pid_file(tmp_path / "nonexistent.pid")
         
         assert pid is None
 
     def test_read_pid_invalid_content(self, tmp_path):
-        """_read_pid() should return None when PID file contains invalid data."""
-        bridge = JLinkBridge(str(tmp_path))
+        """read_pid_file() should return None when PID file contains invalid data."""
         pid_file = tmp_path / "invalid.pid"
         pid_file.write_text("not-a-number")
         
-        pid = bridge._read_pid(pid_file)
+        pid = read_pid_file(pid_file)
         
         assert pid is None
 
     def test_read_pid_valid(self, tmp_path):
-        """_read_pid() should parse valid PID from file."""
-        bridge = JLinkBridge(str(tmp_path))
+        """read_pid_file() should parse valid PID from file."""
         pid_file = tmp_path / "valid.pid"
         pid_file.write_text("12345")
         
-        pid = bridge._read_pid(pid_file)
+        pid = read_pid_file(pid_file)
         
         assert pid == 12345

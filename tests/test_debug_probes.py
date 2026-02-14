@@ -139,7 +139,7 @@ class TestOpenOCDProbe:
         assert isinstance(probe, DebugProbeABC)
 
     @patch("eab.debug_probes.openocd.subprocess.Popen")
-    @patch("eab.debug_probes.openocd._pid_alive", return_value=True)
+    @patch("eab.debug_probes.openocd.pid_alive", return_value=True)
     def test_start_builds_cmd(self, mock_alive, mock_popen, tmp_path):
         """start_gdb_server() should build OpenOCD command with config."""
         mock_proc = MagicMock()

@@ -275,7 +275,7 @@ class TestJLinkBridgeFdLeak:
             return FakeProc()
 
         monkeypatch.setattr("eab.jlink_bridge.subprocess.Popen", fake_popen)
-        monkeypatch.setattr("eab.jlink_bridge._pid_alive", lambda pid: True)
+        monkeypatch.setattr("eab.jlink_bridge.pid_alive", lambda pid: True)
         monkeypatch.setattr("builtins.open", lambda *a, **kw: TrackingFile(*a, **kw))
 
         bridge._start_process(

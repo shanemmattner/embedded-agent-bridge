@@ -11,27 +11,19 @@ JLinkBridge is the unified facade. RTT logic lives in jlink_rtt.py.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
-import signal
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
+from .file_utils import read_json_file, write_json_file, tail_file
 from .jlink_rtt import JLinkRTTManager, JLinkRTTStatus
+from .process_utils import pid_alive, read_pid_file, cleanup_pid_file, stop_process_graceful, popen_is_alive
 
 logger = logging.getLogger(__name__)
-
-
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
 
 
 @dataclass(frozen=True)
@@ -138,14 +130,14 @@ class JLinkBridge:
     # =========================================================================
 
     def swo_status(self) -> JLinkSWOStatus:
-        pid = self._read_pid(self.swo_pid_path)
-        running = bool(pid) and _pid_alive(pid)
+        pid = read_pid_file(self.swo_pid_path)
+        running = bool(pid) and pid_alive(pid)
         if pid and not running:
-            self._cleanup_pid(self.swo_pid_path)
+            cleanup_pid_file(self.swo_pid_path)
             pid = None
 
         device = None
-        status_data = self._read_status_file(self.swo_status_path)
+        status_data = read_json_file(self.swo_status_path)
         if status_data:
             device = status_data.get("device")
 
@@ -210,7 +202,7 @@ class JLinkBridge:
             device=None,
             log_path=str(self.swo_log_path),
         )
-        self._write_status_file(self.swo_status_path, {
+        write_json_file(self.swo_status_path, {
             "running": False, "pid": None,
         })
         return status
@@ -220,15 +212,15 @@ class JLinkBridge:
     # =========================================================================
 
     def gdb_status(self) -> JLinkGDBStatus:
-        pid = self._read_pid(self.gdb_pid_path)
-        running = bool(pid) and _pid_alive(pid)
+        pid = read_pid_file(self.gdb_pid_path)
+        running = bool(pid) and pid_alive(pid)
         if pid and not running:
-            self._cleanup_pid(self.gdb_pid_path)
+            cleanup_pid_file(self.gdb_pid_path)
             pid = None
 
         device = None
         port = 2331
-        status_data = self._read_status_file(self.gdb_status_path)
+        status_data = read_json_file(self.gdb_status_path)
         if status_data:
             device = status_data.get("device")
             port = status_data.get("port", 2331)
@@ -305,7 +297,7 @@ class JLinkBridge:
             pid=None,
             device=None,
         )
-        self._write_status_file(self.gdb_status_path, {
+        write_json_file(self.gdb_status_path, {
             "running": False, "pid": None,
         })
         return status
@@ -353,16 +345,13 @@ class JLinkBridge:
         pid_path.write_text(str(proc.pid))
 
         time.sleep(0.5)
-        alive = _pid_alive(proc.pid) and (proc.poll() is None)
+        alive = pid_alive(proc.pid) and popen_is_alive(proc)
         last_error: Optional[str] = None
 
         if not alive:
-            try:
-                err_lines = err_path.read_text(encoding="utf-8", errors="replace").splitlines()[-20:]
-                last_error = "\n".join(err_lines).strip() or None
-            except Exception:
-                last_error = None
-            self._cleanup_pid(pid_path)
+            err_lines = tail_file(err_path, 20)
+            last_error = "\n".join(err_lines).strip() or None
+            cleanup_pid_file(pid_path)
 
         status = status_factory(alive, proc.pid if alive else None, last_error)
 
@@ -373,61 +362,16 @@ class JLinkBridge:
             "last_error": last_error,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
         }
-        self._write_status_file(status_path, payload)
+        write_json_file(status_path, payload)
 
         return status
 
     def _stop_process(self, pid_path: Path, timeout_s: float = 5.0) -> None:
         """Generic background process stopper."""
-        pid = self._read_pid(pid_path)
-        if not pid or not _pid_alive(pid):
-            self._cleanup_pid(pid_path)
+        pid = read_pid_file(pid_path)
+        if not pid or not pid_alive(pid):
+            cleanup_pid_file(pid_path)
             return
 
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
-
-        deadline = time.time() + timeout_s
-        while time.time() < deadline:
-            if not _pid_alive(pid):
-                break
-            time.sleep(0.1)
-
-        if _pid_alive(pid):
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except OSError:
-                pass
-
-        self._cleanup_pid(pid_path)
-
-    def _read_pid(self, path: Path) -> Optional[int]:
-        """Read PID from a file, return None if missing or invalid."""
-        if not path.exists():
-            return None
-        try:
-            return int(path.read_text().strip())
-        except (ValueError, OSError):
-            return None
-
-    def _cleanup_pid(self, path: Path) -> None:
-        """Remove a PID file if it exists."""
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-    def _read_status_file(self, path: Path) -> Optional[dict]:
-        """Read JSON status file, return None if missing or invalid."""
-        if not path.exists():
-            return None
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return None
-
-    def _write_status_file(self, path: Path, data: dict) -> None:
-        """Write JSON status file."""
-        path.write_text(json.dumps(data, indent=2, sort_keys=True))
+        stop_process_graceful(pid, timeout_s)
+        cleanup_pid_file(pid_path)

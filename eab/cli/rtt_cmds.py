@@ -93,7 +93,23 @@ def cmd_rtt_reset(
 
 def cmd_rtt_tail(*, base_dir: str, lines: int, json_mode: bool) -> int:
     bridge = JLinkBridge(base_dir)
-    log_path = str(bridge.rtt_log_path)
+
+    # JLinkRTTLogger writes raw data to rtt-raw.log. The tailer thread
+    # processes it into rtt.log, but the tailer only runs in-process.
+    # For cross-process CLI use, prefer whichever file was modified most
+    # recently (raw log is always written by JLinkRTTLogger directly).
+    processed_path = Path(base_dir) / "rtt.log"
+    raw_path = Path(base_dir) / "rtt-raw.log"
+
+    # Use the most recently modified file
+    use_raw = False
+    if raw_path.exists():
+        if not processed_path.exists():
+            use_raw = True
+        elif raw_path.stat().st_mtime > processed_path.stat().st_mtime:
+            use_raw = True
+
+    log_path = str(raw_path if use_raw else processed_path)
     log_lines = _tail_lines(log_path, lines)
 
     if json_mode:

@@ -98,13 +98,60 @@ class JLinkRTTManager:
         self._num_up: int = 0
         self._last_error: Optional[str] = None
 
+    def _pid_alive(self, pid: int) -> bool:
+        """Check if a process with the given PID is alive."""
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+    def _recover_from_disk(self) -> bool:
+        """Try to recover running state from the status file on disk.
+
+        When a new JLinkRTTManager instance is created (e.g. from a CLI call),
+        _proc is None but JLinkRTTLogger may still be running from a previous
+        invocation. This reads the status file to recover config and check
+        if the process is still alive.
+
+        Returns True if a running RTT session was recovered.
+        """
+        if self._proc is not None:
+            return self._proc.poll() is None
+
+        if not self.rtt_status_path.exists():
+            return False
+
+        try:
+            data = json.loads(self.rtt_status_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return False
+
+        if not data.get("running"):
+            return False
+
+        pid = data.get("pid")
+        if not pid or not self._pid_alive(pid):
+            return False
+
+        # Recover config from status file
+        self._device = data.get("device")
+        self._interface = data.get("interface", "SWD")
+        self._speed = data.get("speed", 4000)
+        self._channel = data.get("channel", 0)
+        self._block_address = data.get("block_address")
+        self._num_up = data.get("num_up_channels", 0)
+        return True
+
     def status(self) -> JLinkRTTStatus:
         running = self._proc is not None and self._proc.poll() is None
+        if not running:
+            running = self._recover_from_disk()
         return JLinkRTTStatus(
             running=running,
             device=self._device,
             log_path=str(self.rtt_log_path),
-            channel=0,
+            channel=self._channel,
             num_up_channels=self._num_up,
             bytes_read=self._bytes_read,
             last_error=self._last_error,
@@ -176,24 +223,30 @@ class JLinkRTTManager:
             # Truncate raw log to avoid tailing stale data
             self.rtt_raw_path.write_bytes(b"")
 
-            # JLinkRTTLogger writes status/progress to stdout, data to file.
-            # stdin must be PIPE (not DEVNULL) because JLinkRTTLogger
-            # reads stdin for "press any key to quit" — DEVNULL gives
-            # immediate EOF which kills the process.
+            # JLinkRTTLogger reads stdin for "press any key to quit".
+            # DEVNULL gives immediate EOF which kills the process.
+            # PIPE closes when the parent Python process exits → SIGPIPE.
+            # Solution: use os.pipe for stdin (read end blocks forever),
+            # and redirect stdout to a file so the process survives
+            # after the parent exits.
+            stdin_r, self._stdin_w = os.pipe()
+            self._stdout_path = self.rtt_raw_path.parent / "rtt-stdout.log"
+            self._stdout_file = open(self._stdout_path, "w")
             self._proc = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
+                stdout=self._stdout_file,
                 stderr=subprocess.STDOUT,
-                stdin=subprocess.PIPE,
+                stdin=stdin_r,
                 start_new_session=True,
             )
+            os.close(stdin_r)  # child inherited it; close parent's copy
         except Exception as e:
             self._last_error = f"Failed to start JLinkRTTLogger: {e}"
             self._write_status({"running": False, "device": device,
                                 "last_error": self._last_error})
             return self.status()
 
-        # Thread to parse JLinkRTTLogger stdout for status info
+        # Thread to parse JLinkRTTLogger stdout (from file) for status info
         self._stderr_thread = threading.Thread(
             target=self._stdout_reader,
             daemon=True,
@@ -224,7 +277,10 @@ class JLinkRTTManager:
 
         self._write_status({
             "running": True,
+            "pid": self._proc.pid,
             "device": device,
+            "interface": interface,
+            "speed": speed,
             "channel": rtt_channel,
             "num_up_channels": self._num_up,
             "block_address": block_address,
@@ -248,6 +304,9 @@ class JLinkRTTManager:
             except subprocess.TimeoutExpired:
                 self._proc.kill()
                 self._proc.wait(timeout=2)
+        elif self._proc is None:
+            # No in-memory proc — try to kill by PID from status file
+            self._kill_by_pid(timeout_s)
 
         if self._tailer and self._tailer.is_alive():
             self._tailer.join(timeout=timeout_s)
@@ -259,6 +318,19 @@ class JLinkRTTManager:
             self._processor.flush()
             self._processor.close()
 
+        if hasattr(self, "_stdin_w") and self._stdin_w is not None:
+            try:
+                os.close(self._stdin_w)
+            except OSError:
+                pass
+            self._stdin_w = None
+        if hasattr(self, "_stdout_file") and self._stdout_file:
+            try:
+                self._stdout_file.close()
+            except OSError:
+                pass
+            self._stdout_file = None
+
         self._proc = None
         self._tailer = None
         self._stderr_thread = None
@@ -268,6 +340,31 @@ class JLinkRTTManager:
 
         self._write_status({"running": False})
         return self.status()
+
+    def _kill_by_pid(self, timeout_s: float = 5.0) -> None:
+        """Kill JLinkRTTLogger by PID from the status file."""
+        if not self.rtt_status_path.exists():
+            return
+        try:
+            data = json.loads(self.rtt_status_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return
+        pid = data.get("pid")
+        if not pid or not self._pid_alive(pid):
+            return
+        import signal
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            return
+        deadline = time.time() + timeout_s
+        while time.time() < deadline and self._pid_alive(pid):
+            time.sleep(0.1)
+        if self._pid_alive(pid):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
 
     def reset_target(self, wait_after_reset_s: float = 1.0) -> JLinkRTTStatus:
         """Stop RTT, reset target via pylink, restart RTT.
@@ -338,38 +435,54 @@ class JLinkRTTManager:
     def _stdout_reader(self) -> None:
         """Parse JLinkRTTLogger stdout for connection status and errors.
 
+        Tails the stdout log file (rtt-stdout.log) rather than reading
+        from a pipe, so JLinkRTTLogger survives after the Python process exits.
+
         JLinkRTTLogger writes all status/progress to stdout:
         - "3 up-channels found:" — RTT ready
         - "RTT Control Block not found" — connection failed
         - "Transfer rate: XX KB/s" — periodic throughput
         """
-        if not self._proc or not self._proc.stdout:
+        stdout_path = getattr(self, "_stdout_path", None)
+        if stdout_path is None:
             return
 
+        # Wait for file to appear
+        deadline = time.time() + 5.0
+        while not stdout_path.exists() and time.time() < deadline:
+            if self._stop_event.is_set():
+                return
+            time.sleep(0.1)
+
         try:
-            for raw_line in self._proc.stdout:
-                line = raw_line.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
+            with open(stdout_path, "r", encoding="utf-8", errors="replace") as f:
+                while not self._stop_event.is_set():
+                    line = f.readline()
+                    if not line:
+                        if self._proc and self._proc.poll() is not None:
+                            break
+                        time.sleep(0.1)
+                        continue
 
-                # Parse channel count: "3 up-channels found:"
-                if _RTT_FOUND_MARKER in line:
-                    try:
-                        self._num_up = int(line.split()[0])
-                    except (ValueError, IndexError):
-                        pass
+                    line = line.strip()
+                    if not line:
+                        continue
 
-                # Detect failure
-                if "Control Block not found" in line:
-                    self._last_error = "RTT control block not found"
-                    logger.error("JLinkRTTLogger: %s", line)
+                    # Parse channel count: "3 up-channels found:"
+                    if _RTT_FOUND_MARKER in line:
+                        try:
+                            self._num_up = int(line.split()[0])
+                        except (ValueError, IndexError):
+                            pass
 
-                # Log transfer rate updates for debugging
-                if _TRANSFER_RATE_PREFIX in line:
-                    logger.debug("JLinkRTTLogger: %s", line)
+                    # Detect failure
+                    if "Control Block not found" in line:
+                        self._last_error = "RTT control block not found"
+                        logger.error("JLinkRTTLogger: %s", line)
 
-                if self._stop_event.is_set():
-                    break
+                    # Log transfer rate updates for debugging
+                    if _TRANSFER_RATE_PREFIX in line:
+                        logger.debug("JLinkRTTLogger: %s", line)
         except Exception:
             pass
 

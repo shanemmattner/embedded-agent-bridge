@@ -20,6 +20,7 @@ class TestResetTargetSavesConfig:
         mock_find.return_value = "/usr/bin/JLinkRTTLogger"
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
+        mock_proc.pid = 12345
         mock_popen.return_value = mock_proc
 
         mock_thread.return_value = MagicMock()

@@ -34,7 +34,7 @@
 eabctl rtt plot
 
 # File-tail fallback (pre-recorded logs, SWO, etc.)
-eabctl rtt plot --log-path /tmp/eab-session/rtt.log
+eabctl rtt plot --log-path /tmp/eab-devices/default/rtt.log
 
 # Custom ports
 eabctl rtt plot --port 9090 --telnet-port 19021

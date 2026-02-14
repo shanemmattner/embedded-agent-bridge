@@ -15,6 +15,8 @@ import inspect
 
 import pytest
 
+pytest_asyncio = pytest.importorskip("pytest_asyncio", reason="pytest-asyncio required")
+
 from eab.plotter.server import (
     _enqueue,
     _enqueue_status,

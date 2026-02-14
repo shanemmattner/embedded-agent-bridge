@@ -92,7 +92,7 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 - All output in files — agents read with `cat`, `tail`, or their native file tools
 - `--json` flag on every command for structured output
 - No interactive sessions, no stdin, no TTY requirements
-- Session directory (`/tmp/eab-session/`) is the single source of truth
+- Session directory (`/tmp/eab-devices/<device>/`) is the single source of truth
 
 ## Usage
 

@@ -1,5 +1,5 @@
 """
-Tests for daemon command functions in eab.cli.daemon_cmds.
+Tests for daemon command functions in eab.cli.daemon.lifecycle_cmds.
 
 Verifies session file cleanup helpers and other daemon management utilities.
 """
@@ -16,7 +16,7 @@ class TestClearSessionFiles:
 
     def test_clear_all_files_when_present(self, tmp_path):
         """Should remove all session files when they exist."""
-        from eab.cli.daemon_cmds import _clear_session_files
+        from eab.cli.daemon._helpers import _clear_session_files
 
         # Create all session files with some content
         status_path = tmp_path / "status.json"
@@ -42,7 +42,7 @@ class TestClearSessionFiles:
 
     def test_clear_when_files_missing(self, tmp_path):
         """Should handle missing files gracefully without raising errors."""
-        from eab.cli.daemon_cmds import _clear_session_files
+        from eab.cli.daemon._helpers import _clear_session_files
 
         # Don't create any files - just call the function
         # This should not raise FileNotFoundError
@@ -55,7 +55,7 @@ class TestClearSessionFiles:
 
     def test_clear_partial_files(self, tmp_path):
         """Should handle case where only some files exist."""
-        from eab.cli.daemon_cmds import _clear_session_files
+        from eab.cli.daemon._helpers import _clear_session_files
 
         # Create only some files
         status_path = tmp_path / "status.json"
@@ -79,7 +79,7 @@ class TestClearSessionFiles:
 
     def test_clear_does_not_affect_other_files(self, tmp_path):
         """Should only remove specific session files, leaving others intact."""
-        from eab.cli.daemon_cmds import _clear_session_files
+        from eab.cli.daemon._helpers import _clear_session_files
 
         # Create session files
         status_path = tmp_path / "status.json"
@@ -117,7 +117,7 @@ class TestClearSessionFiles:
 
     def test_clear_empty_directory(self, tmp_path):
         """Should handle empty directory without errors."""
-        from eab.cli.daemon_cmds import _clear_session_files
+        from eab.cli.daemon._helpers import _clear_session_files
 
         # Empty directory
         assert len(list(tmp_path.iterdir())) == 0
@@ -130,7 +130,7 @@ class TestClearSessionFiles:
 
     def test_clear_nonexistent_directory(self):
         """Should handle non-existent directory path."""
-        from eab.cli.daemon_cmds import _clear_session_files
+        from eab.cli.daemon._helpers import _clear_session_files
 
         # This directory doesn't exist
         nonexistent = "/tmp/eab-test-nonexistent-dir-12345"
@@ -141,7 +141,7 @@ class TestClearSessionFiles:
 
     def test_clear_files_with_content(self, tmp_path):
         """Should remove files regardless of content size."""
-        from eab.cli.daemon_cmds import _clear_session_files
+        from eab.cli.daemon._helpers import _clear_session_files
 
         # Create files with varying content sizes
         status_path = tmp_path / "status.json"
@@ -177,7 +177,7 @@ class TestCmdStartSessionCleanup:
 
     def test_cmd_start_clears_session_files(self, tmp_path, monkeypatch):
         """cmd_start should call _clear_session_files before spawning daemon."""
-        from eab.cli.daemon_cmds import cmd_start
+        from eab.cli.daemon import cmd_start
         import subprocess
         
         # Create stale session files
@@ -205,10 +205,10 @@ class TestCmdStartSessionCleanup:
             return None
 
         monkeypatch.setattr(subprocess, "Popen", MockPopen)
-        monkeypatch.setattr("eab.cli.daemon_cmds.check_singleton", mock_check_singleton)
+        monkeypatch.setattr("eab.cli.daemon.lifecycle_cmds.check_singleton", mock_check_singleton)
 
         # Mock cleanup_dead_locks to do nothing
-        monkeypatch.setattr("eab.cli.daemon_cmds.cleanup_dead_locks", lambda: None)
+        monkeypatch.setattr("eab.cli.daemon.lifecycle_cmds.cleanup_dead_locks", lambda: None)
 
         # Mock file operations for log files
         import builtins
@@ -248,7 +248,7 @@ class TestCmdStartSessionCleanup:
 
     def test_cmd_start_with_force_clears_session_files(self, tmp_path, monkeypatch):
         """cmd_start with --force should clear session files after killing daemon."""
-        from eab.cli.daemon_cmds import cmd_start
+        from eab.cli.daemon import cmd_start
         import subprocess
         
         # Create stale session files
@@ -286,10 +286,10 @@ class TestCmdStartSessionCleanup:
             def __init__(self, *args, **kwargs):
                 self.pid = 12345
         
-        monkeypatch.setattr("eab.cli.daemon_cmds.check_singleton", mock_check_singleton)
-        monkeypatch.setattr("eab.cli.daemon_cmds.kill_existing_daemon", mock_kill_existing_daemon)
-        monkeypatch.setattr("eab.cli.daemon_cmds.list_all_locks", mock_list_all_locks)
-        monkeypatch.setattr("eab.cli.daemon_cmds.cleanup_dead_locks", mock_cleanup_dead_locks)
+        monkeypatch.setattr("eab.cli.daemon.lifecycle_cmds.check_singleton", mock_check_singleton)
+        monkeypatch.setattr("eab.cli.daemon.lifecycle_cmds.kill_existing_daemon", mock_kill_existing_daemon)
+        monkeypatch.setattr("eab.cli.daemon.lifecycle_cmds.list_all_locks", mock_list_all_locks)
+        monkeypatch.setattr("eab.cli.daemon.lifecycle_cmds.cleanup_dead_locks", mock_cleanup_dead_locks)
         monkeypatch.setattr(subprocess, "Popen", MockPopen)
         
         # Mock file operations
@@ -330,7 +330,7 @@ class TestCmdStartSessionCleanup:
 
     def test_cmd_start_early_return_does_not_clear_files(self, tmp_path, monkeypatch):
         """cmd_start should NOT clear files when returning early (daemon already running)."""
-        from eab.cli.daemon_cmds import cmd_start
+        from eab.cli.daemon import cmd_start
         
         # Create existing session files
         status_path = tmp_path / "status.json"
@@ -350,7 +350,7 @@ class TestCmdStartSessionCleanup:
         def mock_check_singleton(**kwargs):
             return MockExisting()
 
-        monkeypatch.setattr("eab.cli.daemon_cmds.check_singleton", mock_check_singleton)
+        monkeypatch.setattr("eab.cli.daemon.lifecycle_cmds.check_singleton", mock_check_singleton)
 
         # Call cmd_start with force=False (should return early)
         result = cmd_start(

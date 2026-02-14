@@ -19,7 +19,7 @@ from eab.cli.debug_cmds import (
     cmd_gdb, cmd_gdb_script, cmd_inspect, cmd_threads, cmd_watch, cmd_memdump,
 )
 from eab.cli.fault_cmds import cmd_fault_analyze
-from eab.cli.profile_cmds import cmd_profile_function, cmd_profile_region, cmd_dwt_status
+from eab.cli.profile import cmd_profile_function, cmd_profile_region, cmd_dwt_status
 from eab.cli.stream_cmds import cmd_stream_start, cmd_stream_stop, cmd_recv, cmd_recv_latest
 from eab.cli.var_cmds import cmd_vars, cmd_read_vars
 from eab.cli.reset_cmds import cmd_resets

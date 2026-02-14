@@ -383,5 +383,36 @@ def main(argv: Optional[list[str]] = None) -> int:
                 json_mode=args.json,
             )
 
+    if args.cmd == "rtt-capture":
+        if args.rtt_capture_action == "start":
+            channels = args.channels if args.channels else [1]
+            return cli.cmd_rtt_capture_start(
+                device=args.device,
+                channels=channels,
+                output=args.output,
+                sample_width=args.sample_width,
+                sample_rate=args.sample_rate,
+                timestamp_hz=args.timestamp_hz,
+                interface=args.interface,
+                speed=args.speed,
+                block_address=args.block_address,
+                transport=args.transport,
+                json_mode=args.json,
+            )
+        if args.rtt_capture_action == "convert":
+            return cli.cmd_rtt_capture_convert(
+                input_path=args.input,
+                output_path=args.output,
+                fmt=args.fmt,
+                channel=args.channel,
+                sample_rate=args.sample_rate,
+                json_mode=args.json,
+            )
+        if args.rtt_capture_action == "info":
+            return cli.cmd_rtt_capture_info(
+                input_path=args.input,
+                json_mode=args.json,
+            )
+
     parser.error(f"Unknown command: {args.cmd}")
     return 2

@@ -375,4 +375,36 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rtt_tail = rtt_sub.add_parser("tail", help="Show last N lines of rtt.log")
     p_rtt_tail.add_argument("lines", type=int, nargs="?", default=50, help="Number of lines (default: 50)")
 
+    # Binary RTT capture commands
+    p_rtt_cap = sub.add_parser("rtt-capture", help="Binary RTT capture (start/convert/info)")
+    rtt_cap_sub = p_rtt_cap.add_subparsers(dest="rtt_capture_action", required=True)
+
+    p_cap_start = rtt_cap_sub.add_parser("start", help="Start binary RTT capture to .rttbin file")
+    p_cap_start.add_argument("--device", required=True, help="Device string (e.g., NRF5340_XXAA_APP)")
+    p_cap_start.add_argument("--channel", type=int, action="append", default=[], dest="channels",
+                             help="RTT channel to capture (repeatable, default: [1])")
+    p_cap_start.add_argument("--output", "-o", required=True, help="Output .rttbin file path")
+    p_cap_start.add_argument("--sample-width", type=int, default=2, choices=[1, 2, 4],
+                             help="Bytes per sample (default: 2)")
+    p_cap_start.add_argument("--sample-rate", type=int, default=0, help="Sample rate in Hz (0 = unknown)")
+    p_cap_start.add_argument("--timestamp-hz", type=int, default=0, help="Timestamp resolution in Hz (0 = none)")
+    p_cap_start.add_argument("--interface", default="SWD", choices=["SWD", "JTAG"])
+    p_cap_start.add_argument("--speed", type=int, default=4000, help="Interface speed in kHz")
+    p_cap_start.add_argument("--block-address", type=lambda x: int(x, 0), default=None,
+                             help="RTT control block address (hex)")
+    p_cap_start.add_argument("--transport", default="jlink", choices=["jlink", "probe-rs"],
+                             help="Debug probe transport (default: jlink)")
+
+    p_cap_convert = rtt_cap_sub.add_parser("convert", help="Convert .rttbin to CSV/WAV/numpy")
+    p_cap_convert.add_argument("input", help="Input .rttbin file")
+    p_cap_convert.add_argument("--format", "-f", dest="fmt", required=True,
+                               choices=["csv", "wav", "numpy"], help="Output format")
+    p_cap_convert.add_argument("--output", "-o", default=None, help="Output file path")
+    p_cap_convert.add_argument("--channel", type=int, default=0, help="Channel for WAV export (default: 0)")
+    p_cap_convert.add_argument("--sample-rate", type=int, default=None,
+                               help="Override sample rate (required for WAV if not in header)")
+
+    p_cap_info = rtt_cap_sub.add_parser("info", help="Show .rttbin file header and stats")
+    p_cap_info.add_argument("input", help="Input .rttbin file")
+
     return parser

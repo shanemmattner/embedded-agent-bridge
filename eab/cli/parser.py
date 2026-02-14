@@ -10,10 +10,16 @@ from eab.cli.helpers import DEFAULT_BASE_DIR
 
 
 def _preprocess_argv(argv: list[str]) -> list[str]:
-    """Reorder global flags (--json, --base-dir) before the subcommand.
+    """Reorder global flags (--json, --base-dir, --device) before the subcommand.
 
     Agent ergonomics: allow global flags anywhere (before or after subcommand).
     argparse doesn't support this reliably with subparsers, so we reorder.
+
+    Note: ``--device`` is ONLY treated as a global flag when it appears
+    **before** the subcommand.  Many subcommands (fault-analyze, rtt start,
+    etc.) have their own ``--device`` argument with a different meaning
+    (J-Link device string).  Once we encounter the first positional token
+    (the subcommand), we stop extracting ``--device`` as a global flag.
 
     Args:
         argv: Raw argument list (without ``sys.argv[0]``).
@@ -24,6 +30,7 @@ def _preprocess_argv(argv: list[str]) -> list[str]:
     global_args: list[str] = []
     rest: list[str] = []
     i = 0
+    found_subcommand = False
     while i < len(argv):
         token = argv[i]
         if token == "--json":
@@ -43,7 +50,27 @@ def _preprocess_argv(argv: list[str]) -> list[str]:
             global_args.extend([token, argv[i + 1]])
             i += 2
             continue
+        # Only extract --device as a global flag before the subcommand token.
+        # After the subcommand, --device belongs to the subcommand (e.g.,
+        # fault-analyze --device NRF5340_XXAA_APP is a J-Link device string,
+        # NOT the global EAB device selector).
+        if not found_subcommand and token.startswith("--device="):
+            global_args.append(token)
+            i += 1
+            continue
+        if not found_subcommand and token == "--device" and i + 1 < len(argv):
+            next_token = argv[i + 1]
+            if not next_token.startswith("-"):
+                global_args.extend([token, next_token])
+                i += 2
+                continue
+            rest.append(token)
+            i += 1
+            continue
 
+        # First non-flag token is the subcommand
+        if not token.startswith("-") and not found_subcommand:
+            found_subcommand = True
         rest.append(token)
         i += 1
 
@@ -63,6 +90,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--base-dir",
         default=None,
         help=f"Override session dir (default: daemon base_dir or {DEFAULT_BASE_DIR})",
+    )
+    parser.add_argument(
+        "--device",
+        default=None,
+        dest="target_device",
+        help="Target device name (e.g., nrf5340, esp32). Routes to /tmp/eab-devices/<name>/",
     )
 
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -406,5 +439,21 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_cap_info = rtt_cap_sub.add_parser("info", help="Show .rttbin file header and stats")
     p_cap_info.add_argument("input", help="Input .rttbin file")
+
+    # Multi-device management
+    sub.add_parser("devices", help="List all registered devices and their status")
+
+    p_device = sub.add_parser("device", help="Manage device registration (add/remove)")
+    device_sub = p_device.add_subparsers(dest="device_action", required=True)
+
+    p_dev_add = device_sub.add_parser("add", help="Register a device")
+    p_dev_add.add_argument("name", help="Device name (e.g., nrf5340, esp32)")
+    p_dev_add.add_argument("--type", dest="device_type", default="debug",
+                           choices=["serial", "debug"],
+                           help="Device type (default: debug)")
+    p_dev_add.add_argument("--chip", default="", help="Chip identifier (e.g., nrf5340, stm32l476rg)")
+
+    p_dev_rm = device_sub.add_parser("remove", help="Unregister a device")
+    p_dev_rm.add_argument("name", help="Device name to remove")
 
     return parser

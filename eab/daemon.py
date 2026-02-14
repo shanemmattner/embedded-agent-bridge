@@ -27,6 +27,7 @@ from .pattern_matcher import PatternMatcher, AlertLogger
 from .status_manager import StatusManager
 from .event_emitter import EventEmitter
 from .data_stream import DataStreamWriter
+from .reset_reason import ResetReasonTracker
 from .interfaces import (
     ClockInterface,
     ConnectionState,
@@ -67,12 +68,14 @@ class SerialDaemon:
         log_max_size_mb: int = 100,
         log_max_files: int = 5,
         log_compress: bool = True,
+        device_name: str = "",
     ):
         self._port = port
         self._baud = baud
         self._base_dir = base_dir
         self._auto_detect = auto_detect
         self._running = False
+        self._device_name = device_name
 
         # Implementations (allow injection for tests)
         self._serial = serial_port or RealSerialPort()
@@ -126,6 +129,10 @@ class SerialDaemon:
             filesystem=self._fs,
             clock=self._clock,
             events_path=os.path.join(base_dir, "events.jsonl"),
+        )
+
+        self._reset_tracker = ResetReasonTracker(
+            clock=self._clock,
         )
 
         # Command file path
@@ -371,8 +378,8 @@ class SerialDaemon:
 
         port_name = self._reconnection._port_name
 
-        # Singleton enforcement - only one daemon per machine
-        self._singleton = SingletonDaemon(logger=self._logger)
+        # Singleton enforcement - one daemon per device (or one global if no device_name)
+        self._singleton = SingletonDaemon(logger=self._logger, device_name=self._device_name)
         if not self._singleton.acquire(kill_existing=force, port=port_name, base_dir=self._base_dir):
             self._emit_event("daemon_start_failed", {"reason": "singleton"})
             return False
@@ -529,6 +536,8 @@ class SerialDaemon:
                 # Update status periodically
                 now = self._clock.timestamp()
                 if now - last_status_update >= status_update_interval:
+                    # Update reset statistics before writing status
+                    self._status_manager.set_reset_statistics(self._reset_tracker.get_statistics())
                     self._status_manager.update()
                     last_status_update = now
 
@@ -772,6 +781,25 @@ class SerialDaemon:
         # Feed to chip recovery for state monitoring (unless this is base64 payload data)
         if not suppress_health:
             self._chip_recovery.process_line(line)
+
+        # Check for reset reasons
+        if not suppress_health:
+            reset_event = self._reset_tracker.check_line(line)
+            if reset_event:
+                # Emit event for reset detection
+                self._emit_event(
+                    "reset_detected",
+                    {
+                        "reason": reset_event.reason,
+                        "timestamp": reset_event.timestamp.isoformat(),
+                        "raw_line": reset_event.raw_line[:200],
+                    },
+                    level="info" if not self._reset_tracker.is_unexpected_reset(reset_event.reason) else "warn",
+                )
+                
+                # Alert on unexpected resets
+                if self._reset_tracker.is_unexpected_reset(reset_event.reason):
+                    self._logger.warning(f"Unexpected reset: {reset_event.reason}")
 
         # Check for patterns
         if self._stream_pattern_matching and not suppress_health:
@@ -1082,6 +1110,11 @@ Examples:
         action="store_true",
         help="Disable compression of rotated logs",
     )
+    parser.add_argument(
+        "--device-name",
+        default="",
+        help="Device name for per-device singleton (e.g., esp32, nrf5340)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -1255,6 +1288,7 @@ Examples:
         log_max_size_mb=args.log_max_size,
         log_max_files=args.log_max_files,
         log_compress=not args.no_log_compress,
+        device_name=args.device_name,
     )
 
     # Handle signals

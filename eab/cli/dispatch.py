@@ -31,7 +31,21 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     parser = _build_parser()
     args = parser.parse_args(argv)
-    base_dir = cli._resolve_base_dir(args.base_dir)
+    target_device = args.target_device
+    base_dir = cli._resolve_base_dir(args.base_dir, device=target_device)
+
+    if args.cmd == "devices":
+        return cli.cmd_devices(json_mode=args.json)
+    if args.cmd == "device":
+        if args.device_action == "add":
+            return cli.cmd_device_add(
+                name=args.name,
+                device_type=args.device_type,
+                chip=args.chip,
+                json_mode=args.json,
+            )
+        if args.device_action == "remove":
+            return cli.cmd_device_remove(name=args.name, json_mode=args.json)
 
     if args.cmd == "status":
         return cli.cmd_status(base_dir=base_dir, json_mode=args.json)
@@ -271,9 +285,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             log_max_size_mb=args.log_max_size,
             log_max_files=args.log_max_files,
             log_compress=not args.no_log_compress,
+            device_name=target_device or "",
         )
     if args.cmd == "stop":
-        return cli.cmd_stop(json_mode=args.json)
+        return cli.cmd_stop(json_mode=args.json, device_name=target_device or "")
     if args.cmd == "capture-between":
         return cli.cmd_capture_between(
             base_dir=base_dir,

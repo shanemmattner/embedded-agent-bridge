@@ -201,15 +201,15 @@ class TestCmdStartSessionCleanup:
                 self.pid = 12345
         
         # Mock check_singleton to return None (no existing daemon)
-        def mock_check_singleton():
+        def mock_check_singleton(**kwargs):
             return None
-        
+
         monkeypatch.setattr(subprocess, "Popen", MockPopen)
         monkeypatch.setattr("eab.cli.daemon_cmds.check_singleton", mock_check_singleton)
-        
+
         # Mock cleanup_dead_locks to do nothing
         monkeypatch.setattr("eab.cli.daemon_cmds.cleanup_dead_locks", lambda: None)
-        
+
         # Mock file operations for log files
         import builtins
         original_open = builtins.open
@@ -218,9 +218,9 @@ class TestCmdStartSessionCleanup:
                 import io
                 return io.StringIO()
             return original_open(path, *args, **kwargs)
-        
+
         monkeypatch.setattr(builtins, "open", mock_open)
-        
+
         # Call cmd_start
         result = cmd_start(
             base_dir=str(tmp_path),
@@ -266,11 +266,11 @@ class TestCmdStartSessionCleanup:
                 self.pid = 999
                 self.is_alive = True
         
-        def mock_check_singleton():
+        def mock_check_singleton(**kwargs):
             return MockExisting()
-        
+
         # Mock killing daemon
-        def mock_kill_existing_daemon():
+        def mock_kill_existing_daemon(**kwargs):
             return True
         
         # Mock list_all_locks to return empty (no port locks)
@@ -347,11 +347,11 @@ class TestCmdStartSessionCleanup:
                 self.pid = 999
                 self.is_alive = True
         
-        def mock_check_singleton():
+        def mock_check_singleton(**kwargs):
             return MockExisting()
-        
+
         monkeypatch.setattr("eab.cli.daemon_cmds.check_singleton", mock_check_singleton)
-        
+
         # Call cmd_start with force=False (should return early)
         result = cmd_start(
             base_dir=str(tmp_path),

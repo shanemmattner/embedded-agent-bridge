@@ -255,7 +255,7 @@ def test_cmd_flash_jlink_method_in_output(hex_firmware):
         mock_result.stderr = ""
         mock_run.return_value = mock_result
         
-        with patch("eab.cli.helpers._print") as mock_print:
+        with patch("eab.cli.flash.flash_cmd._print") as mock_print:
             cmd_flash(
                 firmware=hex_firmware,
                 chip="nrf5340",

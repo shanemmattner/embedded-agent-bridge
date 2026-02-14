@@ -147,7 +147,7 @@ class TestCmdResetIntegration:
         mock_result.stderr = ""
         
         with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.helpers._print") as mock_print:
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="nrf5340",
                     method="hard",
@@ -198,7 +198,7 @@ class TestCmdResetIntegration:
         mock_result.stderr = ""
         
         with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.helpers._print") as mock_print:
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="mcxn947",
                     method="hard",
@@ -226,7 +226,7 @@ class TestCmdResetIntegration:
         mock_result.stderr = ""
         
         with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.helpers._print") as mock_print:
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="rp2040",
                     method="hard",
@@ -252,7 +252,7 @@ class TestCmdResetIntegration:
     def test_reset_nrfjprog_not_found(self):
         """Should return error when nrfjprog not found."""
         with patch("eab.cli.flash.reset_cmd.subprocess.run", side_effect=FileNotFoundError("nrfjprog not found")):
-            with patch("eab.cli.helpers._print") as mock_print:
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="nrf5340",
                     method="hard",
@@ -271,7 +271,7 @@ class TestCmdResetIntegration:
         import subprocess
         
         with patch("eab.cli.flash.reset_cmd.subprocess.run", side_effect=subprocess.TimeoutExpired("nrfjprog", 30)):
-            with patch("eab.cli.helpers._print") as mock_print:
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="nrf5340",
                     method="hard",
@@ -287,7 +287,7 @@ class TestCmdResetIntegration:
 
     def test_reset_invalid_chip(self):
         """Should return error code 2 for invalid chip."""
-        with patch("eab.cli.helpers._print") as mock_print:
+        with patch("eab.cli.flash.reset_cmd._print") as mock_print:
             result = cmd_reset(
                 chip="invalid_chip_xyz",
                 method="hard",

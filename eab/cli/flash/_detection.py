@@ -40,16 +40,10 @@ def _detect_esp_idf_project(
                     json_mode=json_mode
                 )
                 return is_esp_idf_project, chip, 1
-            
+
             if chip is None and project_info.get("chip"):
                 chip = project_info["chip"]
                 logger.info("Auto-detected chip type: %s", chip)
-        else:
-            _print(
-                {"error": "Directory is not an ESP-IDF project (no sdkconfig or build/flash_args found)"},
-                json_mode=json_mode
-            )
-            return False, chip, 1
     
     if chip is None:
         if is_esp_idf_project:

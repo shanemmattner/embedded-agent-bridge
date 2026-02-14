@@ -22,7 +22,7 @@ from eab.gdb_bridge import (
     run_gdb_python,
     generate_batch_variable_reader,
 )
-from eab.cli.debug_cmds import _build_probe
+from eab.cli.debug._helpers import _build_probe
 
 
 def cmd_vars(

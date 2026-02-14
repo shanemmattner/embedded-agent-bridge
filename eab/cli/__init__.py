@@ -14,7 +14,7 @@ from eab.cli.daemon import (
     cmd_devices, cmd_device_add, cmd_device_remove,
 )
 from eab.cli.flash import cmd_flash, cmd_erase, cmd_reset, cmd_chip_info, cmd_preflight_hw
-from eab.cli.debug_cmds import (
+from eab.cli.debug import (
     cmd_openocd_status, cmd_openocd_start, cmd_openocd_stop, cmd_openocd_cmd,
     cmd_gdb, cmd_gdb_script, cmd_inspect, cmd_threads, cmd_watch, cmd_memdump,
 )

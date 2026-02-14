@@ -5,7 +5,7 @@ from eab.cli.parser import _build_parser, _preprocess_argv
 from eab.cli.helpers import _print, _resolve_base_dir
 
 # Re-export command functions so tests can patch eab.cli.cmd_xxx
-from eab.cli.serial_cmds import (
+from eab.cli.serial import (
     cmd_status, cmd_tail, cmd_alerts, cmd_events, cmd_send,
     cmd_wait, cmd_wait_event, cmd_capture_between,
 )

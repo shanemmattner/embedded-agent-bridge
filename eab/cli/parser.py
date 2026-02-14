@@ -50,7 +50,10 @@ def _preprocess_argv(argv: list[str]) -> list[str]:
             global_args.extend([token, argv[i + 1]])
             i += 2
             continue
-        # --device is only global BEFORE the subcommand
+        # Only extract --device as a global flag before the subcommand token.
+        # After the subcommand, --device belongs to the subcommand (e.g.,
+        # fault-analyze --device NRF5340_XXAA_APP is a J-Link device string,
+        # NOT the global EAB device selector).
         if not found_subcommand and token.startswith("--device="):
             global_args.append(token)
             i += 1

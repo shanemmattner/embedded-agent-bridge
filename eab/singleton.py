@@ -5,6 +5,8 @@ Singleton Daemon Enforcement for Embedded Agent Bridge.
 Ensures only one EAB daemon runs per machine using a PID file with portalocker.
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import errno
@@ -13,9 +15,6 @@ import atexit
 import signal
 from typing import Optional
 from dataclasses import dataclass
-
-
-DEFAULT_DEVICES_DIR = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-devices")
 
 
 @dataclass
@@ -58,7 +57,7 @@ class SingletonDaemon:
     LEGACY_PID_FILE = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-daemon.pid")
     LEGACY_INFO_FILE = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-daemon.info")
 
-    def __init__(self, logger=None, device_name: str = ""):
+    def __init__(self, logger: object = None, device_name: str = ""):
         self._logger = logger
         self._lock_fd: Optional[int] = None
         self._owns_lock = False
@@ -66,7 +65,8 @@ class SingletonDaemon:
 
         if device_name:
             # Per-device mode: PID/info files inside device session dir
-            device_dir = os.path.join(DEFAULT_DEVICES_DIR, device_name)
+            from eab.device_registry import _get_devices_dir
+            device_dir = os.path.join(_get_devices_dir(), device_name)
             self.PID_FILE = os.path.join(device_dir, "daemon.pid")
             self.INFO_FILE = os.path.join(device_dir, "daemon.info")
         else:
@@ -107,45 +107,18 @@ class SingletonDaemon:
         is_alive = self._is_process_alive(pid)
 
         # Read info file if exists
-        port = "unknown"
-        base_dir = "unknown"
-        started = "unknown"
-        device_name = self._device_name
-        device_type = "serial"
-        chip = ""
-
-        if os.path.exists(self.INFO_FILE):
-            try:
-                with open(self.INFO_FILE, 'r') as f:
-                    for line in f:
-                        key_val = line.strip().split("=", 1)
-                        if len(key_val) != 2:
-                            continue
-                        key, val = key_val
-                        if key == "port":
-                            port = val
-                        elif key == "base_dir":
-                            base_dir = val
-                        elif key == "started":
-                            started = val
-                        elif key == "device_name":
-                            device_name = val
-                        elif key == "type":
-                            device_type = val
-                        elif key == "chip":
-                            chip = val
-            except IOError:
-                pass
+        from eab.device_registry import _parse_info_file
+        info = _parse_info_file(self.INFO_FILE) if os.path.exists(self.INFO_FILE) else {}
 
         return ExistingDaemon(
             pid=pid,
             is_alive=is_alive,
-            port=port,
-            base_dir=base_dir,
-            started=started,
-            device_name=device_name,
-            device_type=device_type,
-            chip=chip,
+            port=info.get("port", "unknown"),
+            base_dir=info.get("base_dir", "unknown"),
+            started=info.get("started", "unknown"),
+            device_name=info.get("device_name", self._device_name),
+            device_type=info.get("type", "serial"),
+            chip=info.get("chip", ""),
         )
 
     def _is_process_alive(self, pid: int) -> bool:
@@ -255,16 +228,17 @@ class SingletonDaemon:
         os.fsync(self._lock_fd)
 
         # Write info file
-        from datetime import datetime
+        from eab.device_registry import _write_info_file
         try:
-            with open(self.INFO_FILE, 'w') as f:
-                f.write(f"pid={os.getpid()}\n")
-                f.write(f"port={port}\n")
-                f.write(f"base_dir={base_dir}\n")
-                f.write(f"started={datetime.now().isoformat()}\n")
-                f.write(f"device_name={self._device_name}\n")
-                f.write(f"type={device_type}\n")
-                f.write(f"chip={chip}\n")
+            _write_info_file(
+                self.INFO_FILE,
+                pid=os.getpid(),
+                port=port,
+                base_dir=base_dir,
+                device_name=self._device_name,
+                device_type=device_type,
+                chip=chip,
+            )
         except IOError as e:
             self._log_warning(f"Could not write info file: {e}")
 
@@ -340,118 +314,11 @@ def kill_existing_daemon(timeout: float = 5.0, device_name: str = "") -> bool:
     return singleton._kill_process(existing.pid, timeout)
 
 
-def list_devices() -> list[ExistingDaemon]:
-    """Scan /tmp/eab-devices/ for all registered devices.
 
-    Returns a list of ExistingDaemon objects, one per device directory
-    that contains a daemon.info file.
-    """
-    devices: list[ExistingDaemon] = []
-    if not os.path.isdir(DEFAULT_DEVICES_DIR):
-        return devices
-
-    for name in sorted(os.listdir(DEFAULT_DEVICES_DIR)):
-        device_dir = os.path.join(DEFAULT_DEVICES_DIR, name)
-        info_file = os.path.join(device_dir, "daemon.info")
-        if not os.path.isfile(info_file):
-            continue
-
-        singleton = SingletonDaemon(device_name=name)
-        existing = singleton.get_existing()
-        if existing:
-            # get_existing returns None if no PID file — for debug-only devices
-            # we still want to list them, so handle that below
-            devices.append(existing)
-        else:
-            # No PID file but daemon.info exists (debug-only device, never started a daemon)
-            # Parse info file directly
-            port = ""
-            base_dir = device_dir
-            started = ""
-            device_type = "debug"
-            chip = ""
-            try:
-                with open(info_file, 'r') as f:
-                    for line in f:
-                        key_val = line.strip().split("=", 1)
-                        if len(key_val) != 2:
-                            continue
-                        key, val = key_val
-                        if key == "port":
-                            port = val
-                        elif key == "base_dir":
-                            base_dir = val
-                        elif key == "started":
-                            started = val
-                        elif key == "type":
-                            device_type = val
-                        elif key == "chip":
-                            chip = val
-            except IOError:
-                pass
-
-            devices.append(ExistingDaemon(
-                pid=0,
-                is_alive=False,
-                port=port,
-                base_dir=base_dir,
-                started=started,
-                device_name=name,
-                device_type=device_type,
-                chip=chip,
-            ))
-
-    return devices
-
-
-def register_device(name: str, device_type: str = "debug", chip: str = "") -> str:
-    """Register a device (creates session dir and daemon.info without starting a daemon).
-
-    Args:
-        name: Device name (e.g., 'nrf5340').
-        device_type: 'serial' or 'debug'.
-        chip: Chip identifier (e.g., 'nrf5340', 'stm32l476rg').
-
-    Returns:
-        Path to the device session directory.
-    """
-    from datetime import datetime
-    device_dir = os.path.join(DEFAULT_DEVICES_DIR, name)
-    os.makedirs(device_dir, exist_ok=True)
-
-    info_file = os.path.join(device_dir, "daemon.info")
-    with open(info_file, 'w') as f:
-        f.write(f"pid=0\n")
-        f.write(f"port=\n")
-        f.write(f"base_dir={device_dir}\n")
-        f.write(f"started={datetime.now().isoformat()}\n")
-        f.write(f"device_name={name}\n")
-        f.write(f"type={device_type}\n")
-        f.write(f"chip={chip}\n")
-
-    return device_dir
-
-
-def unregister_device(name: str) -> bool:
-    """Unregister a device (removes session dir).
-
-    Refuses to remove if a daemon is still running for this device.
-
-    Args:
-        name: Device name.
-
-    Returns:
-        True if removed, False if device not found or daemon still running.
-    """
-    import shutil
-    device_dir = os.path.join(DEFAULT_DEVICES_DIR, name)
-    if not os.path.isdir(device_dir):
-        return False
-
-    # Check if daemon is still running
-    existing = check_singleton(device_name=name)
-    if existing and existing.is_alive:
-        return False
-
-    shutil.rmtree(device_dir, ignore_errors=True)
-    return True
+# Backward-compat re-exports — callers should migrate to eab.device_registry
+from eab.device_registry import (  # noqa: F401, E402
+    list_devices,
+    register_device,
+    unregister_device,
+    _get_devices_dir,
+)

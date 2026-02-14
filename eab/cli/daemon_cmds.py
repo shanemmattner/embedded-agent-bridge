@@ -10,10 +10,8 @@ import sys
 import time
 from typing import Any, Optional
 
-from eab.singleton import (
-    check_singleton, kill_existing_daemon, list_devices,
-    register_device, unregister_device, DEFAULT_DEVICES_DIR,
-)
+from eab.singleton import check_singleton, kill_existing_daemon
+from eab.device_registry import list_devices, register_device, unregister_device
 from eab.port_lock import list_all_locks, cleanup_dead_locks
 
 from eab.cli.helpers import (
@@ -64,6 +62,10 @@ def cmd_start(
         baud: Baud rate for the serial connection.
         force: Kill existing daemon before starting.
         json_mode: Emit machine-parseable JSON output.
+        log_max_size_mb: Max log file size in MB before rotation.
+        log_max_files: Max rotated log files to keep.
+        log_compress: Whether to gzip rotated log files.
+        device_name: Per-device session name (empty for legacy global mode).
 
     Returns:
         Exit code: 0 on success, 1 if daemon already running (without --force).
@@ -71,11 +73,12 @@ def cmd_start(
     existing = check_singleton(device_name=device_name)
     if existing and existing.is_alive:
         if not force:
+            suffix = f" for {device_name}" if device_name else ""
             payload = {
                 "schema_version": 1,
                 "timestamp": _now_iso(),
                 "started": False,
-                "message": f"Daemon already running{' for ' + device_name if device_name else ''}",
+                "message": f"Daemon already running{suffix}",
                 "pid": existing.pid,
             }
             _print(payload, json_mode=json_mode)
@@ -150,7 +153,6 @@ def cmd_start(
         args.extend(["--device-name", device_name])
 
     if device_name:
-        os.makedirs(base_dir, exist_ok=True)
         log_path = os.path.join(base_dir, "daemon.log")
         err_path = os.path.join(base_dir, "daemon.err")
     else:
@@ -213,11 +215,12 @@ def cmd_stop(*, json_mode: bool, device_name: str = "") -> int:
     """
     existing = check_singleton(device_name=device_name)
     if not existing or not existing.is_alive:
+        suffix = f" for {device_name}" if device_name else ""
         payload = {
             "schema_version": 1,
             "timestamp": _now_iso(),
             "stopped": False,
-            "message": f"Daemon not running{' for ' + device_name if device_name else ''}",
+            "message": f"Daemon not running{suffix}",
         }
         _print(payload, json_mode=json_mode)
         return 1

@@ -7,23 +7,23 @@ import tempfile
 
 import pytest
 
-from eab.singleton import (
-    SingletonDaemon,
-    ExistingDaemon,
+from eab.singleton import SingletonDaemon, ExistingDaemon
+from eab.device_registry import (
     list_devices,
     register_device,
     unregister_device,
-    DEFAULT_DEVICES_DIR,
+    _get_devices_dir,
 )
 
 
 @pytest.fixture
 def tmp_devices_dir(monkeypatch, tmp_path):
-    """Override DEFAULT_DEVICES_DIR to a temp directory."""
+    """Override _get_devices_dir to return a temp directory."""
     devices_dir = str(tmp_path / "eab-devices")
-    monkeypatch.setattr("eab.singleton.DEFAULT_DEVICES_DIR", devices_dir)
-    # Also patch the helpers module which imports it
-    monkeypatch.setattr("eab.cli.helpers.DEFAULT_DEVICES_DIR", devices_dir)
+    _mock = lambda: devices_dir
+    # Patch the canonical source and all import-time bindings
+    monkeypatch.setattr("eab.device_registry._get_devices_dir", _mock)
+    monkeypatch.setattr("eab.cli.helpers._get_devices_dir", _mock)
     return devices_dir
 
 

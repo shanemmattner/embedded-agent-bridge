@@ -28,7 +28,7 @@ eabctl start --port auto && eabctl tail 20 --json
 You (agent) ──eabctl──► EAB Daemon ──serial──► Hardware (ESP32/STM32)
                               │
                               ▼
-                    /tmp/eab-session/
+                    /tmp/eab-devices/<device>/
                     ├── latest.log     (serial output)
                     ├── alerts.log     (crashes, errors)
                     ├── events.jsonl   (structured events)
@@ -210,7 +210,7 @@ eabctl openocd stop
 
 ## Session Directory
 
-Default: `/tmp/eab-session/` (override with `--base-dir`)
+Default: `/tmp/eab-devices/<device>/` (override with `--base-dir`)
 
 | File | Format | Contents |
 |------|--------|----------|

@@ -122,13 +122,15 @@ def cmd_flash(
     converted_from_elf = False
     original_firmware_path = firmware  # Track original path for reporting
 
-    # Detect ESP-IDF project directories and auto-detect chip
+    # Detect ESP-IDF project directories and auto-detect chip.
+    # Zephyr targets also accept directories (build dirs), so only reject
+    # directories for ESP-IDF auto-detection when no chip is specified.
     is_esp_idf_project = False
     if os.path.isdir(firmware):
         from eab.chips.esp32 import ESP32Profile
-        
+
         project_info = ESP32Profile.detect_esp_idf_project(firmware)
-        
+
         if project_info is not None:
             # It's an ESP-IDF project
             is_esp_idf_project = True
@@ -139,18 +141,19 @@ def cmd_flash(
                     json_mode=json_mode
                 )
                 return 1
-            
+
             # Use auto-detected chip if --chip not explicitly provided
             if chip is None and project_info.get("chip"):
                 chip = project_info["chip"]
                 logger.info("Auto-detected chip type: %s", chip)
-        else:
-            # Directory exists but not an ESP-IDF project
+        elif chip is None:
+            # Directory exists but not an ESP-IDF project and no chip specified
             _print(
                 {"error": "Directory is not an ESP-IDF project (no sdkconfig or build/flash_args found)"},
                 json_mode=json_mode
             )
             return 1
+        # else: chip is specified (e.g. Zephyr target) — directory is a build dir, proceed
     
     # If chip is still None, return appropriate error
     if chip is None:

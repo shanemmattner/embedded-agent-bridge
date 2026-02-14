@@ -65,7 +65,7 @@ def cmd_start(
         log_max_size_mb: Max log file size in MB before rotation.
         log_max_files: Max rotated log files to keep.
         log_compress: Whether to gzip rotated log files.
-        device_name: Per-device session name (empty for legacy global mode).
+        device_name: Per-device session name (default: "default").
 
     Returns:
         Exit code: 0 on success, 1 if daemon already running (without --force).
@@ -152,12 +152,9 @@ def cmd_start(
     if device_name:
         args.extend(["--device-name", device_name])
 
-    if device_name:
-        log_path = os.path.join(base_dir, "daemon.log")
-        err_path = os.path.join(base_dir, "daemon.err")
-    else:
-        log_path = "/tmp/eab-daemon.log"
-        err_path = "/tmp/eab-daemon.err"
+    os.makedirs(base_dir, exist_ok=True)
+    log_path = os.path.join(base_dir, "daemon.log")
+    err_path = os.path.join(base_dir, "daemon.err")
 
     daemon_cwd = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = dict(os.environ)
@@ -293,7 +290,7 @@ def cmd_resume(*, base_dir: str, json_mode: bool) -> int:
     return 0
 
 
-def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
+def cmd_diagnose(*, base_dir: str, json_mode: bool, device_name: str = "default") -> int:
     """Run health checks on the daemon and device, with recommendations.
 
     Inspects the singleton PID, ``status.json``, connection state, and
@@ -302,11 +299,12 @@ def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
     Args:
         base_dir: Session directory for daemon state files.
         json_mode: Emit machine-parseable JSON output.
+        device_name: Device name to check.
 
     Returns:
         Exit code: 0 if all checks pass, 1 otherwise.
     """
-    existing = check_singleton()  # Legacy check for diagnose
+    existing = check_singleton(device_name=device_name)
     status_path = os.path.join(base_dir, "status.json")
 
     checks: list[dict[str, str]] = []

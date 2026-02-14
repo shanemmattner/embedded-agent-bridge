@@ -191,16 +191,10 @@ class TestDaemonPatternResetIntegration:
         """Daemon should call reset_counts() on PatternMatcher when starting a session."""
         import eab.daemon as daemon_mod
         from eab.mocks import MockSerialPort, MockClock, MockLogger
-        import eab.singleton
         import eab.port_lock
 
         # Isolate singleton and locks
-        monkeypatch.setattr(
-            eab.singleton.SingletonDaemon, "PID_FILE", str(tmp_path / "eab-daemon.pid")
-        )
-        monkeypatch.setattr(
-            eab.singleton.SingletonDaemon, "INFO_FILE", str(tmp_path / "eab-daemon.info")
-        )
+        monkeypatch.setenv("EAB_RUN_DIR", str(tmp_path))
         monkeypatch.setattr(eab.port_lock.PortLock, "LOCK_DIR", str(tmp_path / "locks"))
 
         # Avoid external tooling
@@ -246,16 +240,10 @@ class TestDaemonPatternResetIntegration:
         """Pattern counts should be fresh when daemon is stopped and restarted."""
         import eab.daemon as daemon_mod
         from eab.mocks import MockSerialPort, MockClock, MockLogger
-        import eab.singleton
         import eab.port_lock
 
         # Isolate singleton and locks
-        monkeypatch.setattr(
-            eab.singleton.SingletonDaemon, "PID_FILE", str(tmp_path / "eab-daemon.pid")
-        )
-        monkeypatch.setattr(
-            eab.singleton.SingletonDaemon, "INFO_FILE", str(tmp_path / "eab-daemon.info")
-        )
+        monkeypatch.setenv("EAB_RUN_DIR", str(tmp_path))
         monkeypatch.setattr(eab.port_lock.PortLock, "LOCK_DIR", str(tmp_path / "locks"))
 
         # Avoid external tooling
@@ -332,17 +320,11 @@ class TestDaemonPatternResetIntegration:
         """status.json patterns field should be empty after daemon start."""
         import eab.daemon as daemon_mod
         from eab.mocks import MockSerialPort, MockClock, MockLogger
-        import eab.singleton
         import eab.port_lock
         import json
 
         # Isolate singleton and locks
-        monkeypatch.setattr(
-            eab.singleton.SingletonDaemon, "PID_FILE", str(tmp_path / "eab-daemon.pid")
-        )
-        monkeypatch.setattr(
-            eab.singleton.SingletonDaemon, "INFO_FILE", str(tmp_path / "eab-daemon.info")
-        )
+        monkeypatch.setenv("EAB_RUN_DIR", str(tmp_path))
         monkeypatch.setattr(eab.port_lock.PortLock, "LOCK_DIR", str(tmp_path / "locks"))
 
         # Avoid external tooling

@@ -295,7 +295,7 @@ def run_plotter(
     use_direct_rtt = log_path is None and device is not None
 
     if use_direct_rtt and base_dir is None:
-        base_dir = "/tmp/eab-session"
+        base_dir = "/tmp/eab-devices/default"
 
     async def _main():
         queue: asyncio.Queue = asyncio.Queue(maxsize=1000)

@@ -53,7 +53,7 @@ west flash
 # 1. Start RTT to see thread output
 python3 -c "
 from eab.jlink_bridge import JLinkBridge
-b = JLinkBridge('/tmp/eab-session')
+b = JLinkBridge('/tmp/eab-devices/default')
 b.start_rtt(device='NRF5340_XXAA_APP')
 "
 

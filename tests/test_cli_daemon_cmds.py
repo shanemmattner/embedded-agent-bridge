@@ -214,7 +214,7 @@ class TestCmdStartSessionCleanup:
         import builtins
         original_open = builtins.open
         def mock_open(path, *args, **kwargs):
-            if path in ["/tmp/eab-daemon.log", "/tmp/eab-daemon.err"]:
+            if path.endswith(("daemon.log", "daemon.err")):
                 import io
                 return io.StringIO()
             return original_open(path, *args, **kwargs)
@@ -296,7 +296,7 @@ class TestCmdStartSessionCleanup:
         import builtins
         original_open = builtins.open
         def mock_open(path, *args, **kwargs):
-            if path in ["/tmp/eab-daemon.log", "/tmp/eab-daemon.err"]:
+            if path.endswith(("daemon.log", "daemon.err")):
                 import io
                 return io.StringIO()
             return original_open(path, *args, **kwargs)

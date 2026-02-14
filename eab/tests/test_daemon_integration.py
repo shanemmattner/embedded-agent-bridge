@@ -34,14 +34,8 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 def _isolate_singleton_and_locks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import eab.port_lock
-    import eab.singleton
 
-    monkeypatch.setattr(
-        eab.singleton.SingletonDaemon, "PID_FILE", str(tmp_path / "eab-daemon.pid")
-    )
-    monkeypatch.setattr(
-        eab.singleton.SingletonDaemon, "INFO_FILE", str(tmp_path / "eab-daemon.info")
-    )
+    monkeypatch.setenv("EAB_RUN_DIR", str(tmp_path))
     monkeypatch.setattr(eab.port_lock.PortLock, "LOCK_DIR", str(tmp_path / "locks"))
 
 
@@ -236,13 +230,17 @@ def test_main_cmd_and_pause_write_files(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test___main___executes_daemon_main(monkeypatch: pytest.MonkeyPatch):
-    import eab.daemon as daemon_mod
-
     called = {"ok": False}
 
     def fake_main() -> None:
         called["ok"] = True
 
-    monkeypatch.setattr(daemon_mod, "main", fake_main)
-    runpy.run_module("eab.__main__", run_name="__main__")
+    # Patch at the source so runpy's fresh import picks it up.
+    monkeypatch.setattr("eab.daemon.main", fake_main)
+    # Remove cached __main__ so runpy re-executes it with the patched main.
+    monkeypatch.delitem(sys.modules, "eab.__main__", raising=False)
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_module("eab.__main__", run_name="__main__")
+    # fake_main returns None → sys.exit(None) → code 0
+    assert exc_info.value.code is None
     assert called["ok"] is True

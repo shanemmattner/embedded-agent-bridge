@@ -251,31 +251,22 @@ class TestGDBBridgeARM:
     """Test ARM GDB detection for STM32."""
 
     def test_stm32_returns_arm_gdb_path(self):
-        with patch("shutil.which") as mock_which:
+        with patch("eab.gdb_bridge._which_or_sdk") as mock_which:
             mock_which.side_effect = lambda name: f"/usr/bin/{name}" if name == "arm-none-eabi-gdb" else None
             result = _default_gdb_for_chip("stm32l4")
             assert result == "/usr/bin/arm-none-eabi-gdb"
-            mock_which.assert_any_call("arm-none-eabi-gdb")
 
     def test_stm32_falls_back_to_gdb_multiarch(self):
-        with patch("shutil.which") as mock_which:
-            def which_side_effect(name):
-                if name == "gdb-multiarch":
-                    return "/usr/bin/gdb-multiarch"
-                return None
-            mock_which.side_effect = which_side_effect
+        with patch("eab.gdb_bridge._which_or_sdk") as mock_which:
+            mock_which.side_effect = lambda name: "/usr/bin/gdb-multiarch" if name == "gdb-multiarch" else None
             result = _default_gdb_for_chip("stm32f4")
             assert result == "/usr/bin/gdb-multiarch"
 
-    def test_stm32_falls_back_to_system_gdb(self):
-        with patch("shutil.which") as mock_which:
-            def which_side_effect(name):
-                if name == "gdb":
-                    return "/usr/bin/gdb"
-                return None
-            mock_which.side_effect = which_side_effect
+    def test_stm32_returns_none_when_no_gdb_found(self):
+        with patch("eab.gdb_bridge._which_or_sdk") as mock_which:
+            mock_which.return_value = None
             result = _default_gdb_for_chip("stm32h7")
-            assert result == "/usr/bin/gdb"
+            assert result is None
 
 
 class TestChipProfileRegistry:

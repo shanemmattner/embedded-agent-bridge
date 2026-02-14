@@ -61,7 +61,7 @@ west flash
 # Start RTT bridge
 python3 -c "
 from eab.jlink_bridge import JLinkBridge
-bridge = JLinkBridge('/tmp/eab-session')
+bridge = JLinkBridge('/tmp/eab-devices/default')
 st = bridge.start_rtt(device='NRF5340_XXAA_APP')
 print(f'RTT running: {st.running}, channels: {st.num_up_channels}')
 input('Press Enter to stop...')
@@ -69,9 +69,9 @@ bridge.stop_rtt()
 "
 
 # Output files:
-#   /tmp/eab-session/rtt.log   — cleaned text log
-#   /tmp/eab-session/rtt.csv   — DATA records as CSV
-#   /tmp/eab-session/rtt.jsonl — structured JSON records
+#   /tmp/eab-devices/default/rtt.log   — cleaned text log
+#   /tmp/eab-devices/default/rtt.csv   — DATA records as CSV
+#   /tmp/eab-devices/default/rtt.jsonl — structured JSON records
 ```
 
 ### Fault analysis (nRF5340 — J-Link)
@@ -184,7 +184,7 @@ eabctl tail 50
 # Terminal 4: nRF5340 RTT (aggregated DATA)
 python3 -c "
 from eab.jlink_bridge import JLinkBridge
-bridge = JLinkBridge('/tmp/eab-session')
+bridge = JLinkBridge('/tmp/eab-devices/default')
 bridge.start_rtt(device='NRF5340_XXAA_APP')
 "
 ```

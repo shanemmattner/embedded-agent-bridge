@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from eab.chips.esp32 import ESP32Profile
-from eab.cli.flash_cmds import cmd_flash
+from eab.cli.flash import cmd_flash
 
 
 def test_detect_esp_idf_project_with_valid_built_project(tmp_path: Path):
@@ -130,7 +130,7 @@ def test_cmd_flash_with_esp_idf_project_auto_detects_chip(tmp_path: Path, capsys
     mock_result.stdout = "Flash successful"
     mock_result.stderr = ""
     
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("eab.cli.flash._execute.subprocess.run", return_value=mock_result) as mock_run:
         result = cmd_flash(
             firmware=str(project_dir),
             chip=None,  # No chip specified, should auto-detect
@@ -193,7 +193,7 @@ def test_cmd_flash_with_esp_idf_project_explicit_chip_override(tmp_path: Path, c
     mock_result.stdout = "Flash successful"
     mock_result.stderr = ""
     
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("eab.cli.flash._execute.subprocess.run", return_value=mock_result) as mock_run:
         result = cmd_flash(
             firmware=str(project_dir),
             chip="esp32s3",  # Explicit override
@@ -332,7 +332,7 @@ def test_cmd_flash_with_binary_file_and_chip_still_works(tmp_path: Path, capsys)
     mock_result.stdout = "Flash successful"
     mock_result.stderr = ""
     
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("eab.cli.flash._execute.subprocess.run", return_value=mock_result) as mock_run:
         result = cmd_flash(
             firmware=str(firmware_bin),
             chip="esp32c6",  # Explicit chip
@@ -456,7 +456,7 @@ def test_cmd_flash_with_no_stub_flag(tmp_path: Path, capsys):
     mock_result.stdout = "Flash successful"
     mock_result.stderr = ""
     
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("eab.cli.flash._execute.subprocess.run", return_value=mock_result) as mock_run:
         result = cmd_flash(
             firmware=str(firmware_bin),
             chip="esp32c6",
@@ -500,7 +500,7 @@ def test_cmd_flash_no_stub_in_json_output(tmp_path: Path, capsys):
     mock_result.stdout = "Flash successful"
     mock_result.stderr = ""
     
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("eab.cli.flash._execute.subprocess.run", return_value=mock_result) as mock_run:
         # Test with no_stub=True
         result = cmd_flash(
             firmware=str(firmware_bin),
@@ -523,7 +523,7 @@ def test_cmd_flash_no_stub_in_json_output(tmp_path: Path, capsys):
     assert output["no_stub"] is True
     
     # Test with no_stub=False (default)
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("eab.cli.flash._execute.subprocess.run", return_value=mock_result) as mock_run:
         result = cmd_flash(
             firmware=str(firmware_bin),
             chip="esp32c6",
@@ -558,7 +558,7 @@ def test_cmd_flash_with_extra_esptool_args(tmp_path: Path, capsys):
     
     extra_args = ["--no-compress", "--verify"]
     
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("eab.cli.flash._execute.subprocess.run", return_value=mock_result) as mock_run:
         result = cmd_flash(
             firmware=str(firmware_bin),
             chip="esp32c6",
@@ -604,7 +604,7 @@ def test_cmd_flash_with_no_stub_and_extra_args_together(tmp_path: Path, capsys):
     
     extra_args = ["--verify"]
     
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("eab.cli.flash._execute.subprocess.run", return_value=mock_result) as mock_run:
         result = cmd_flash(
             firmware=str(firmware_bin),
             chip="esp32c6",

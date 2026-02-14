@@ -14,7 +14,7 @@ import pytest
 
 from eab.chips.zephyr import ZephyrProfile
 from eab.chips.base import FlashCommand
-from eab.cli.flash_cmds import cmd_reset
+from eab.cli.flash import cmd_reset
 
 
 # =============================================================================
@@ -146,8 +146,8 @@ class TestCmdResetIntegration:
         mock_result.stdout = "Resetting device\nDevice reset successful"
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.flash_cmds._print") as mock_print:
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="nrf5340",
                     method="hard",
@@ -175,8 +175,8 @@ class TestCmdResetIntegration:
         mock_result.stdout = "Reset complete"
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.flash_cmds._print"):
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
+            with patch("eab.cli.helpers._print"):
                 result = cmd_reset(
                     chip="nrf52840",
                     method="hard",
@@ -197,8 +197,8 @@ class TestCmdResetIntegration:
         mock_result.stdout = "Open On-Chip Debugger 0.12.0\ntarget halted\nshutdown command invoked"
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.flash_cmds._print") as mock_print:
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="mcxn947",
                     method="hard",
@@ -225,8 +225,8 @@ class TestCmdResetIntegration:
         mock_result.stdout = "J-Link Commander\nReset OK\nExit"
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.flash_cmds._print") as mock_print:
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="rp2040",
                     method="hard",
@@ -251,8 +251,8 @@ class TestCmdResetIntegration:
 
     def test_reset_nrfjprog_not_found(self):
         """Should return error when nrfjprog not found."""
-        with patch("subprocess.run", side_effect=FileNotFoundError("nrfjprog not found")):
-            with patch("eab.cli.flash_cmds._print") as mock_print:
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", side_effect=FileNotFoundError("nrfjprog not found")):
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="nrf5340",
                     method="hard",
@@ -270,8 +270,8 @@ class TestCmdResetIntegration:
         """Should handle timeout gracefully."""
         import subprocess
         
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("nrfjprog", 30)):
-            with patch("eab.cli.flash_cmds._print") as mock_print:
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", side_effect=subprocess.TimeoutExpired("nrfjprog", 30)):
+            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
                 result = cmd_reset(
                     chip="nrf5340",
                     method="hard",
@@ -287,7 +287,7 @@ class TestCmdResetIntegration:
 
     def test_reset_invalid_chip(self):
         """Should return error code 2 for invalid chip."""
-        with patch("eab.cli.flash_cmds._print") as mock_print:
+        with patch("eab.cli.flash.reset_cmd._print") as mock_print:
             result = cmd_reset(
                 chip="invalid_chip_xyz",
                 method="hard",
@@ -308,8 +308,8 @@ class TestCmdResetIntegration:
         mock_result.stdout = "st-flash reset\nReset complete"
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.flash_cmds._print"):
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
+            with patch("eab.cli.helpers._print"):
                 result = cmd_reset(
                     chip="stm32l4",
                     method="hard",
@@ -402,7 +402,7 @@ class TestResetCLIIntegration:
         mock_result.stdout = "Reset OK"
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result):
             with patch("eab.cli._print"):
                 from eab.cli import main
                 result = main([
@@ -420,7 +420,7 @@ class TestResetCLIIntegration:
         mock_result.stdout = "OpenOCD reset successful"
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result):
             with patch("eab.cli._print"):
                 from eab.cli import main
                 result = main([
@@ -437,7 +437,7 @@ class TestResetCLIIntegration:
         mock_result.stdout = "J-Link reset OK"
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result):
             with patch("eab.cli._print"):
                 from eab.cli import main
                 result = main([
@@ -505,8 +505,8 @@ class TestResetEdgeCases:
                 script_path_holder.append(cmd_list[idx + 1])
             return mock_result
         
-        with patch("subprocess.run", side_effect=capture_script_path):
-            with patch("eab.cli.flash_cmds._print"):
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", side_effect=capture_script_path):
+            with patch("eab.cli.helpers._print"):
                 result = cmd_reset(
                     chip="rp2040",
                     method="hard",
@@ -531,8 +531,8 @@ class TestResetEdgeCases:
                 script_path_holder.append(cmd_list[idx + 1])
             raise FileNotFoundError("JLinkExe not found")
         
-        with patch("subprocess.run", side_effect=capture_and_fail):
-            with patch("eab.cli.flash_cmds._print"):
+        with patch("eab.cli.flash.reset_cmd.subprocess.run", side_effect=capture_and_fail):
+            with patch("eab.cli.helpers._print"):
                 result = cmd_reset(
                     chip="rp2040",
                     method="hard",

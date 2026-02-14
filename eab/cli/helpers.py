@@ -8,7 +8,7 @@ import re
 import time
 from typing import Any, Optional
 
-from eab.singleton import check_singleton
+from eab.singleton import check_singleton, list_devices, DEFAULT_DEVICES_DIR
 
 DEFAULT_BASE_DIR = "/tmp/eab-session"
 
@@ -28,9 +28,28 @@ def _print(obj: Any, *, json_mode: bool) -> None:
             print(json.dumps(obj, indent=2, sort_keys=True))
 
 
-def _resolve_base_dir(override: Optional[str]) -> str:
+def _resolve_base_dir(override: Optional[str], device: Optional[str] = None) -> str:
+    """Resolve session base directory.
+
+    Priority:
+    1. Explicit --base-dir override
+    2. --device name → /tmp/eab-devices/<name>/
+    3. Single running device in /tmp/eab-devices/ → use it
+    4. Legacy global singleton → its base_dir
+    5. Default /tmp/eab-session/
+    """
     if override:
         return override
+    if device:
+        return os.path.join(DEFAULT_DEVICES_DIR, device)
+
+    # Auto-detect: check for a single running device
+    devices = list_devices()
+    running = [d for d in devices if d.is_alive]
+    if len(running) == 1:
+        return running[0].base_dir
+
+    # Fall back to legacy global singleton
     existing = check_singleton()
     if existing and existing.is_alive and existing.base_dir and existing.base_dir != "unknown":
         return existing.base_dir

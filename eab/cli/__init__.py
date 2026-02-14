@@ -9,7 +9,10 @@ from eab.cli.serial_cmds import (
     cmd_status, cmd_tail, cmd_alerts, cmd_events, cmd_send,
     cmd_wait, cmd_wait_event, cmd_capture_between,
 )
-from eab.cli.daemon_cmds import cmd_start, cmd_stop, cmd_pause, cmd_resume, cmd_diagnose
+from eab.cli.daemon_cmds import (
+    cmd_start, cmd_stop, cmd_pause, cmd_resume, cmd_diagnose,
+    cmd_devices, cmd_device_add, cmd_device_remove,
+)
 from eab.cli.flash_cmds import cmd_flash, cmd_erase, cmd_reset, cmd_chip_info, cmd_preflight_hw
 from eab.cli.debug_cmds import (
     cmd_openocd_status, cmd_openocd_start, cmd_openocd_stop, cmd_openocd_cmd,

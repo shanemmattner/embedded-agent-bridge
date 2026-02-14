@@ -10,7 +10,10 @@ import sys
 import time
 from typing import Any, Optional
 
-from eab.singleton import check_singleton, kill_existing_daemon
+from eab.singleton import (
+    check_singleton, kill_existing_daemon, list_devices,
+    register_device, unregister_device, DEFAULT_DEVICES_DIR,
+)
 from eab.port_lock import list_all_locks, cleanup_dead_locks
 
 from eab.cli.helpers import (
@@ -48,6 +51,7 @@ def cmd_start(
     log_max_size_mb: int = 100,
     log_max_files: int = 5,
     log_compress: bool = True,
+    device_name: str = "",
 ) -> int:
     """Start the EAB daemon in the background.
 
@@ -64,19 +68,19 @@ def cmd_start(
     Returns:
         Exit code: 0 on success, 1 if daemon already running (without --force).
     """
-    existing = check_singleton()
+    existing = check_singleton(device_name=device_name)
     if existing and existing.is_alive:
         if not force:
             payload = {
                 "schema_version": 1,
                 "timestamp": _now_iso(),
                 "started": False,
-                "message": "Daemon already running",
+                "message": f"Daemon already running{' for ' + device_name if device_name else ''}",
                 "pid": existing.pid,
             }
             _print(payload, json_mode=json_mode)
             return 1
-        kill_existing_daemon()
+        kill_existing_daemon(device_name=device_name)
 
     if force:
         # Best-effort: kill any other EAB instances still holding port locks (covers cases where
@@ -142,9 +146,16 @@ def cmd_start(
     ]
     if not log_compress:
         args.append("--no-log-compress")
+    if device_name:
+        args.extend(["--device-name", device_name])
 
-    log_path = "/tmp/eab-daemon.log"
-    err_path = "/tmp/eab-daemon.err"
+    if device_name:
+        os.makedirs(base_dir, exist_ok=True)
+        log_path = os.path.join(base_dir, "daemon.log")
+        err_path = os.path.join(base_dir, "daemon.err")
+    else:
+        log_path = "/tmp/eab-daemon.log"
+        err_path = "/tmp/eab-daemon.err"
 
     daemon_cwd = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = dict(os.environ)
@@ -187,7 +198,7 @@ def cmd_start(
     return 0
 
 
-def cmd_stop(*, json_mode: bool) -> int:
+def cmd_stop(*, json_mode: bool, device_name: str = "") -> int:
     """Stop the running EAB daemon.
 
     Sends SIGTERM (then SIGKILL) to the daemon process found via the
@@ -195,22 +206,23 @@ def cmd_stop(*, json_mode: bool) -> int:
 
     Args:
         json_mode: Emit machine-parseable JSON output.
+        device_name: If set, stop the per-device daemon.
 
     Returns:
         Exit code: 0 on success, 1 if daemon not running or kill failed.
     """
-    existing = check_singleton()
+    existing = check_singleton(device_name=device_name)
     if not existing or not existing.is_alive:
         payload = {
             "schema_version": 1,
             "timestamp": _now_iso(),
             "stopped": False,
-            "message": "Daemon not running",
+            "message": f"Daemon not running{' for ' + device_name if device_name else ''}",
         }
         _print(payload, json_mode=json_mode)
         return 1
 
-    ok = kill_existing_daemon()
+    ok = kill_existing_daemon(device_name=device_name)
     payload = {
         "schema_version": 1,
         "timestamp": _now_iso(),
@@ -291,7 +303,7 @@ def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
     Returns:
         Exit code: 0 if all checks pass, 1 otherwise.
     """
-    existing = check_singleton()
+    existing = check_singleton()  # Legacy check for diagnose
     status_path = os.path.join(base_dir, "status.json")
 
     checks: list[dict[str, str]] = []
@@ -361,3 +373,111 @@ def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:
     }
     _print(payload, json_mode=json_mode)
     return 0 if healthy else 1
+
+
+def cmd_devices(*, json_mode: bool) -> int:
+    """List all registered devices and their status.
+
+    Args:
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: always 0.
+    """
+    devices = list_devices()
+
+    if json_mode:
+        payload = {
+            "schema_version": 1,
+            "timestamp": _now_iso(),
+            "devices": [
+                {
+                    "name": d.device_name,
+                    "type": d.device_type,
+                    "chip": d.chip,
+                    "status": "running" if d.is_alive else "stopped",
+                    "pid": d.pid,
+                    "port": d.port,
+                    "base_dir": d.base_dir,
+                    "started": d.started,
+                }
+                for d in devices
+            ],
+        }
+        _print(payload, json_mode=True)
+    else:
+        if not devices:
+            print("No devices registered. Use: eabctl device add <name> --type debug --chip <chip>")
+        else:
+            for d in devices:
+                status = "running" if d.is_alive else "stopped"
+                chip_str = f" ({d.chip})" if d.chip else ""
+                port_str = f" port={d.port}" if d.port else ""
+                pid_str = f" pid={d.pid}" if d.pid else ""
+                print(f"  {d.device_name:<16} {d.device_type:<8} {status:<10}{chip_str}{port_str}{pid_str}")
+
+    return 0
+
+
+def cmd_device_add(*, name: str, device_type: str, chip: str, json_mode: bool) -> int:
+    """Register a new device.
+
+    Args:
+        name: Device name (e.g., 'nrf5340').
+        device_type: 'serial' or 'debug'.
+        chip: Chip identifier.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success.
+    """
+    device_dir = register_device(name, device_type=device_type, chip=chip)
+    payload = {
+        "schema_version": 1,
+        "timestamp": _now_iso(),
+        "registered": True,
+        "name": name,
+        "type": device_type,
+        "chip": chip,
+        "base_dir": device_dir,
+    }
+    _print(payload, json_mode=json_mode)
+    return 0
+
+
+def cmd_device_remove(*, name: str, json_mode: bool) -> int:
+    """Unregister a device.
+
+    Args:
+        name: Device name to remove.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        Exit code: 0 on success, 1 if device not found or daemon running.
+    """
+    ok = unregister_device(name)
+    if ok:
+        payload = {
+            "schema_version": 1,
+            "timestamp": _now_iso(),
+            "removed": True,
+            "name": name,
+        }
+        _print(payload, json_mode=json_mode)
+        return 0
+    else:
+        # Check if daemon is running
+        existing = check_singleton(device_name=name)
+        if existing and existing.is_alive:
+            msg = f"Cannot remove '{name}': daemon still running (PID {existing.pid}). Stop it first."
+        else:
+            msg = f"Device '{name}' not found"
+        payload = {
+            "schema_version": 1,
+            "timestamp": _now_iso(),
+            "removed": False,
+            "name": name,
+            "message": msg,
+        }
+        _print(payload, json_mode=json_mode)
+        return 1

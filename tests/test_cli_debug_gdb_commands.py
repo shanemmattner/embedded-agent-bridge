@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from eab.cli.debug_cmds import (
+from eab.cli.debug import (
     cmd_gdb_script,
     cmd_inspect,
     cmd_threads,
@@ -28,8 +28,8 @@ from eab.gdb_bridge import GDBResult
 class TestCmdGdbScript:
     """Tests for cmd_gdb_script() function."""
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.gdb_cmds.run_gdb_python")
     def test_successful_execution_jlink(self, mock_run_gdb, mock_get_probe, tmp_path, capsys):
         """cmd_gdb_script should execute script via J-Link probe and return result."""
         # Create test script
@@ -84,8 +84,8 @@ class TestCmdGdbScript:
         assert output["result"]["status"] == "ok"
         assert output["result"]["data"] == [1, 2, 3]
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.gdb_cmds.run_gdb_python")
     def test_gdb_server_start_failure(self, mock_run_gdb, mock_get_probe, tmp_path, capsys):
         """cmd_gdb_script should return error if GDB server fails to start."""
         script = tmp_path / "test.py"
@@ -117,9 +117,9 @@ class TestCmdGdbScript:
         assert output["success"] is False
         assert "Failed to start GDB server" in output["error"]
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
-    @patch("eab.cli.debug_cmds.ZephyrProfile")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.gdb_cmds.run_gdb_python")
+    @patch("eab.cli.debug._helpers.ZephyrProfile")
     def test_openocd_probe_type(self, mock_profile, mock_run_gdb, mock_get_probe, tmp_path):
         """cmd_gdb_script should configure OpenOCD probe correctly."""
         script = tmp_path / "test.py"
@@ -169,8 +169,8 @@ class TestCmdGdbScript:
         assert probe_kwargs["target_cfg"] == "target/nrf5340.cfg"
         assert probe_kwargs["transport"] == "swd"
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.gdb_cmds.run_gdb_python")
     def test_custom_port_override(self, mock_run_gdb, mock_get_probe, tmp_path):
         """cmd_gdb_script should use custom port when provided."""
         script = tmp_path / "test.py"
@@ -210,9 +210,9 @@ class TestCmdGdbScript:
 class TestCmdInspect:
     """Tests for cmd_inspect() function."""
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
-    @patch("eab.cli.debug_cmds.generate_struct_inspector")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.inspection_cmds.run_gdb_python")
+    @patch("eab.cli.debug.inspection_cmds.generate_struct_inspector")
     def test_inspect_variable(self, mock_gen_script, mock_run_gdb, mock_get_probe, capsys):
         """cmd_inspect should generate inspector script and execute it."""
         mock_gen_script.return_value = "# generated script"
@@ -266,9 +266,9 @@ class TestCmdInspect:
 class TestCmdThreads:
     """Tests for cmd_threads() function."""
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
-    @patch("eab.cli.debug_cmds.generate_thread_inspector")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.inspection_cmds.run_gdb_python")
+    @patch("eab.cli.debug.inspection_cmds.generate_thread_inspector")
     def test_list_threads_zephyr(self, mock_gen_script, mock_run_gdb, mock_get_probe, capsys):
         """cmd_threads should generate thread inspector for Zephyr RTOS."""
         mock_gen_script.return_value = "# thread inspector"
@@ -324,9 +324,9 @@ class TestCmdThreads:
 class TestCmdWatch:
     """Tests for cmd_watch() function."""
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
-    @patch("eab.cli.debug_cmds.generate_watchpoint_logger")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.inspection_cmds.run_gdb_python")
+    @patch("eab.cli.debug.inspection_cmds.generate_watchpoint_logger")
     def test_watch_variable(self, mock_gen_script, mock_run_gdb, mock_get_probe, capsys):
         """cmd_watch should generate watchpoint logger and capture hits."""
         mock_gen_script.return_value = "# watchpoint logger"
@@ -385,9 +385,9 @@ class TestCmdWatch:
 class TestCmdMemdump:
     """Tests for cmd_memdump() function."""
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
-    @patch("eab.cli.debug_cmds.generate_memory_dump_script")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.inspection_cmds.run_gdb_python")
+    @patch("eab.cli.debug.inspection_cmds.generate_memory_dump_script")
     def test_dump_memory_region(self, mock_gen_script, mock_run_gdb, mock_get_probe, capsys):
         """cmd_memdump should generate memory dump script and execute it."""
         mock_gen_script.return_value = "# memory dump"
@@ -442,7 +442,7 @@ class TestCmdMemdump:
         assert output["size"] == 1024
         assert output["bytes_written"] == 1024
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
     def test_invalid_address_format(self, mock_get_probe, capsys):
         """cmd_memdump should return error for invalid address format."""
         result = cmd_memdump(
@@ -465,9 +465,9 @@ class TestCmdMemdump:
         assert output["success"] is False
         assert "Invalid address" in output["error"]
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
-    @patch("eab.cli.debug_cmds.generate_memory_dump_script")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.inspection_cmds.run_gdb_python")
+    @patch("eab.cli.debug.inspection_cmds.generate_memory_dump_script")
     def test_decimal_address(self, mock_gen_script, mock_run_gdb, mock_get_probe):
         """cmd_memdump should accept decimal addresses."""
         mock_gen_script.return_value = "# memory dump"
@@ -512,8 +512,8 @@ class TestCmdMemdump:
 class TestProbeCleanup:
     """Test that all commands properly clean up probe resources."""
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.gdb_cmds.run_gdb_python")
     def test_probe_stopped_on_success(self, mock_run_gdb, mock_get_probe, tmp_path):
         """Probe should be stopped even when command succeeds."""
         script = tmp_path / "test.py"
@@ -545,8 +545,8 @@ class TestProbeCleanup:
 
         mock_probe.stop_gdb_server.assert_called_once()
 
-    @patch("eab.cli.debug_cmds.get_debug_probe")
-    @patch("eab.cli.debug_cmds.run_gdb_python")
+    @patch("eab.cli.debug._helpers.get_debug_probe")
+    @patch("eab.cli.debug.gdb_cmds.run_gdb_python")
     def test_probe_stopped_on_gdb_failure(self, mock_run_gdb, mock_get_probe, tmp_path):
         """Probe should be stopped even when GDB fails."""
         script = tmp_path / "test.py"

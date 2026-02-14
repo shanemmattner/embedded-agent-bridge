@@ -51,6 +51,9 @@ eabctl = "eab.control:main"
 [project.urls]
 Homepage = "https://github.com/shanemmattner/embedded-agent-bridge"
 Repository = "https://github.com/shanemmattner/embedded-agent-bridge"
+Issues = "https://github.com/shanemmattner/embedded-agent-bridge/issues"
+Changelog = "https://github.com/shanemmattner/embedded-agent-bridge/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/shanemmattner/embedded-agent-bridge#readme"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -67,3 +70,14 @@ addopts = "-v --tb=short"
 [tool.coverage.run]
 source = ["eab"]
 omit = ["eab/tests/*", "*/tests/*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["eab"]

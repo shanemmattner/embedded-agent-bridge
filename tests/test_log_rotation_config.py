@@ -3,7 +3,7 @@
 from unittest.mock import Mock, MagicMock, patch
 from eab.session_logger import SessionLogger, LogRotationConfig
 from eab.daemon import SerialDaemon
-from eab.cli.daemon_cmds import cmd_start
+from eab.cli.daemon import cmd_start
 from eab.cli import main as cli_main
 
 
@@ -151,9 +151,9 @@ class TestSerialDaemonRotationConfig:
 class TestCLIDaemonCmds:
     """Test CLI daemon commands pass rotation config."""
 
-    @patch('eab.cli.daemon_cmds.check_singleton')
-    @patch('eab.cli.daemon_cmds.subprocess.Popen')
-    @patch('eab.cli.daemon_cmds.os.makedirs')
+    @patch('eab.cli.daemon.lifecycle_cmds.check_singleton')
+    @patch('eab.cli.daemon.lifecycle_cmds.subprocess.Popen')
+    @patch('eab.cli.daemon.lifecycle_cmds.os.makedirs')
     @patch('builtins.open', new_callable=MagicMock)
     def test_cmd_start_default_rotation_args(self, mock_open, mock_makedirs, mock_popen, mock_singleton):
         """Test cmd_start passes default rotation args to daemon."""
@@ -180,9 +180,9 @@ class TestCLIDaemonCmds:
         # Should NOT have --no-log-compress (compress is True by default)
         assert "--no-log-compress" not in args
 
-    @patch('eab.cli.daemon_cmds.check_singleton')
-    @patch('eab.cli.daemon_cmds.subprocess.Popen')
-    @patch('eab.cli.daemon_cmds.os.makedirs')
+    @patch('eab.cli.daemon.lifecycle_cmds.check_singleton')
+    @patch('eab.cli.daemon.lifecycle_cmds.subprocess.Popen')
+    @patch('eab.cli.daemon.lifecycle_cmds.os.makedirs')
     @patch('builtins.open', new_callable=MagicMock)
     def test_cmd_start_custom_rotation_args(self, mock_open, mock_makedirs, mock_popen, mock_singleton):
         """Test cmd_start passes custom rotation args to daemon."""
@@ -210,9 +210,9 @@ class TestCLIDaemonCmds:
         assert "10" in args
         assert "--no-log-compress" in args
 
-    @patch('eab.cli.daemon_cmds.check_singleton')
-    @patch('eab.cli.daemon_cmds.subprocess.Popen')
-    @patch('eab.cli.daemon_cmds.os.makedirs')
+    @patch('eab.cli.daemon.lifecycle_cmds.check_singleton')
+    @patch('eab.cli.daemon.lifecycle_cmds.subprocess.Popen')
+    @patch('eab.cli.daemon.lifecycle_cmds.os.makedirs')
     @patch('builtins.open', new_callable=MagicMock)
     def test_cmd_start_compress_enabled(self, mock_open, mock_makedirs, mock_popen, mock_singleton):
         """Test cmd_start does NOT add --no-log-compress when compression is enabled."""

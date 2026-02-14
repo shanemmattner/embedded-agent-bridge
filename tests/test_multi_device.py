@@ -160,7 +160,7 @@ class TestBaseDirResolution:
 class TestCLIDeviceCommands:
     def test_devices_empty_json(self, tmp_devices_dir, capsys):
         """eabctl devices --json returns empty list."""
-        from eab.cli.daemon_cmds import cmd_devices
+        from eab.cli.daemon import cmd_devices
         rc = cmd_devices(json_mode=True)
         assert rc == 0
         output = json.loads(capsys.readouterr().out)
@@ -168,7 +168,7 @@ class TestCLIDeviceCommands:
 
     def test_device_add_json(self, tmp_devices_dir, capsys):
         """eabctl device add creates device and returns JSON."""
-        from eab.cli.daemon_cmds import cmd_device_add
+        from eab.cli.daemon import cmd_device_add
         rc = cmd_device_add(name="nrf5340", device_type="debug", chip="nrf5340", json_mode=True)
         assert rc == 0
         output = json.loads(capsys.readouterr().out)
@@ -177,7 +177,7 @@ class TestCLIDeviceCommands:
 
     def test_device_add_then_list(self, tmp_devices_dir, capsys):
         """After adding devices, devices command lists them."""
-        from eab.cli.daemon_cmds import cmd_device_add, cmd_devices
+        from eab.cli.daemon import cmd_device_add, cmd_devices
 
         cmd_device_add(name="nrf5340", device_type="debug", chip="nrf5340", json_mode=True)
         capsys.readouterr()  # clear
@@ -192,7 +192,7 @@ class TestCLIDeviceCommands:
 
     def test_device_remove_json(self, tmp_devices_dir, capsys):
         """eabctl device remove removes device."""
-        from eab.cli.daemon_cmds import cmd_device_add, cmd_device_remove
+        from eab.cli.daemon import cmd_device_add, cmd_device_remove
 
         cmd_device_add(name="test1", device_type="debug", chip="test", json_mode=True)
         capsys.readouterr()
@@ -204,7 +204,7 @@ class TestCLIDeviceCommands:
 
     def test_device_remove_nonexistent(self, tmp_devices_dir, capsys):
         """eabctl device remove fails for missing device."""
-        from eab.cli.daemon_cmds import cmd_device_remove
+        from eab.cli.daemon import cmd_device_remove
         rc = cmd_device_remove(name="ghost", json_mode=True)
         assert rc == 1
         output = json.loads(capsys.readouterr().out)

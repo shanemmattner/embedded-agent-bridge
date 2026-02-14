@@ -13,7 +13,7 @@ import pytest
 # Add parent directory to path for imports (consistent with existing tests).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from eab.cli.daemon_cmds import cmd_start
+from eab.cli.daemon import cmd_start
 
 
 def test_cmd_start_clears_stale_session_files(tmp_path: Path):
@@ -89,9 +89,9 @@ def test_cmd_start_clears_stale_session_files(tmp_path: Path):
     mock_proc = Mock()
     mock_proc.pid = 12345
     
-    with patch("eab.cli.daemon_cmds.subprocess.Popen", return_value=mock_proc) as mock_popen, \
-         patch("eab.cli.daemon_cmds.check_singleton", return_value=None), \
-         patch("eab.cli.daemon_cmds.cleanup_dead_locks"):
+    with patch("eab.cli.daemon.lifecycle_cmds.subprocess.Popen", return_value=mock_proc) as mock_popen, \
+         patch("eab.cli.daemon.lifecycle_cmds.check_singleton", return_value=None), \
+         patch("eab.cli.daemon.lifecycle_cmds.cleanup_dead_locks"):
         
         # Call cmd_start
         result = cmd_start(
@@ -140,11 +140,11 @@ def test_cmd_start_with_force_kills_existing_daemon(tmp_path: Path):
     mock_proc = Mock()
     mock_proc.pid = 12345
     
-    with patch("eab.cli.daemon_cmds.subprocess.Popen", return_value=mock_proc), \
-         patch("eab.cli.daemon_cmds.check_singleton", return_value=mock_existing), \
-         patch("eab.cli.daemon_cmds.kill_existing_daemon") as mock_kill, \
-         patch("eab.cli.daemon_cmds.cleanup_dead_locks"), \
-         patch("eab.cli.daemon_cmds.list_all_locks", return_value=[]):
+    with patch("eab.cli.daemon.lifecycle_cmds.subprocess.Popen", return_value=mock_proc), \
+         patch("eab.cli.daemon.lifecycle_cmds.check_singleton", return_value=mock_existing), \
+         patch("eab.cli.daemon.lifecycle_cmds.kill_existing_daemon") as mock_kill, \
+         patch("eab.cli.daemon.lifecycle_cmds.cleanup_dead_locks"), \
+         patch("eab.cli.daemon.lifecycle_cmds.list_all_locks", return_value=[]):
         
         result = cmd_start(
             base_dir=str(base_dir),
@@ -171,8 +171,8 @@ def test_cmd_start_without_force_returns_error_if_daemon_running(tmp_path: Path)
     mock_existing.is_alive = True
     mock_existing.pid = 999
     
-    with patch("eab.cli.daemon_cmds.check_singleton", return_value=mock_existing), \
-         patch("eab.cli.daemon_cmds.subprocess.Popen") as mock_popen:
+    with patch("eab.cli.daemon.lifecycle_cmds.check_singleton", return_value=mock_existing), \
+         patch("eab.cli.daemon.lifecycle_cmds.subprocess.Popen") as mock_popen:
         
         result = cmd_start(
             base_dir=str(base_dir),
@@ -206,9 +206,9 @@ def test_cmd_start_writes_placeholder_before_daemon_initializes(tmp_path: Path):
     mock_proc = Mock()
     mock_proc.pid = 12345
     
-    with patch("eab.cli.daemon_cmds.subprocess.Popen", return_value=mock_proc), \
-         patch("eab.cli.daemon_cmds.check_singleton", return_value=None), \
-         patch("eab.cli.daemon_cmds.cleanup_dead_locks"):
+    with patch("eab.cli.daemon.lifecycle_cmds.subprocess.Popen", return_value=mock_proc), \
+         patch("eab.cli.daemon.lifecycle_cmds.check_singleton", return_value=None), \
+         patch("eab.cli.daemon.lifecycle_cmds.cleanup_dead_locks"):
         
         result = cmd_start(
             base_dir=str(base_dir),
@@ -244,9 +244,9 @@ def test_cmd_start_creates_base_dir_if_not_exists(tmp_path: Path):
     mock_proc = Mock()
     mock_proc.pid = 12345
     
-    with patch("eab.cli.daemon_cmds.subprocess.Popen", return_value=mock_proc), \
-         patch("eab.cli.daemon_cmds.check_singleton", return_value=None), \
-         patch("eab.cli.daemon_cmds.cleanup_dead_locks"):
+    with patch("eab.cli.daemon.lifecycle_cmds.subprocess.Popen", return_value=mock_proc), \
+         patch("eab.cli.daemon.lifecycle_cmds.check_singleton", return_value=None), \
+         patch("eab.cli.daemon.lifecycle_cmds.cleanup_dead_locks"):
         
         result = cmd_start(
             base_dir=str(base_dir),
@@ -275,9 +275,9 @@ def test_cmd_start_json_mode_output(tmp_path: Path, capsys):
     mock_proc = Mock()
     mock_proc.pid = 12345
     
-    with patch("eab.cli.daemon_cmds.subprocess.Popen", return_value=mock_proc), \
-         patch("eab.cli.daemon_cmds.check_singleton", return_value=None), \
-         patch("eab.cli.daemon_cmds.cleanup_dead_locks"):
+    with patch("eab.cli.daemon.lifecycle_cmds.subprocess.Popen", return_value=mock_proc), \
+         patch("eab.cli.daemon.lifecycle_cmds.check_singleton", return_value=None), \
+         patch("eab.cli.daemon.lifecycle_cmds.cleanup_dead_locks"):
         
         result = cmd_start(
             base_dir=str(base_dir),

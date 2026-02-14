@@ -9,7 +9,7 @@ from eab.cli.serial_cmds import (
     cmd_status, cmd_tail, cmd_alerts, cmd_events, cmd_send,
     cmd_wait, cmd_wait_event, cmd_capture_between,
 )
-from eab.cli.daemon_cmds import (
+from eab.cli.daemon import (
     cmd_start, cmd_stop, cmd_pause, cmd_resume, cmd_diagnose,
     cmd_devices, cmd_device_add, cmd_device_remove,
 )

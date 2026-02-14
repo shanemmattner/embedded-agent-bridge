@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from eab.cli.flash_cmds import cmd_flash
+from eab.cli.flash import cmd_flash
 
 
 def test_cmd_flash_single_core_no_net_firmware():
@@ -20,7 +20,7 @@ def test_cmd_flash_single_core_no_net_firmware():
         firmware = build_dir / "firmware.bin"
         firmware.write_bytes(b"fake firmware")
         
-        with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
+        with patch("eab.cli.flash._execute.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
             
             result = cmd_flash(
@@ -56,7 +56,7 @@ def test_cmd_flash_dual_core_with_net_firmware(capsys):
         net_firmware = net_build / "firmware.bin"
         net_firmware.write_bytes(b"net firmware")
         
-        with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
+        with patch("eab.cli.flash._execute.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
             
             result = cmd_flash(
@@ -97,7 +97,7 @@ def test_cmd_flash_dual_core_net_fails_fast(capsys):
         net_build = Path(tmpdir) / "net"
         net_build.mkdir()
         
-        with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
+        with patch("eab.cli.flash._execute.subprocess.run") as mock_run:
             # NET core fails
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="NET flash failed")
             
@@ -137,7 +137,7 @@ def test_cmd_flash_dual_core_app_fails(capsys):
         net_build = Path(tmpdir) / "net"
         net_build.mkdir()
         
-        with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
+        with patch("eab.cli.flash._execute.subprocess.run") as mock_run:
             # First call: APPROTECT check (returns success)
             # Second call: NET succeeds
             # Third call: APP fails
@@ -183,7 +183,7 @@ def test_cmd_flash_dual_core_both_succeed(capsys):
         net_build = Path(tmpdir) / "net"
         net_build.mkdir()
         
-        with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
+        with patch("eab.cli.flash._execute.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
             
             result = cmd_flash(
@@ -221,7 +221,7 @@ def test_cmd_flash_dual_core_method_field(capsys):
         net_build = Path(tmpdir) / "net"
         net_build.mkdir()
         
-        with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
+        with patch("eab.cli.flash._execute.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
             
             result = cmd_flash(
@@ -253,7 +253,7 @@ def test_cmd_flash_ignores_net_firmware_for_non_zephyr():
         firmware = Path(tmpdir) / "firmware.bin"
         firmware.write_bytes(b"firmware")
         
-        with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
+        with patch("eab.cli.flash._execute.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
             
             result = cmd_flash(

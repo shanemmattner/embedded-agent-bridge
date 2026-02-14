@@ -14,7 +14,6 @@ Requires: pip install embedded-agent-bridge[jlink]
 """
 
 import argparse
-import sys
 import time
 
 try:

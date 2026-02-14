@@ -11,12 +11,11 @@ from __future__ import annotations
 
 import json
 import subprocess
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from eab.gdb_bridge import run_gdb_python, GDBResult
+from eab.gdb_bridge import run_gdb_python
 
 
 class TestRunGdbPython:
@@ -352,7 +351,7 @@ class TestRunGdbPython:
         mock_proc.stderr = ""
         mock_run.return_value = mock_proc
         
-        result = run_gdb_python(
+        run_gdb_python(
             chip="nrf5340",
             script_path=str(script),
             target="192.168.1.100:3333",
@@ -379,7 +378,7 @@ class TestRunGdbPython:
         mock_proc.stderr = ""
         mock_run.return_value = mock_proc
         
-        result = run_gdb_python(
+        run_gdb_python(
             chip="nrf5340",
             script_path=str(script),
             timeout_s=42.5,
@@ -817,7 +816,7 @@ class TestGDBServerLifecycle:
         mock_run.return_value = mock_proc
         
         # Don't specify target - should default
-        result = run_gdb_python(
+        run_gdb_python(
             chip="nrf5340",
             script_path=str(script),
         )
@@ -843,7 +842,7 @@ class TestGDBServerLifecycle:
         mock_proc.stderr = ""
         mock_run.return_value = mock_proc
         
-        result = run_gdb_python(
+        run_gdb_python(
             chip="nrf5340",
             script_path=str(script),
         )
@@ -870,7 +869,7 @@ class TestGDBServerLifecycle:
         mock_proc.stderr = ""
         mock_run.return_value = mock_proc
         
-        result = run_gdb_python(
+        run_gdb_python(
             chip="nrf5340",
             script_path=str(script),
         )
@@ -907,7 +906,6 @@ class TestErrorHandling:
 
     def test_missing_elf_symbols(self):
         """run_gdb_python() should handle case where ELF has no symbols."""
-        from eab.gdb_bridge import run_gdb_python
         
         # Without ELF file, script should still execute
         # This is a valid use case (e.g., examining registers only)

@@ -8,7 +8,7 @@ import re
 import subprocess
 import tempfile
 import time
-from typing import Any, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -662,7 +662,7 @@ def cmd_preflight_hw(
             timeout=flash_cmd.timeout,
         )
         flash_success = result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+    except (subprocess.TimeoutExpired, FileNotFoundError):
         flash_success = False
         result = None
 

@@ -2,17 +2,14 @@
 
 import os
 import json
-import shutil
-import tempfile
 
 import pytest
 
-from eab.singleton import SingletonDaemon, ExistingDaemon
+from eab.singleton import SingletonDaemon
 from eab.device_registry import (
     list_devices,
     register_device,
     unregister_device,
-    _get_devices_dir,
 )
 
 

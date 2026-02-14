@@ -5,15 +5,13 @@ These tests define the expected reconnection behavior BEFORE implementation.
 Test-First Development: Write the test, watch it fail, then implement.
 """
 
-import pytest
-from datetime import datetime, timedelta
 import sys
 import os
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from eab.mocks import MockSerialPort, MockClock, MockLogger, MockFileSystem
+from eab.mocks import MockSerialPort, MockClock, MockLogger
 from eab.interfaces import ConnectionState
 
 

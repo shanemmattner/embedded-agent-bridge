@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from eab.openocd_bridge import OpenOCDBridge, DEFAULT_TELNET_PORT, DEFAULT_GDB_PORT, DEFAULT_TCL_PORT
+from eab.openocd_bridge import OpenOCDBridge
 from eab.gdb_bridge import (
     run_gdb_batch,
     run_gdb_python,
@@ -19,7 +19,7 @@ from eab.debug_probes import get_debug_probe
 from eab.chips.zephyr import ZephyrProfile
 
 from eab.cli.helpers import _print
-from eab.debug_probes.base import DebugProbe, GDBServerStatus
+from eab.debug_probes.base import DebugProbe
 
 
 def _build_probe(

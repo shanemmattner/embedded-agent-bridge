@@ -7,7 +7,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from eab.cli.flash_cmds import cmd_flash
 
@@ -224,7 +223,7 @@ def test_cmd_flash_dual_core_method_field(capsys):
         with patch("eab.cli.flash_cmds.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
             
-            result = cmd_flash(
+            cmd_flash(
                 firmware=str(app_build),
                 chip="nrf5340",
                 address=None,

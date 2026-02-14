@@ -943,7 +943,7 @@ class ZephyrProfile(ChipProfile):
         import tempfile
         
         variant_lower = (self.variant or "").lower()
-        runner = kwargs.get("runner") or self.runner
+        kwargs.get("runner") or self.runner
         
         # nRF targets: Use nrfjprog --reset (most reliable for Nordic chips)
         if "nrf" in variant_lower:

@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import pytest
 
 # Add parent directory to path for imports (consistent with existing tests).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))

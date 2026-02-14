@@ -18,7 +18,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal
 
 
 _TS_PREFIX = re.compile(r"^\[(\d{2}:\d{2}:\d{2}\.\d{3})\]\s+(.*)$")

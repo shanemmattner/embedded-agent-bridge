@@ -6,11 +6,8 @@ Focuses on binary detection, process management, and status parsing.
 
 from __future__ import annotations
 
-import subprocess
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from eab.jlink_rtt import JLinkRTTManager, _find_rtt_logger
 
@@ -218,7 +215,7 @@ class TestJLinkRTTManager:
         # Preset channel count to skip waiting loop
         manager._num_up = 1
         
-        status = manager.start(device="TEST_DEVICE")
+        manager.start(device="TEST_DEVICE")
         
         # Should create two threads
         assert mock_thread.call_count == 2

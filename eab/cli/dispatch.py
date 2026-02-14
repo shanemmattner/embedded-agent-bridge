@@ -414,5 +414,38 @@ def main(argv: Optional[list[str]] = None) -> int:
                 json_mode=args.json,
             )
 
+    if args.cmd == "probe-rs":
+        if args.probe_rs_action == "list":
+            return cli.cmd_probe_rs_list(base_dir=base_dir, json_mode=args.json)
+        if args.probe_rs_action == "info":
+            return cli.cmd_probe_rs_info(base_dir=base_dir, chip=args.chip, json_mode=args.json)
+        if args.probe_rs_action == "rtt":
+            return cli.cmd_probe_rs_rtt(
+                base_dir=base_dir,
+                chip=args.chip,
+                channel=args.channel,
+                probe=args.probe,
+                stop=args.stop,
+                json_mode=args.json,
+            )
+        if args.probe_rs_action == "flash":
+            return cli.cmd_probe_rs_flash(
+                base_dir=base_dir,
+                firmware=args.firmware,
+                chip=args.chip,
+                verify=args.verify,
+                reset_halt=args.reset_halt,
+                probe=args.probe,
+                json_mode=args.json,
+            )
+        if args.probe_rs_action == "reset":
+            return cli.cmd_probe_rs_reset(
+                base_dir=base_dir,
+                chip=args.chip,
+                halt=args.halt,
+                probe=args.probe,
+                json_mode=args.json,
+            )
+
     parser.error(f"Unknown command: {args.cmd}")
     return 2

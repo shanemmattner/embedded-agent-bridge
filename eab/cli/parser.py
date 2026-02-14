@@ -407,4 +407,31 @@ def _build_parser() -> argparse.ArgumentParser:
     p_cap_info = rtt_cap_sub.add_parser("info", help="Show .rttbin file header and stats")
     p_cap_info.add_argument("input", help="Input .rttbin file")
 
+    # probe-rs commands
+    p_probe_rs = sub.add_parser("probe-rs", help="probe-rs debug probe operations")
+    probe_rs_sub = p_probe_rs.add_subparsers(dest="probe_rs_action", required=True)
+
+    probe_rs_sub.add_parser("list", help="List connected debug probes")
+
+    p_prs_info = probe_rs_sub.add_parser("info", help="Get chip information")
+    p_prs_info.add_argument("--chip", required=True, help="Target chip (e.g., nrf52840, stm32f407vg)")
+
+    p_prs_rtt = probe_rs_sub.add_parser("rtt", help="Start/stop RTT streaming")
+    p_prs_rtt.add_argument("--chip", required=True, help="Target chip identifier")
+    p_prs_rtt.add_argument("--channel", type=int, default=0, help="RTT up channel (default: 0)")
+    p_prs_rtt.add_argument("--probe", default=None, help="Probe selector (VID:PID:Serial)")
+    p_prs_rtt.add_argument("--stop", action="store_true", help="Stop RTT instead of starting")
+
+    p_prs_flash = probe_rs_sub.add_parser("flash", help="Flash firmware via probe-rs")
+    p_prs_flash.add_argument("firmware", help="Path to firmware (.bin/.elf/.hex)")
+    p_prs_flash.add_argument("--chip", required=True, help="Target chip identifier")
+    p_prs_flash.add_argument("--verify", action="store_true", help="Verify flash after write")
+    p_prs_flash.add_argument("--reset-halt", action="store_true", help="Reset and halt after flash")
+    p_prs_flash.add_argument("--probe", default=None, help="Probe selector (VID:PID:Serial)")
+
+    p_prs_reset = probe_rs_sub.add_parser("reset", help="Reset target device")
+    p_prs_reset.add_argument("--chip", required=True, help="Target chip identifier")
+    p_prs_reset.add_argument("--halt", action="store_true", help="Halt after reset")
+    p_prs_reset.add_argument("--probe", default=None, help="Probe selector (VID:PID:Serial)")
+
     return parser

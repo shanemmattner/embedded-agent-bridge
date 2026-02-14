@@ -263,6 +263,55 @@ def cmd_flash(
     is_zephyr = isinstance(profile, ZephyrProfile)
     use_multi_core = is_zephyr and net_firmware
 
+    # Check if probe-rs is requested as flash tool
+    use_probe_rs = False
+    if tool == "probe-rs":
+        from eab.probe_rs import ProbeRsBackend
+        backend = ProbeRsBackend(base_dir="/tmp/eab-session")
+        
+        if not backend.is_available():
+            _print({
+                "error": "probe-rs not found. Install with: cargo install probe-rs --features cli",
+                "success": False,
+            }, json_mode=json_mode)
+            return 1
+        
+        logger.info("Using probe-rs for flash")
+        try:
+            result = backend.flash(
+                firmware_path=firmware,
+                chip=chip,
+                verify=True,
+                reset_halt=not reset_after,
+                probe_selector=None,
+            )
+            duration_ms = int((time.time() - started) * 1000)
+            
+            payload = {
+                "schema_version": 1,
+                "timestamp": _now_iso(),
+                "success": result.returncode == 0,
+                "chip": chip,
+                "firmware": original_firmware_path,
+                "tool": "probe-rs",
+                "method": "probe_rs",
+                "command": ["probe-rs", "download", firmware, "--chip", chip],
+                "attempts": 1,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "duration_ms": duration_ms,
+            }
+            _print(payload, json_mode=json_mode)
+            return 0 if result.returncode == 0 else 1
+        except Exception as e:
+            duration_ms = int((time.time() - started) * 1000)
+            _print({
+                "error": str(e),
+                "success": False,
+                "duration_ms": duration_ms,
+            }, json_mode=json_mode)
+            return 1
+    
     # Check if J-Link direct flash is requested for Zephyr targets
     use_jlink = False
     jlink_script_path = None

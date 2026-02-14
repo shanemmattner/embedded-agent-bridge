@@ -23,5 +23,6 @@ from eab.cli.reset_cmds import cmd_resets
 from eab.cli.backtrace_cmds import cmd_decode_backtrace
 from eab.cli.rtt_cmds import cmd_rtt_start, cmd_rtt_stop, cmd_rtt_status, cmd_rtt_reset, cmd_rtt_tail
 from eab.cli.binary_capture_cmds import cmd_rtt_capture_start, cmd_rtt_capture_convert, cmd_rtt_capture_info
+from eab.cli.probe_rs_cmds import cmd_probe_rs_list, cmd_probe_rs_info, cmd_probe_rs_rtt, cmd_probe_rs_flash, cmd_probe_rs_reset
 
 __all__ = ["main"]

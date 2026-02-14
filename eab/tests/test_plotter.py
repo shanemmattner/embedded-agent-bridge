@@ -12,14 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import os
-import tempfile
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from eab.plotter.server import (
-    _BUFFER_CAP,
     _enqueue,
     _enqueue_status,
     run_plotter,

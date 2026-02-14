@@ -7,7 +7,6 @@ from typing import Optional
 from eab.debug_probes import get_debug_probe
 from eab.chips.zephyr import ZephyrProfile
 from eab.fault_analyzer import analyze_fault, format_report
-from eab.fault_decoders import FaultReport
 from eab.cli.helpers import _print
 
 

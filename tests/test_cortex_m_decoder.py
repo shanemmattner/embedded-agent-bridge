@@ -6,16 +6,10 @@ suggestion generation, and the CortexMDecoder class.
 
 from __future__ import annotations
 
-import pytest
 
-from eab.fault_decoders import get_fault_decoder, FaultReport
+from eab.fault_decoders import get_fault_decoder
 from eab.fault_decoders.cortex_m import (
     CFSR_ADDR,
-    HFSR_ADDR,
-    MMFAR_ADDR,
-    BFAR_ADDR,
-    SFSR_ADDR,
-    SFAR_ADDR,
     CortexMDecoder,
     decode_cfsr,
     decode_hfsr,

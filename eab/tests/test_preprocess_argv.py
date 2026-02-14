@@ -1,7 +1,6 @@
 """Unit tests for _preprocess_argv() in eab.cli."""
 from __future__ import annotations
 
-import pytest
 
 from eab.cli import _preprocess_argv
 

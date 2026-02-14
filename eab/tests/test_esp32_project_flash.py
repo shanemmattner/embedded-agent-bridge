@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import pytest
 
 # Add parent directory to path for imports (consistent with existing tests).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -500,9 +499,9 @@ def test_cmd_flash_no_stub_in_json_output(tmp_path: Path, capsys):
     mock_result.stdout = "Flash successful"
     mock_result.stderr = ""
     
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result):
         # Test with no_stub=True
-        result = cmd_flash(
+        cmd_flash(
             firmware=str(firmware_bin),
             chip="esp32c6",
             address="0x10000",
@@ -523,8 +522,8 @@ def test_cmd_flash_no_stub_in_json_output(tmp_path: Path, capsys):
     assert output["no_stub"] is True
     
     # Test with no_stub=False (default)
-    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result) as mock_run:
-        result = cmd_flash(
+    with patch("eab.cli.flash_cmds.subprocess.run", return_value=mock_result):
+        cmd_flash(
             firmware=str(firmware_bin),
             chip="esp32c6",
             address="0x10000",

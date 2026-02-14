@@ -12,8 +12,8 @@ def test_event_emitter_sequences_and_persists(tmp_path):
         events_path=str(events_path),
     )
 
-    first = emitter.emit("test_event", {"key": "value"})
-    second = emitter.emit("another_event", {})
+    emitter.emit("test_event", {"key": "value"})
+    emitter.emit("another_event", {})
 
     lines = events_path.read_text().splitlines()
     assert len(lines) == 2

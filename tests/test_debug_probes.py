@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from eab.debug_probes import get_debug_probe, DebugProbe, GDBServerStatus
+from eab.debug_probes import get_debug_probe, GDBServerStatus
 from eab.debug_probes.base import DebugProbe as DebugProbeABC
 from eab.debug_probes.jlink import JLinkProbe
 from eab.debug_probes.openocd import OpenOCDProbe

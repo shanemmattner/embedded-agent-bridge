@@ -76,7 +76,6 @@ def _make_daemon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_daemon_start_process_line_and_cmd_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
-    import eab.daemon as daemon_mod
     from eab.command_file import append_command
 
     daemon, serial, base_dir = _make_daemon(tmp_path, monkeypatch)

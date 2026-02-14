@@ -11,10 +11,6 @@ Tests verify that generated scripts:
 from __future__ import annotations
 
 import ast
-import json
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 

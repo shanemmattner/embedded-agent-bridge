@@ -10,15 +10,15 @@ The goal is to keep all chip interaction "through EAB", including USB-JTAG workf
 
 from __future__ import annotations
 
-import json
-import os
-import signal
 import socket
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+from .file_utils import write_json_file, tail_file
+from .process_utils import pid_alive, cleanup_pid_file, stop_process_graceful
 
 
 DEFAULT_TELNET_PORT = 4444
@@ -37,13 +37,6 @@ def _scripts_dir() -> Optional[str]:
         return str(p)
     return None
 
-
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
 
 
 @dataclass(frozen=True)
@@ -76,11 +69,11 @@ class OpenOCDBridge:
                 pid = int(self.pid_path.read_text().strip())
             except Exception:
                 pid = None
-        running = bool(pid) and _pid_alive(pid)
+        running = bool(pid) and pid_alive(pid)
         if pid and not running:
             # Clear stale pid file.
             try:
-                self.pid_path.unlink(missing_ok=True)
+                cleanup_pid_file(self.pid_path)
             except Exception:
                 pass
         return OpenOCDStatus(
@@ -104,7 +97,7 @@ class OpenOCDBridge:
             "tcl_port": status.tcl_port,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
         }
-        self.status_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+        write_json_file(self.status_path, payload)
 
     def _ensure_cfg(
         self,
@@ -220,7 +213,7 @@ class OpenOCDBridge:
 
         # Give it a moment to either bind ports or fail fast with a clear error.
         time.sleep(0.5)
-        alive = _pid_alive(proc.pid) and (proc.poll() is None)
+        alive = pid_alive(proc.pid) and (proc.poll() is None)
         last_error: Optional[str] = None
         if not alive:
             try:
@@ -229,7 +222,7 @@ class OpenOCDBridge:
             except Exception:
                 last_error = None
             try:
-                self.pid_path.unlink(missing_ok=True)
+                cleanup_pid_file(self.pid_path)
             except Exception:
                 pass
 
@@ -252,7 +245,7 @@ class OpenOCDBridge:
         if not cur.running or not cur.pid:
             self._write_status(cur)
             try:
-                self.pid_path.unlink(missing_ok=True)
+                cleanup_pid_file(self.pid_path)
             except Exception:
                 pass
             return cur
@@ -264,18 +257,18 @@ class OpenOCDBridge:
 
         deadline = time.time() + timeout_s
         while time.time() < deadline:
-            if not _pid_alive(cur.pid):
+            if not pid_alive(cur.pid):
                 break
             time.sleep(0.1)
 
-        if _pid_alive(cur.pid):
+        if pid_alive(cur.pid):
             try:
                 os.kill(cur.pid, signal.SIGKILL)
             except Exception:
                 pass
 
         try:
-            self.pid_path.unlink(missing_ok=True)
+            cleanup_pid_file(self.pid_path)
         except Exception:
             pass
 

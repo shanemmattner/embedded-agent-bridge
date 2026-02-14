@@ -740,7 +740,7 @@ def test_check_approtect_net_core():
         mock_result.stderr = ""
         mock_run.return_value = mock_result
         
-        result = profile.check_approtect(core="net")
+        profile.check_approtect(core="net")
         
         # Verify --coprocessor flag was added
         call_args = mock_run.call_args[0][0]

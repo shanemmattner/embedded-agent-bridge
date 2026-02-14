@@ -6,7 +6,7 @@ This enables dependency injection and mock-based testing without hardware.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, List, Callable
+from typing import Optional, List
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum

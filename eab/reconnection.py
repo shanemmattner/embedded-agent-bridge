@@ -7,7 +7,7 @@ disconnect detection by monitoring port availability.
 """
 
 import os
-from typing import Optional, Callable, List
+from typing import Optional, Callable
 from .interfaces import SerialPortInterface, ClockInterface, LoggerInterface, ConnectionState
 
 

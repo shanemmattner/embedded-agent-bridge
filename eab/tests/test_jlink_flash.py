@@ -176,7 +176,7 @@ def test_get_jlink_flash_command_script_cleanup_on_error():
         
         # Verify no orphaned jlink_*.jlink files in temp dir
         temp_dir = tempfile.gettempdir()
-        jlink_files = [f for f in os.listdir(temp_dir) if f.startswith("jlink_") and f.endswith(".jlink")]
+        [f for f in os.listdir(temp_dir) if f.startswith("jlink_") and f.endswith(".jlink")]
         # There might be some from successful tests, but verify they're not from this failed call
         # by checking they're older than this test run
         # For now, just ensure the error was raised properly

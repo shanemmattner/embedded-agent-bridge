@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 import shutil
 from datetime import datetime
-from typing import Optional
 
 from eab.singleton import SingletonDaemon, ExistingDaemon
 

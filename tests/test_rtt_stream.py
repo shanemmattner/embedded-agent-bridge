@@ -1,8 +1,6 @@
 """Tests for RTT stream processor."""
 
 import json
-import pytest
-from pathlib import Path
 
 from eab.rtt_stream import RTTStreamProcessor, LogFormat
 

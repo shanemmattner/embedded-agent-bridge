@@ -4,7 +4,6 @@ Tests for pattern detection and alerts.
 These tests define the expected pattern matching behavior BEFORE implementation.
 """
 
-import pytest
 from datetime import datetime
 import sys
 import os

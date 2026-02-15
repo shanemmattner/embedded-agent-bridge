@@ -38,10 +38,20 @@ eabctl profile-function --function main --device NRF5340_XXAA_APP --elf build/ze
 eabctl profile-region --start 0x1000 --end 0x1100 --device NRF5340_XXAA_APP
 eabctl dwt-status --device NRF5340_XXAA_APP --json
 
-# RTT (Python API — no CLI command yet)
-# from eab.rtt import JLinkBridge
-# bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
-# bridge.start(); bridge.stop()
+# RTT (Real-Time Transfer) streaming
+# J-Link transport (subprocess-based, background logging)
+eabctl rtt start --device NRF5340_XXAA_APP --transport jlink
+eabctl rtt stop
+eabctl rtt status --json
+eabctl rtt tail 100
+
+# probe-rs transport (native Rust extension, all probe types)
+# Supports ST-Link, CMSIS-DAP, J-Link, ESP USB-JTAG
+eabctl rtt start --device STM32L476RG --transport probe-rs
+eabctl rtt start --device STM32L476RG --transport probe-rs --probe-selector "0483:374b"
+
+# Note: probe-rs transport does not yet support background logging daemon
+# Use for testing connectivity and firmware RTT setup verification
 ```
 
 ## Flashing Firmware

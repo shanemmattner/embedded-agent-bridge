@@ -1,0 +1,17 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "eab-probe-rs"
+version = "0.1.0"
+description = "Native probe-rs RTT transport for Embedded Agent Bridge"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+# Python extension module — will be importable as `import eab_probe_rs`
+module-name = "eab_probe_rs"

@@ -7,7 +7,7 @@ Designed for LLM agents to interact with embedded devices.
 
 Usage:
     python3 -m eab --port /dev/ttyUSB0 --baud 115200
-    python3 -m eab --port auto --base-dir /tmp/eab-session
+    python3 -m eab --port auto --base-dir /tmp/eab-devices/default
 """
 
 import argparse
@@ -58,7 +58,7 @@ class SerialDaemon:
         self,
         port: str,
         baud: int = 115200,
-        base_dir: str = "/tmp/eab-session",
+        base_dir: str = "/tmp/eab-devices/default",
         auto_detect: bool = True,
         *,
         serial_port: Optional[SerialPortInterface] = None,
@@ -1000,7 +1000,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 Examples:
   python3 -m eab --port /dev/ttyUSB0
   python3 -m eab --port auto --baud 115200
-  python3 -m eab --port /dev/cu.usbmodem123 --base-dir /tmp/eab-session
+  python3 -m eab --port /dev/cu.usbmodem123 --base-dir /tmp/eab-devices/default
         """,
     )
 
@@ -1022,7 +1022,7 @@ Examples:
     )
     parser.add_argument(
         "--base-dir", "-d",
-        default="/tmp/eab-session",
+        default="/tmp/eab-devices/default",
         help="Base directory for logs and status files",
     )
     parser.add_argument(

@@ -41,11 +41,12 @@ class TestPerDeviceSingleton:
         assert "nrf5340" in s.PID_FILE
         assert "nrf5340" in s.INFO_FILE
 
-    def test_legacy_singleton_paths(self):
-        """Without device_name, uses legacy global paths."""
+    def test_default_singleton_paths(self):
+        """Without device_name, uses default device paths."""
         s = SingletonDaemon()
-        assert "eab-daemon.pid" in s.PID_FILE
-        assert "eab-daemon.info" in s.INFO_FILE
+        assert "default" in s.PID_FILE
+        assert s.PID_FILE.endswith("daemon.pid")
+        assert s.INFO_FILE.endswith("daemon.info")
 
     def test_two_device_singletons_independent(self, tmp_devices_dir):
         """Two devices can acquire locks independently."""
@@ -146,12 +147,10 @@ class TestBaseDirResolution:
         assert result == os.path.join(tmp_devices_dir, "nrf5340")
 
     def test_fallback_to_default(self, tmp_devices_dir, monkeypatch):
-        """No device, no override, no running daemons → default."""
-        from eab.cli.helpers import _resolve_base_dir, DEFAULT_BASE_DIR
-        # Ensure no legacy singleton
-        monkeypatch.setattr("eab.cli.helpers.check_singleton", lambda: None)
+        """No device, no override → default device dir."""
+        from eab.cli.helpers import _resolve_base_dir
         result = _resolve_base_dir(None)
-        assert result == DEFAULT_BASE_DIR
+        assert result == os.path.join(tmp_devices_dir, "default")
 
 
 class TestCLIDeviceCommands:

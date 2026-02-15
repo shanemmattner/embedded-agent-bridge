@@ -3,7 +3,7 @@
 Usage:
     from eab.debug_probes import get_debug_probe, DebugProbe, GDBServerStatus
 
-    probe = get_debug_probe("openocd", base_dir="/tmp/eab-session",
+    probe = get_debug_probe("openocd", base_dir="/tmp/eab-devices/default",
                             interface_cfg="interface/cmsis-dap.cfg")
 """
 

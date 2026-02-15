@@ -1,0 +1,25 @@
+{
+  "traceEvents": [
+    {"name": "thread_switched", "ph": "X", "ts": 1000, "dur": 50, "pid": 0, "tid": 1},
+    {"name": "isr_enter", "ph": "B", "ts": 1050, "pid": 0, "tid": 2},
+    {"name": "isr_exit", "ph": "E", "ts": 1100, "pid": 0, "tid": 2},
+    {"name": "thread_switched", "ph": "X", "ts": 1100, "dur": 200, "pid": 0, "tid": 1},
+    {"name": "semaphore_take", "ph": "X", "ts": 1150, "dur": 10, "pid": 0, "tid": 1},
+    {"name": "semaphore_give", "ph": "X", "ts": 1300, "dur": 5, "pid": 0, "tid": 3},
+    {"name": "thread_switched", "ph": "X", "ts": 1305, "dur": 100, "pid": 0, "tid": 3},
+    {"name": "mutex_lock", "ph": "X", "ts": 1350, "dur": 20, "pid": 0, "tid": 3},
+    {"name": "mutex_unlock", "ph": "X", "ts": 1370, "dur": 5, "pid": 0, "tid": 3},
+    {"name": "isr_enter", "ph": "B", "ts": 1405, "pid": 0, "tid": 2},
+    {"name": "isr_exit", "ph": "E", "ts": 1450, "pid": 0, "tid": 2},
+    {"name": "thread_switched", "ph": "X", "ts": 1450, "dur": 150, "pid": 0, "tid": 1},
+    {"name": "heap_alloc", "ph": "X", "ts": 1500, "dur": 8, "pid": 0, "tid": 1},
+    {"name": "heap_free", "ph": "X", "ts": 1550, "dur": 5, "pid": 0, "tid": 1},
+    {"name": "thread_switched", "ph": "X", "ts": 1600, "dur": 200, "pid": 0, "tid": 3},
+    {"name": "log_output", "ph": "i", "ts": 1650, "pid": 0, "tid": 3, "s": "g"},
+    {"name": "semaphore_take", "ph": "X", "ts": 1700, "dur": 15, "pid": 0, "tid": 3},
+    {"name": "isr_enter", "ph": "B", "ts": 1800, "pid": 0, "tid": 2},
+    {"name": "isr_exit", "ph": "E", "ts": 1830, "pid": 0, "tid": 2},
+    {"name": "thread_switched", "ph": "X", "ts": 1830, "dur": 170, "pid": 0, "tid": 1}
+  ],
+  "displayTimeUnit": "ns"
+}

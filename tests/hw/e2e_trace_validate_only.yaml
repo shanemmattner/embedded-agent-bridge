@@ -1,0 +1,11 @@
+# Offline trace validation — no hardware required.
+# Validates golden reference Perfetto JSON file.
+name: Trace Validation - Golden Reference
+timeout: 30
+
+steps:
+  - trace_validate:
+      input: tests/fixtures/golden_trace.json
+      min_events: 2
+      required_fields: [name, ts, ph]
+      schema: perfetto

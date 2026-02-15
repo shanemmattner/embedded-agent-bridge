@@ -179,13 +179,14 @@ void app_main(void)
     }
 
     ESP_LOGI(TAG, "=== OPENOCD CONNECTED! ===");
-    ESP_LOGI(TAG, "Sending test data...");
+    ESP_LOGI(TAG, "Starting STRESS TEST - sending 500 messages with NO delay!");
 
-    // Send 50 heartbeat messages (matches ESP-IDF app_trace_basic example)
-    // IMPORTANT: Write directly from app_main(), NOT from a FreeRTOS task
-    // ESP-IDF examples use this pattern to avoid task scheduling issues
-    // Each write is flushed immediately for low-latency streaming
-    for (heartbeat_count = 1; heartbeat_count <= 50; heartbeat_count++) {
+    // STRESS TEST: Same format as before but NO DELAY between writes
+    // This tests maximum throughput of the simple message format
+    int64_t test_start = esp_timer_get_time();
+    uint32_t total_bytes = 0;
+
+    for (heartbeat_count = 1; heartbeat_count <= 500; heartbeat_count++) {
         int64_t uptime_ms = (esp_timer_get_time() - start_time_us) / 1000;
         uint32_t free_heap = esp_get_free_heap_size();
 
@@ -196,37 +197,41 @@ void app_main(void)
                           (long long)uptime_ms,
                           (unsigned long)free_heap);
 
-        // Log first 5 writes
-        if (heartbeat_count <= 5) {
-            ESP_LOGI(TAG, "Writing beat #%lu (%d bytes)", (unsigned long)heartbeat_count, len);
-        }
-
-        // Write with infinite timeout (like ESP-IDF example)
-        // INFINITE timeout ensures write completes even if JTAG is slow
-        // Alternative: Use pdMS_TO_TICKS(10) for 10ms timeout with error handling
+        // Write (no delay!)
         esp_err_t res = esp_apptrace_write(ESP_APPTRACE_DEST_JTAG,
                                            trace_buf,
                                            len,
                                            ESP_APPTRACE_TMO_INFINITE);
-        if (res != ESP_OK) {
-            ESP_LOGE(TAG, "Write FAILED: %s", esp_err_to_name(res));
-        } else if (heartbeat_count <= 5) {
-            ESP_LOGI(TAG, "Write SUCCESS");
+        if (res == ESP_OK) {
+            total_bytes += len;
         }
 
-        // Flush after every write (ESP-IDF example pattern)
-        // This ensures low-latency delivery to OpenOCD
-        // For higher throughput, flush every N writes instead of every write
-        esp_apptrace_flush(ESP_APPTRACE_DEST_JTAG, 1000);
+        // Flush every 50 writes (not every write - better throughput)
+        if (heartbeat_count % 50 == 0) {
+            esp_apptrace_flush(ESP_APPTRACE_DEST_JTAG, 1000);
 
-        // Status every 10 beats
-        if (heartbeat_count % 10 == 0) {
-            ESP_LOGI(TAG, "Progress: %lu/50 beats sent", (unsigned long)heartbeat_count);
+            // Progress report
+            int64_t elapsed_us = esp_timer_get_time() - test_start;
+            float elapsed_s = elapsed_us / 1000000.0;
+            float throughput_kbps = (total_bytes / 1024.0) / elapsed_s;
+
+            ESP_LOGI(TAG, "Progress: %lu/500 | %.1f KB | %.1f KB/s",
+                    (unsigned long)heartbeat_count, total_bytes / 1024.0, throughput_kbps);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // NO DELAY - maximum speed!
     }
 
-    ESP_LOGI(TAG, "=== ALL DATA SENT! ===");
-    ESP_LOGI(TAG, "Total: %lu heartbeats transmitted", (unsigned long)heartbeat_count - 1);
+    // Final flush
+    esp_apptrace_flush(ESP_APPTRACE_DEST_JTAG, ESP_APPTRACE_TMO_INFINITE);
+
+    int64_t test_end = esp_timer_get_time();
+    float total_time_s = (test_end - test_start) / 1000000.0;
+    float throughput_kbps = (total_bytes / 1024.0) / total_time_s;
+
+    ESP_LOGI(TAG, "=== STRESS TEST COMPLETE! ===");
+    ESP_LOGI(TAG, "Sent %lu messages (%lu bytes = %.2f KB)",
+            (unsigned long)heartbeat_count - 1, (unsigned long)total_bytes, total_bytes / 1024.0);
+    ESP_LOGI(TAG, "Total time: %.3f seconds", total_time_s);
+    ESP_LOGI(TAG, "Throughput: %.2f KB/s", throughput_kbps);
 }

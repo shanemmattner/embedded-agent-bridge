@@ -57,22 +57,17 @@ class SingletonDaemon:
     LEGACY_PID_FILE = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-daemon.pid")
     LEGACY_INFO_FILE = os.path.join(os.environ.get("EAB_RUN_DIR", "/tmp"), "eab-daemon.info")
 
-    def __init__(self, logger: object = None, device_name: str = ""):
+    def __init__(self, logger: object = None, device_name: str = "default"):
         self._logger = logger
         self._lock_fd: Optional[int] = None
         self._owns_lock = False
         self._device_name = device_name
 
-        if device_name:
-            # Per-device mode: PID/info files inside device session dir
-            from eab.device_registry import _get_devices_dir
-            device_dir = os.path.join(_get_devices_dir(), device_name)
-            self.PID_FILE = os.path.join(device_dir, "daemon.pid")
-            self.INFO_FILE = os.path.join(device_dir, "daemon.info")
-        else:
-            # Legacy global singleton mode
-            self.PID_FILE = self.LEGACY_PID_FILE
-            self.INFO_FILE = self.LEGACY_INFO_FILE
+        # Always per-device: PID/info files inside device session dir
+        from eab.device_registry import _get_devices_dir
+        device_dir = os.path.join(_get_devices_dir(), device_name)
+        self.PID_FILE = os.path.join(device_dir, "daemon.pid")
+        self.INFO_FILE = os.path.join(device_dir, "daemon.info")
 
     def _log(self, msg: str) -> None:
         if self._logger:

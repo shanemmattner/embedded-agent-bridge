@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
 
-from eab.rtt_transport import RTTTransport, JLinkTransport, ProbeRSTransport
+from eab.rtt_transport import RTTTransport, JLinkTransport, ProbeRSTransport, ProbeRsNativeTransport
 
 
 class TestRTTTransportABC:
@@ -142,3 +142,63 @@ class TestProbeRSTransport:
     def test_stop_rtt_noop_when_not_running(self):
         transport = ProbeRSTransport()
         transport.stop_rtt()  # Should not raise
+
+
+class TestProbeRsNativeTransport:
+    """Tests for ProbeRsNativeTransport (native Rust extension).
+
+    These tests require the eab-probe-rs extension to be built and installed.
+    If not available, tests will be skipped with ImportError.
+    """
+
+    def test_connect_requires_extension(self):
+        """Verify helpful error when Rust extension not installed."""
+        with patch.dict("sys.modules", {"eab_probe_rs": None}):
+            transport = ProbeRsNativeTransport()
+            with pytest.raises(ImportError, match="eab-probe-rs Rust extension"):
+                transport.connect("STM32L476RG")
+
+    def test_read_without_session_returns_empty(self):
+        """Verify read() returns empty bytes when not connected."""
+        transport = ProbeRsNativeTransport()
+        assert transport.read(0) == b""
+
+    def test_write_without_session_returns_zero(self):
+        """Verify write() returns 0 when not connected."""
+        transport = ProbeRsNativeTransport()
+        assert transport.write(0, b"test") == 0
+
+    def test_disconnect_without_session(self):
+        """Verify disconnect() is safe even when not connected."""
+        transport = ProbeRsNativeTransport()
+        transport.disconnect()  # Should not raise
+
+    def test_reset_without_session_raises(self):
+        """Verify reset() raises when not connected."""
+        transport = ProbeRsNativeTransport()
+        with pytest.raises(RuntimeError, match="Not connected"):
+            transport.reset()
+
+    @patch("eab.rtt_transport.logger")
+    def test_read_logs_errors(self, mock_logger):
+        """Verify read errors are logged gracefully."""
+        transport = ProbeRsNativeTransport()
+        mock_session = MagicMock()
+        mock_session.rtt_read.side_effect = RuntimeError("RTT error")
+        transport._session = mock_session
+
+        data = transport.read(0)
+        assert data == b""  # Returns empty on error
+        mock_logger.error.assert_called_once()
+
+    @patch("eab.rtt_transport.logger")
+    def test_write_logs_errors(self, mock_logger):
+        """Verify write errors are logged gracefully."""
+        transport = ProbeRsNativeTransport()
+        mock_session = MagicMock()
+        mock_session.rtt_write.side_effect = RuntimeError("RTT error")
+        transport._session = mock_session
+
+        written = transport.write(0, b"test")
+        assert written == 0  # Returns 0 on error
+        mock_logger.error.assert_called_once()

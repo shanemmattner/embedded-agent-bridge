@@ -1,0 +1,25 @@
+[package]
+name = "eab-probe-rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# "cdylib" creates a shared library (.so/.dylib/.dll) that Python can import
+crate-type = ["cdylib"]
+
+[dependencies]
+# probe-rs: Rust library for debug probe access (RTT, flashing, GDB)
+probe-rs = "0.31"
+
+# PyO3: Rust bindings for Python — allows calling Rust from Python
+pyo3 = { version = "0.23", features = ["extension-module"] }
+
+# anyhow: Error handling for cleaner Result types
+anyhow = "1.0"
+
+[profile.release]
+# Optimize for size — this is a Python extension, not a standalone binary
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

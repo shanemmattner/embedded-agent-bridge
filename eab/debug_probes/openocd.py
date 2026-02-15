@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import logging
-import os
-import signal
 import subprocess
 import time
 from pathlib import Path
 from typing import Optional
 
 from .base import DebugProbe, GDBServerStatus
+from ..process_utils import pid_alive, read_pid_file, cleanup_pid_file, stop_process_graceful, popen_is_alive
+from ..file_utils import tail_file
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +28,6 @@ def _scripts_dir() -> Optional[str]:
         if p.exists():
             return str(p)
     return None
-
-
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
 
 
 class OpenOCDProbe(DebugProbe):
@@ -86,7 +78,7 @@ class OpenOCDProbe(DebugProbe):
 
         # Check if already running
         pid = self._read_pid()
-        if pid and _pid_alive(pid):
+        if pid and pid_alive(pid):
             return GDBServerStatus(running=True, pid=pid, port=gdb_port)
 
         scripts = _scripts_dir()
@@ -139,17 +131,12 @@ class OpenOCDProbe(DebugProbe):
 
         # Wait for startup
         time.sleep(1.0)
-        alive = _pid_alive(proc.pid) and (proc.poll() is None)
+        alive = pid_alive(proc.pid) and popen_is_alive(proc)
         last_error: Optional[str] = None
 
         if not alive:
-            try:
-                err_lines = self._err_path.read_text(
-                    encoding="utf-8", errors="replace"
-                ).splitlines()[-20:]
-                last_error = "\n".join(err_lines).strip() or None
-            except Exception:
-                last_error = None
+            err_lines = tail_file(self._err_path, 20)
+            last_error = "\n".join(err_lines).strip() or None
             self._cleanup_pid()
             logger.error("OpenOCD failed to start: %s", last_error)
 
@@ -162,27 +149,11 @@ class OpenOCDProbe(DebugProbe):
 
     def stop_gdb_server(self) -> None:
         pid = self._read_pid()
-        if not pid or not _pid_alive(pid):
+        if not pid or not pid_alive(pid):
             self._cleanup_pid()
             return
 
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
-
-        deadline = time.time() + 5.0
-        while time.time() < deadline:
-            if not _pid_alive(pid):
-                break
-            time.sleep(0.1)
-
-        if _pid_alive(pid):
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except OSError:
-                pass
-
+        stop_process_graceful(pid, 5.0)
         self._cleanup_pid()
         self._proc_pid = None
 
@@ -195,15 +166,8 @@ class OpenOCDProbe(DebugProbe):
         return "OpenOCD"
 
     def _read_pid(self) -> Optional[int]:
-        if not self._pid_path.exists():
-            return self._proc_pid
-        try:
-            return int(self._pid_path.read_text().strip())
-        except (ValueError, OSError):
-            return self._proc_pid
+        pid = read_pid_file(self._pid_path)
+        return pid if pid is not None else self._proc_pid
 
     def _cleanup_pid(self) -> None:
-        try:
-            self._pid_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        cleanup_pid_file(self._pid_path)

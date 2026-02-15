@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import os
 import sys
-import errno
 import portalocker
 import atexit
-import signal
 from typing import Optional
 from dataclasses import dataclass
+
+from .process_utils import pid_alive, read_pid_file, stop_process_graceful
 
 
 @dataclass
@@ -94,13 +94,8 @@ class SingletonDaemon:
 
     def get_existing(self) -> Optional[ExistingDaemon]:
         """Check if another daemon is already running."""
-        if not os.path.exists(self.PID_FILE):
-            return None
-
-        try:
-            with open(self.PID_FILE, 'r') as f:
-                pid = int(f.read().strip())
-        except (ValueError, IOError):
+        pid = read_pid_file(self.PID_FILE)
+        if pid is None:
             return None
 
         # Check if process is alive
@@ -123,49 +118,11 @@ class SingletonDaemon:
 
     def _is_process_alive(self, pid: int) -> bool:
         """Check if a process is still running."""
-        try:
-            os.kill(pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            # Some sandboxed environments disallow signaling other processes
-            # (even with signal 0). Treat this as "unknown but likely alive"
-            # so higher-level coordination can fall back to file-based control.
-            return True
-        except OSError as e:
-            if getattr(e, "errno", None) == errno.EPERM:
-                return True
-            return False
+        return pid_alive(pid)
 
     def _kill_process(self, pid: int, timeout: float = 5.0) -> bool:
         """Kill a process and wait for it to die."""
-        import time
-
-        if not self._is_process_alive(pid):
-            return True
-
-        # Try SIGTERM first
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            return True
-
-        # Wait for process to die
-        start = time.time()
-        while time.time() - start < timeout:
-            if not self._is_process_alive(pid):
-                return True
-            time.sleep(0.1)
-
-        # Force kill with SIGKILL
-        try:
-            os.kill(pid, signal.SIGKILL)
-            time.sleep(0.5)
-        except OSError:
-            pass
-
-        return not self._is_process_alive(pid)
+        return stop_process_graceful(pid, timeout)
 
     def acquire(self, kill_existing: bool = False, port: str = "", base_dir: str = "",
                 device_type: str = "serial", chip: str = "") -> bool:

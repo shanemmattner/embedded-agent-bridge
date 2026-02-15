@@ -24,7 +24,7 @@ def test_openocd_start_writes_cfg_and_status(tmp_path: Path, monkeypatch: pytest
 
     # Pretend process is alive.
     monkeypatch.setattr("eab.openocd_bridge.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("eab.openocd_bridge._pid_alive", lambda pid: True)
+    monkeypatch.setattr("eab.openocd_bridge.pid_alive", lambda pid: True)
 
     st = bridge.start(chip="esp32s3", vid="0x303a", pid="0x1001")
     assert st.running is True
@@ -42,7 +42,7 @@ def test_openocd_start_cleans_pid_on_fast_failure(tmp_path: Path, monkeypatch: p
         return _Proc(23456, alive=False)
 
     monkeypatch.setattr("eab.openocd_bridge.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("eab.openocd_bridge._pid_alive", lambda pid: False)
+    monkeypatch.setattr("eab.openocd_bridge.pid_alive", lambda pid: False)
 
     st = bridge.start()
     assert st.running is False

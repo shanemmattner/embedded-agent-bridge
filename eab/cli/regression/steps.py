@@ -114,10 +114,14 @@ def _run_wait(step: StepSpec, *, device: Optional[str],
     args = ["wait", pattern, "--timeout", str(step_timeout)]
     rc, output = _run_eabctl(args, timeout=step_timeout + 5)
     ms = int((time.monotonic() - t0) * 1000)
+    passed = rc == 0 and output.get("matched", True)
+    error = None
+    if not passed:
+        error = output.get("error") or f"Pattern '{pattern}' not matched within {step_timeout}s"
     return StepResult(
         step_type="wait", params=step.params,
-        passed=(rc == 0), duration_ms=ms, output=output,
-        error=output.get("error") if rc != 0 else None,
+        passed=passed, duration_ms=ms, output=output,
+        error=error,
     )
 
 

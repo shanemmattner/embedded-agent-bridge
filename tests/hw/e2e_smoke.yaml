@@ -1,13 +1,15 @@
-# Smoke test — verifies regression runner works against live hardware.
+# Smoke test — verifies basic regression runner against live hardware.
 # Requires: EAB daemon running with a device that outputs boot logs.
-# Does NOT flash — just resets and checks for expected output.
-name: E2E Smoke Test
+name: E2E Smoke - Boot Detection
 device: nrf5340
 timeout: 30
 
 steps:
+  - wait:
+      pattern: "Hello world"
+      timeout: 15
+  - assert_log:
+      pattern: "app_main"
+      timeout: 15
   - sleep:
       seconds: 1
-  - assert_log:
-      pattern: "boot"
-      timeout: 15

@@ -1,0 +1,16 @@
+# Verify sleep step timing and sequential step execution.
+name: E2E Sleep Timing
+device: nrf5340
+timeout: 30
+
+steps:
+  - sleep:
+      seconds: 0.5
+  - wait:
+      pattern: "boot"
+      timeout: 15
+  - sleep:
+      seconds: 0.5
+  - wait:
+      pattern: "Hello world"
+      timeout: 15

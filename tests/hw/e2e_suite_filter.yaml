@@ -1,0 +1,11 @@
+# Quick test to verify suite filtering works (filename contains "filter").
+name: E2E Filter Test
+device: nrf5340
+timeout: 15
+
+steps:
+  - sleep:
+      seconds: 0.1
+  - wait:
+      pattern: "boot"
+      timeout: 10

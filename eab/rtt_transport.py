@@ -316,13 +316,20 @@ class ProbeRsNativeTransport(RTTTransport):
     def __init__(self):
         self._session = None
 
-    def connect(self, device: str, interface: str = "SWD", speed: int = 4000) -> None:
+    def connect(
+        self,
+        device: str,
+        interface: str = "SWD",
+        speed: int = 4000,
+        probe_selector: str | None = None,
+    ) -> None:
         """Connect to target via probe-rs.
 
         Args:
             device: Chip name (e.g., "STM32L476RG", "nRF52840_xxAA")
             interface: Debug interface ("SWD" or "JTAG") - currently SWD only
             speed: Interface speed in kHz (ignored by probe-rs — uses auto-detect)
+            probe_selector: Optional probe selector (serial number or VID:PID)
 
         Raises:
             ImportError: If eab-probe-rs extension not installed
@@ -336,7 +343,7 @@ class ProbeRsNativeTransport(RTTTransport):
                 "Build with: cd eab-probe-rs && maturin develop --release"
             )
 
-        self._session = ProbeRsSession(chip=device)
+        self._session = ProbeRsSession(chip=device, probe_selector=probe_selector)
         self._session.attach()
         logger.info("ProbeRsNativeTransport connected to %s", device)
 

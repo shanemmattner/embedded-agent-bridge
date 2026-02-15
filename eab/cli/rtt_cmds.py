@@ -13,32 +13,99 @@ def cmd_rtt_start(
     *,
     base_dir: str,
     device: str,
+    transport: str,
     interface: str,
     speed: int,
     channel: int,
     block_address: Optional[int],
+    probe_selector: Optional[str],
     json_mode: bool,
 ) -> int:
-    bridge = JLinkBridge(base_dir)
-    status = bridge.start_rtt(
-        device=device,
-        interface=interface,
-        speed=speed,
-        rtt_channel=channel,
-        block_address=block_address,
-    )
-    _print(
-        {
-            "running": status.running,
-            "device": status.device,
-            "channel": status.channel,
-            "num_up_channels": status.num_up_channels,
-            "log_path": status.log_path,
-            "last_error": status.last_error,
-        },
-        json_mode=json_mode,
-    )
-    return 0 if status.running else 1
+    """Start RTT streaming using the specified transport backend.
+
+    Args:
+        base_dir: EAB session directory
+        device: Device/chip identifier (e.g., NRF5340_XXAA_APP, STM32L476RG)
+        transport: Transport backend ("jlink" or "probe-rs")
+        interface: Debug interface (SWD or JTAG)
+        speed: Interface speed in kHz
+        channel: RTT channel number
+        block_address: Optional RTT control block address
+        probe_selector: Optional probe selector for probe-rs (serial or VID:PID)
+        json_mode: Output JSON
+
+    Returns:
+        Exit code (0 = success, 1 = failure)
+    """
+    if transport == "jlink":
+        # Use existing JLinkBridge (subprocess-based JLinkRTTLogger)
+        bridge = JLinkBridge(base_dir)
+        status = bridge.start_rtt(
+            device=device,
+            interface=interface,
+            speed=speed,
+            rtt_channel=channel,
+            block_address=block_address,
+        )
+        _print(
+            {
+                "running": status.running,
+                "device": status.device,
+                "channel": status.channel,
+                "num_up_channels": status.num_up_channels,
+                "log_path": status.log_path,
+                "last_error": status.last_error,
+            },
+            json_mode=json_mode,
+        )
+        return 0 if status.running else 1
+
+    elif transport == "probe-rs":
+        # Use native probe-rs transport (Rust extension via PyO3)
+        from eab.rtt_transport import ProbeRsNativeTransport
+
+        try:
+            # Create transport and connect
+            rtt = ProbeRsNativeTransport()
+            rtt.connect(device=device, probe_selector=probe_selector)
+
+            # Start RTT
+            num_up = rtt.start_rtt(block_address=block_address)
+
+            # TODO: For now, just report success. Future work: integrate with daemon
+            # for continuous logging like JLinkBridge does.
+            _print(
+                {
+                    "running": True,
+                    "device": device,
+                    "channel": channel,
+                    "num_up_channels": num_up,
+                    "transport": "probe-rs",
+                    "note": "probe-rs transport does not yet support background logging. Use Python API for streaming.",
+                },
+                json_mode=json_mode,
+            )
+
+            # Disconnect (cleanup)
+            rtt.disconnect()
+            return 0
+
+        except Exception as e:
+            _print(
+                {
+                    "running": False,
+                    "device": device,
+                    "channel": channel,
+                    "transport": "probe-rs",
+                    "last_error": str(e),
+                },
+                json_mode=json_mode,
+            )
+            return 1
+
+    else:
+        _print({"error": f"Unknown transport: {transport}"}, json_mode=json_mode)
+        return 1
 
 
 def cmd_rtt_stop(*, base_dir: str, json_mode: bool) -> int:

@@ -431,20 +431,29 @@ test_stm32l4() {
         return
     fi
 
-    # Step 2: Flash (if firmware built)
-    local fw="$REPO_ROOT/examples/stm32l4-sensor-node/build/zephyr/zephyr.elf"
-    if [ -f "$fw" ]; then
-        log "Step 2: Flash firmware"
-        local flash_output
+    # Step 2: Flash (if firmware built) — prefer .bin over .elf to avoid objcopy dependency
+    local fw_bin="$REPO_ROOT/examples/stm32l4-sensor-node/build/zephyr/zephyr.bin"
+    local fw_elf="$REPO_ROOT/examples/stm32l4-sensor-node/build/zephyr/zephyr.elf"
+    local fw=""
+    if [ -f "$fw_bin" ]; then
+        fw="$fw_bin"
+    elif [ -f "$fw_elf" ]; then
+        fw="$fw_elf"
+    fi
 
-        # Try eabctl flash first
+    if [ -n "$fw" ]; then
+        log "Step 2: Flash firmware ($(basename "$fw"))"
+        local flash_output
         flash_output=$(eabctl flash "$fw" --chip stm32l4 --tool openocd 2>&1) || true
 
-        # If eabctl fails (missing objcopy), try probe-rs directly with probe selector
-        if ! echo "$flash_output" | grep -q '"success": true'; then
+        if echo "$flash_output" | grep -q '"success": true'; then
+            save_artifact "stm32l4/flash.txt" "$flash_output"
+            pass "STM32L4 flash succeeded"
+        else
+            # Fallback: probe-rs with probe selector
             log "  eabctl flash failed, trying probe-rs directly..."
             local probe_selector="0483:374b${STLINK_SERIAL:+:$STLINK_SERIAL}"
-            flash_output=$(probe-rs download --chip STM32L476RGTx --probe "$probe_selector" "$fw" 2>&1) || true
+            flash_output=$(probe-rs download --chip STM32L476RGTx --probe "$probe_selector" "$fw_elf" 2>&1) || true
             save_artifact "stm32l4/flash.txt" "$flash_output"
 
             if echo "$flash_output" | grep -qi "finished\|success\|programm"; then
@@ -452,9 +461,6 @@ test_stm32l4() {
             else
                 fail "STM32L4 flash (see artifacts/stm32l4/flash.txt)"
             fi
-        else
-            save_artifact "stm32l4/flash.txt" "$flash_output"
-            pass "STM32L4 flash succeeded"
         fi
     else
         skip "STM32L4 firmware not built"
@@ -509,9 +515,14 @@ test_mcxn947() {
         fi
     fi
 
-    # Step 2: Flash (if firmware built)
-    local fw="$REPO_ROOT/examples/frdm-mcxn947-fault-demo/build/zephyr/zephyr.elf"
-    if [ -f "$fw" ]; then
+    # Step 2: Flash (if firmware built) — prefer .bin to avoid objcopy issues
+    local fw_bin="$REPO_ROOT/examples/frdm-mcxn947-fault-demo/build/zephyr/zephyr.bin"
+    local fw_elf="$REPO_ROOT/examples/frdm-mcxn947-fault-demo/build/zephyr/zephyr.elf"
+    local fw=""
+    [ -f "$fw_bin" ] && fw="$fw_bin"
+    [ -z "$fw" ] && [ -f "$fw_elf" ] && fw="$fw_elf"
+
+    if [ -n "$fw" ]; then
         log "Step 2: Flash firmware"
         local flash_output
 
@@ -519,15 +530,15 @@ test_mcxn947() {
         flash_output=$(eabctl flash "$fw" --chip mcxn947 2>&1) || true
 
         if ! echo "$flash_output" | grep -q '"success": true'; then
-            # Fallback: probe-rs with MCU-LINK selector
+            # Fallback: probe-rs with MCU-LINK selector (must use .elf for address info)
             log "  eabctl flash failed, trying probe-rs directly..."
-            flash_output=$(probe-rs download --chip MCXN947 --probe "1fc9:0143" "$fw" 2>&1) || true
+            flash_output=$(probe-rs download --chip MCXN947 --probe "1fc9:0143" "$fw_elf" 2>&1) || true
             save_artifact "mcxn947/flash.txt" "$flash_output"
 
             if echo "$flash_output" | grep -qi "finished\|success\|programm"; then
                 pass "MCX N947 flash via probe-rs"
-            elif echo "$flash_output" | grep -qi "No flash memory contains"; then
-                skip "MCX N947 flash (probe-rs address range issue — needs LinkServer)"
+            elif echo "$flash_output" | grep -qi "No flash memory contains\|Unknown file magic"; then
+                skip "MCX N947 flash (MCX N947 requires NXP LinkServer — not installed)"
             else
                 fail "MCX N947 flash (see artifacts/mcxn947/flash.txt)"
             fi

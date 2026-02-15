@@ -136,7 +136,10 @@ def cmd_start(
         log_path = "/tmp/eab-daemon.log"
         err_path = "/tmp/eab-daemon.err"
 
-    daemon_cwd = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Go from eab/cli/daemon/ → eab/cli/ → eab/ → repo_root
+    # Must be repo root so `python -m eab` works and PYTHONPATH doesn't
+    # shadow pyserial with eab/cli/serial/.
+    daemon_cwd = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     env = dict(os.environ)
     # Ensure the local checkout is importable when we spawn the daemon.
     env["PYTHONPATH"] = (

@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 # Default location for EAB daemon device directories
 _EAB_DEVICES_DIR = Path("/tmp/eab-devices")
 
+# How long to wait for the capture subprocess to start before checking
+# if it exited with an error.  1.5s is empirically sufficient for J-Link
+# initialization (the slowest source).
+_STARTUP_WAIT_S = 1.5
+
 
 def cmd_trace_start(
     *,
@@ -90,12 +95,15 @@ def cmd_trace_start(
         return 1
 
     # ── Build and launch the capture subprocess ──────────────────────
-    eab_root = Path(__file__).parent.parent.parent.parent
+    eab_root = str(Path(__file__).parent.parent.parent.parent)
 
     if source == "rtt":
-        cmd = _build_rtt_cmd(eab_root, device, channel, output_path)
+        cmd = [sys.executable, "-m", "eab.cli.trace._rtt_worker",
+               device, str(channel), str(output_path), eab_root]
     else:
-        cmd = _build_tail_cmd(eab_root, log_path_str, output_path)
+        assert log_path_str is not None
+        cmd = [sys.executable, "-m", "eab.cli.trace._tail_worker",
+               log_path_str, str(output_path), eab_root]
 
     proc = subprocess.Popen(
         cmd,
@@ -104,8 +112,8 @@ def cmd_trace_start(
         start_new_session=True,  # detach from terminal
     )
 
-    # Give the subprocess a moment to start (or fail immediately)
-    time.sleep(1.5)
+    # Give the subprocess a moment to start (or fail immediately).
+    time.sleep(_STARTUP_WAIT_S)
     if proc.poll() is not None:
         stderr = proc.stderr.read().decode() if proc.stderr else ""
         _emit(
@@ -148,7 +156,14 @@ def cmd_trace_start(
 
 
 def _is_trace_running(pid_file: Path) -> bool:
-    """Return True if a trace subprocess is already alive."""
+    """Return True if a trace subprocess is already alive.
+
+    Args:
+        pid_file: Path to the PID file (``/tmp/eab-trace.pid``).
+
+    Returns:
+        True if a process with the recorded PID exists.
+    """
     if not pid_file.exists():
         return False
     try:
@@ -169,7 +184,15 @@ def _resolve_log_path(
 ) -> str | None:
     """Resolve the path to the text file we'll tail.
 
-    Returns None for RTT mode (no log file needed).
+    Args:
+        source: Capture source (``"rtt"``, ``"serial"``, ``"logfile"``).
+        trace_dir: Explicit device directory, or None to auto-derive.
+        logfile: Explicit log file path (logfile mode only).
+        device: J-Link device string used to derive the device directory
+            when *trace_dir* is not provided.
+
+    Returns:
+        Resolved absolute path to the log file, or None for RTT mode.
     """
     if source == "serial":
         if trace_dir:
@@ -182,13 +205,21 @@ def _resolve_log_path(
         return str(log_path.resolve())
 
     if source == "logfile":
+        assert logfile is not None  # validated by caller
         return str(Path(logfile).resolve())
 
     return None  # RTT mode
 
 
 def _emit(data: dict, json_mode: bool, *, error: bool = False) -> None:
-    """Print a result dict as JSON or human-readable text."""
+    """Print a result dict as JSON or human-readable text.
+
+    Args:
+        data: Key-value pairs to output.
+        json_mode: If True, print as a single JSON line.
+        error: If True and *data* contains an ``"error"`` key, prefix
+            the human-readable output with ``"Error: "``.
+    """
     if json_mode:
         print(json.dumps(data))
     else:
@@ -197,158 +228,3 @@ def _emit(data: dict, json_mode: bool, *, error: bool = False) -> None:
         else:
             for k, v in data.items():
                 print(f"{k}: {v}")
-
-
-def _build_rtt_cmd(
-    eab_root: Path, device: str, channel: int, output_path: Path
-) -> list[str]:
-    """Build the subprocess argv for RTT capture via J-Link.
-
-    Uses RTTBinaryCapture which handles J-Link connect, RTT attach,
-    binary framing, and clean shutdown on SIGTERM.
-    """
-    return [
-        sys.executable,
-        "-c",
-        f"""
-import sys, signal, time
-sys.path.insert(0, {str(eab_root)!r})
-
-from eab.rtt_transport import JLinkTransport
-from eab.rtt_binary import RTTBinaryCapture
-
-def _log(msg):
-    try:
-        print(msg, file=sys.stderr, flush=True)
-    except OSError:
-        pass
-
-transport = JLinkTransport()
-capture = RTTBinaryCapture(
-    transport=transport,
-    device={device!r},
-    channels=[{channel}],
-    output_path={str(output_path)!r},
-    sample_width=1,
-    timestamp_hz=1000,
-)
-
-capture.start()
-_log(f'Capturing RTT channel {channel} to {str(output_path)!r}')
-
-def handle_stop(signum, frame):
-    result = capture.stop()
-    _log(f'Stopped: {{result}}')
-    sys.exit(0)
-
-signal.signal(signal.SIGTERM, handle_stop)
-signal.signal(signal.SIGINT, handle_stop)
-
-try:
-    while True:
-        time.sleep(1)
-except (KeyboardInterrupt, SystemExit):
-    pass
-""",
-    ]
-
-
-def _build_tail_cmd(
-    eab_root: Path, log_path: str, output_path: Path
-) -> list[str]:
-    """Build the subprocess argv for tailing a text log into .rttbin.
-
-    Seeks to end-of-file and captures only *new* lines.  Each line
-    becomes one .rttbin frame on channel 0 with a millisecond wall-clock
-    timestamp.  Handles SIGTERM for clean shutdown and log rotation
-    (file truncation) gracefully.
-    """
-    return [
-        sys.executable,
-        "-c",
-        f"""
-import sys, signal, time, os
-sys.path.insert(0, {str(eab_root)!r})
-
-from eab.rtt_binary import BinaryWriter
-
-log_path = {log_path!r}
-output_path = {str(output_path)!r}
-
-def _log(msg):
-    '''Write to stderr, swallowing BrokenPipeError.
-    The parent process exits after the 1.5s startup check, closing
-    the read end of our stderr pipe.  Any later write would raise.'''
-    try:
-        print(msg, file=sys.stderr, flush=True)
-    except OSError:
-        pass
-
-if not os.path.exists(log_path):
-    _log(f'Error: log file not found: {{log_path}}')
-    sys.exit(1)
-
-writer = BinaryWriter(
-    output_path,
-    channels=[0],
-    sample_width=1,
-    timestamp_hz=1000,
-)
-
-start_ms = int(time.time() * 1000)
-frame_count = 0
-_log(f'Tailing {{log_path}} -> {{output_path}}')
-
-running = True
-
-def handle_stop(signum, frame):
-    global running
-    running = False
-
-signal.signal(signal.SIGTERM, handle_stop)
-signal.signal(signal.SIGINT, handle_stop)
-
-try:
-    f = open(log_path, 'r')
-    # Seek to end so we only capture new output
-    f.seek(0, 2)
-    last_inode = os.stat(log_path).st_ino
-
-    while running:
-        # Handle log rotation: detect truncation or new inode
-        try:
-            st = os.stat(log_path)
-        except OSError:
-            time.sleep(0.1)
-            continue
-
-        if st.st_ino != last_inode or st.st_size < f.tell():
-            # File was replaced or truncated — reopen
-            _log('Log rotated, reopening')
-            f.close()
-            f = open(log_path, 'r')
-            last_inode = st.st_ino
-
-        line = f.readline()
-        if line:
-            tick = int(time.time() * 1000) - start_ms
-            writer.write_frame(
-                channel=0,
-                payload=line.encode('utf-8', errors='replace'),
-                timestamp=tick,
-            )
-            frame_count += 1
-            # Flush every 100 frames to balance I/O and data safety
-            if frame_count % 100 == 0:
-                writer.flush()
-        else:
-            writer.flush()
-            time.sleep(0.05)
-except (KeyboardInterrupt, SystemExit):
-    pass
-finally:
-    f.close()
-    writer.close()
-    _log(f'Stopped: {{frame_count}} frames written to {{output_path}}')
-""",
-    ]

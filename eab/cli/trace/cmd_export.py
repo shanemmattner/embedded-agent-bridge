@@ -1,4 +1,4 @@
-"""Export RTT trace to Perfetto format."""
+"""Export .rttbin trace to visualization formats (Perfetto, tband)."""
 
 from __future__ import annotations
 
@@ -18,16 +18,16 @@ def cmd_trace_export(
     format: str = "perfetto",
     json_mode: bool = False,
 ) -> int:
-    """Export .rttbin trace to visualization format.
+    """Export .rttbin trace to a visualization format.
 
     Args:
-        input: Path to input .rttbin file
-        output: Path to output file
-        format: Output format ('perfetto' or 'tband')
-        json_mode: Emit JSON output
+        input: Path to input .rttbin file.
+        output: Path to output file (.json for Perfetto).
+        format: Output format (``"perfetto"`` or ``"tband"``).
+        json_mode: Emit machine-parseable JSON output.
 
     Returns:
-        Exit code: 0 on success, 1 on failure
+        0 on success, 1 on failure.
     """
     input_path = Path(input).resolve()
     output_path = Path(output).resolve()
@@ -53,8 +53,19 @@ def cmd_trace_export(
         return 1
 
 
-def _export_perfetto(input_path: Path, output_path: Path, json_mode: bool) -> int:
-    """Export using native Python converter (printk/text -> Chrome JSON)."""
+def _export_perfetto(
+    input_path: Path, output_path: Path, json_mode: bool
+) -> int:
+    """Export using the native Python converter (text lines → Chrome JSON).
+
+    Args:
+        input_path: Resolved path to the .rttbin file.
+        output_path: Resolved path to the output .json file.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        0 on success, 1 on failure.
+    """
     try:
         from eab.cli.trace.perfetto import rttbin_to_perfetto
 
@@ -65,7 +76,7 @@ def _export_perfetto(input_path: Path, output_path: Path, json_mode: bool) -> in
             print(json.dumps(result))
         else:
             print(f"Exported {summary['event_count']} events to {output_path}")
-            print(f"View in Perfetto: open https://ui.perfetto.dev/ and load the file")
+            print("View in Perfetto: open https://ui.perfetto.dev/ and load the file")
         return 0
 
     except Exception as e:
@@ -77,8 +88,21 @@ def _export_perfetto(input_path: Path, output_path: Path, json_mode: bool) -> in
         return 1
 
 
-def _export_tband(input_path: Path, output_path: Path, json_mode: bool) -> int:
-    """Export using tband-cli (Tonbandgeraet COBS format)."""
+def _export_tband(
+    input_path: Path, output_path: Path, json_mode: bool
+) -> int:
+    """Export using tband-cli (Tonbandgeraet COBS format → Perfetto).
+
+    Requires ``tband-cli`` to be installed (``cargo install tband-cli``).
+
+    Args:
+        input_path: Resolved path to the .rttbin file.
+        output_path: Resolved path to the output file.
+        json_mode: Emit machine-parseable JSON output.
+
+    Returns:
+        0 on success, 1 on failure.
+    """
     tband_path = shutil.which("tband-cli")
     if not tband_path:
         result = {

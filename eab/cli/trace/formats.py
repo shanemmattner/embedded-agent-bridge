@@ -38,12 +38,18 @@ def detect_trace_format(input_file: str | Path) -> str:
         if metadata_file.exists():
             logger.debug(f"Detected CTF format from metadata file in directory")
             return "ctf"
-    elif input_path.parent.name in ("channel0_0", "channel1_0"):
-        # Zephyr CTF creates channel directories
-        metadata_file = input_path.parent.parent / "metadata"
+    else:
+        # Check parent for CTF metadata (Zephyr CTF puts channel0_0 files alongside metadata)
+        metadata_file = input_path.parent / "metadata"
         if metadata_file.exists():
-            logger.debug(f"Detected CTF format from Zephyr CTF structure")
+            logger.debug(f"Detected CTF format from metadata in parent directory")
             return "ctf"
+        # Also check grandparent if file is inside a channel subdirectory
+        if input_path.parent.name.startswith("channel"):
+            metadata_file = input_path.parent.parent / "metadata"
+            if metadata_file.exists():
+                logger.debug(f"Detected CTF format from Zephyr CTF structure")
+                return "ctf"
 
     # Check magic bytes
     if input_path.is_file():

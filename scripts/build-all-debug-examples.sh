@@ -1,10 +1,10 @@
 #!/bin/bash
+set -eu
 #
 # Build All Debug-Full Examples
 # Automated build script for repeatability
 #
 
-set -e  # Exit on error
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"

@@ -91,6 +91,5 @@ def export_systemview_to_perfetto(
 
     except subprocess.TimeoutExpired:
         raise subprocess.TimeoutExpired(
-            "sysviewtrace_proc.py conversion timed out after 60 seconds",
-            timeout=60,
+            cmd="sysviewtrace_proc.py", timeout=60,
         )

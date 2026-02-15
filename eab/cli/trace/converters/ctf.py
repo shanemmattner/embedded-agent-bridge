@@ -108,7 +108,7 @@ def export_ctf_to_perfetto(input_path: str | Path, output_path: str | Path) -> d
 
     except subprocess.TimeoutExpired:
         raise subprocess.TimeoutExpired(
-            "babeltrace conversion timed out after 60 seconds", timeout=60
+            cmd="babeltrace", timeout=60,
         )
 
 

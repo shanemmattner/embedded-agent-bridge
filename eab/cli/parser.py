@@ -478,11 +478,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     trace_sub.add_parser("stop", help="Stop active trace capture")
 
-    p_trace_export = trace_sub.add_parser("export", help="Export .rttbin to Perfetto JSON")
-    p_trace_export.add_argument("--input", "-i", required=True, help="Input .rttbin file")
+    p_trace_export = trace_sub.add_parser("export", help="Export trace to Perfetto JSON")
+    p_trace_export.add_argument("--input", "-i", required=True, help="Input trace file (.rttbin, .svdat, CTF dir)")
     p_trace_export.add_argument("--output", "-o", required=True, help="Output .json file")
-    p_trace_export.add_argument("--format", default="perfetto", choices=["perfetto"],
-                                 help="Output format (default: perfetto)")
+    p_trace_export.add_argument("--format", default="auto", 
+                                 choices=["auto", "perfetto", "tband", "systemview", "ctf"],
+                                 help="Input format (default: auto)")
 
     # --- regression (hardware-in-the-loop test runner) ---
     p_regression = sub.add_parser("regression", help="Run hardware-in-the-loop regression tests")

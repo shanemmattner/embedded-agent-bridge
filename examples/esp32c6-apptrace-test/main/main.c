@@ -1,49 +1,26 @@
 /**
- * EAB ESP32-C6 Apptrace Test Firmware
+ * EAB ESP32-C6 Apptrace Stress Test
  *
- * Demonstrates high-speed trace streaming via OpenOCD esp_apptrace.
- * Sends periodic heartbeat messages via apptrace for performance analysis.
+ * PRODUCTION PATTERN (matches ESP-IDF app_trace_to_plot example):
+ * - Waits for OpenOCD connection
+ * - Streams continuously while host is connected
+ * - Exits gracefully when host disconnects
+ * - Writes from app_main() for simplicity
  *
  * CRITICAL QUIRKS FOR RISC-V ESP32 CHIPS (C6, C3, H2, C5):
  * ========================================================
+ * 1. RESET SEQUENCE: Chip must boot AFTER OpenOCD connects
+ *    See: https://github.com/espressif/openocd-esp32/issues/188
+ * 2. TIMING: Start apptrace within 1-2 seconds of reset
+ * 3. POLL PERIOD: Use 1ms (not 0)
  *
- * 1. TIMING: Start apptrace within 1-2 seconds of reset (not 5+!)
- *    - Firmware waits in esp_apptrace_host_is_connected() loop
- *    - If you start apptrace too late, firmware finishes and exits
- *    - Result: 0 bytes captured even though connection succeeds
- *
- * 2. RESET SEQUENCE: Chip must boot AFTER OpenOCD connects
- *    - During boot, firmware calls esp_apptrace_advertise_ctrl_block()
- *    - This uses semihosting to tell OpenOCD where trace buffer is
- *    - If OpenOCD not running, semihosting call fails, no buffer info
- *    - Always: Start OpenOCD → reset chip → start apptrace quickly
- *    - See: https://github.com/espressif/openocd-esp32/issues/188
- *
- * 3. POLL PERIOD: Must be non-zero (use 1ms or 3ms)
- *    - Command: esp apptrace start file://log.txt 1 2000 10 0 0
- *                                                   ^ poll_period in ms
- *    - poll_period=0 may use default, but 1ms is explicit and works
- *
- * 4. WRITE FROM app_main(): Don't use FreeRTOS tasks
- *    - ESP-IDF examples write directly from app_main()
- *    - Task scheduling can cause timing issues
- *    - Keep it simple: wait for connection, write, done
- *
- * OpenOCD commands (via telnet localhost 4444):
+ * OpenOCD commands:
  *   reset run
- *   esp apptrace start file:///tmp/apptrace.log 1 2000 10 0 0
- *   esp apptrace stop
- *   esp apptrace status
- *
- * EAB integration (future):
- *   eabctl trace start --source apptrace --device esp32c6 -o /tmp/trace.rttbin
- *   eabctl trace stop
- *   eabctl trace export -i /tmp/trace.rttbin -o /tmp/trace.json
+ *   esp apptrace start file:///tmp/apptrace.log 1 0 10 0 0
  */
 
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
@@ -53,185 +30,92 @@
 #include "esp_timer.h"
 #include "esp_app_trace.h"
 
-static const char *TAG = "APPTRACE_TEST";
-
-#define HEARTBEAT_MS   100  // Fast heartbeat for throughput testing
-#define TRACE_TIMEOUT  pdMS_TO_TICKS(10)
-
-static uint32_t heartbeat_count = 0;
-static int64_t start_time_us = 0;
-
-static void print_chip_info(void)
-{
-    esp_chip_info_t info;
-    esp_chip_info(&info);
-
-    uint32_t flash_size = 0;
-    esp_flash_get_size(NULL, &flash_size);
-
-    ESP_LOGI(TAG, "Chip: ESP32-C6, Cores: %d", info.cores);
-    ESP_LOGI(TAG, "Features: WiFi%s%s",
-           (info.features & CHIP_FEATURE_BLE) ? " BLE" : "",
-           (info.features & CHIP_FEATURE_IEEE802154) ? " 802.15.4" : "");
-    ESP_LOGI(TAG, "Flash: %lu MB", (unsigned long)(flash_size / (1024 * 1024)));
-    ESP_LOGI(TAG, "Free heap: %lu bytes", (unsigned long)esp_get_free_heap_size());
-}
-
-static void apptrace_heartbeat_task(void *arg)
-{
-    ESP_LOGI(TAG, "=== APPTRACE TASK STARTED ===");
-    ESP_LOGI(TAG, "Task stack size: %u bytes", uxTaskGetStackHighWaterMark(NULL));
-    ESP_LOGI(TAG, "Waiting for OpenOCD apptrace connection...");
-
-    // Wait for OpenOCD to connect (with debug counter)
-    uint32_t wait_count = 0;
-    while (!esp_apptrace_host_is_connected(ESP_APPTRACE_DEST_JTAG)) {
-        wait_count++;
-        if (wait_count % 10 == 0) {
-            ESP_LOGI(TAG, "Still waiting for OpenOCD... (checks: %lu)", (unsigned long)wait_count);
-        }
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-
-    ESP_LOGI(TAG, "=== OPENOCD APPTRACE CONNECTED! ===");
-    ESP_LOGI(TAG, "Connection detected after %lu checks", (unsigned long)wait_count);
-    ESP_LOGI(TAG, "Starting trace stream...");
-
-    while (1) {
-        heartbeat_count++;
-        int64_t uptime_ms = (esp_timer_get_time() - start_time_us) / 1000;
-        uint32_t free_heap = esp_get_free_heap_size();
-
-        // Format trace message
-        char trace_buf[128];
-        int len = snprintf(trace_buf, sizeof(trace_buf),
-                          "[TRACE] beat=%lu uptime=%lldms heap=%lu\n",
-                          (unsigned long)heartbeat_count,
-                          (long long)uptime_ms,
-                          (unsigned long)free_heap);
-
-        // Debug log every write for first 5 beats
-        if (heartbeat_count <= 5) {
-            ESP_LOGI(TAG, "Writing beat #%lu (%d bytes): %s",
-                    (unsigned long)heartbeat_count, len, trace_buf);
-        }
-
-        // Write to apptrace (high-speed JTAG stream)
-        esp_err_t res = esp_apptrace_write(ESP_APPTRACE_DEST_JTAG,
-                                           trace_buf,
-                                           len,
-                                           TRACE_TIMEOUT);
-        if (res != ESP_OK) {
-            ESP_LOGW(TAG, "apptrace write FAILED: %s (beat #%lu)",
-                    esp_err_to_name(res), (unsigned long)heartbeat_count);
-        } else if (heartbeat_count <= 5) {
-            ESP_LOGI(TAG, "Write SUCCESS (beat #%lu)", (unsigned long)heartbeat_count);
-        }
-
-        // Flush periodically to ensure data reaches host
-        if (heartbeat_count % 10 == 0) {
-            ESP_LOGI(TAG, "Flushing apptrace buffer (beat #%lu)", (unsigned long)heartbeat_count);
-            esp_err_t flush_res = esp_apptrace_flush(ESP_APPTRACE_DEST_JTAG, TRACE_TIMEOUT);
-            if (flush_res != ESP_OK) {
-                ESP_LOGW(TAG, "Flush FAILED: %s", esp_err_to_name(flush_res));
-            }
-        }
-
-        // Also log to UART for debug visibility
-        if (heartbeat_count % 50 == 0) {
-            ESP_LOGI(TAG, "=== STATUS: beat=%lu uptime=%lldms heap=%lu ===",
-                    (unsigned long)heartbeat_count,
-                    (long long)uptime_ms,
-                    (unsigned long)free_heap);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(HEARTBEAT_MS));
-    }
-}
+static const char *TAG = "STRESS_TEST";
 
 void app_main(void)
 {
-    start_time_us = esp_timer_get_time();
+    int64_t start_time = esp_timer_get_time();
 
     printf("\n\n");
-    printf("========================================\n");
-    printf("  ESP32-C6 Apptrace Test Firmware\n");
-    printf("========================================\n");
-    printf("High-speed trace streaming via OpenOCD\n\n");
+    printf("=======================================\n");
+    printf(" ESP32-C6 Apptrace STRESS TEST\n");
+    printf("=======================================\n");
+    printf("Continuous streaming (production pattern)\n\n");
 
-    ESP_LOGI(TAG, "=== APP_MAIN STARTED ===");
-    ESP_LOGI(TAG, "Firmware version: DEBUG - apptrace from app_main()");
-    print_chip_info();
+    esp_chip_info_t info;
+    esp_chip_info(&info);
+    ESP_LOGI(TAG, "Chip: ESP32-C6, Cores: %d, Free heap: %lu bytes",
+            info.cores, (unsigned long)esp_get_free_heap_size());
 
-    ESP_LOGI(TAG, "Waiting for OpenOCD apptrace connection...");
-
-    // CRITICAL: Wait for OpenOCD connection (blocking loop)
-    // This loop runs AFTER "reset run" command in OpenOCD
-    // OpenOCD must start apptrace within ~1-2 seconds or firmware will timeout/finish
-    // On RISC-V ESP chips, this check reads ASSIST_DEBUG register to detect debugger
-    uint32_t wait_count = 0;
+    // Wait for OpenOCD connection (ESP-IDF pattern)
+    ESP_LOGI(TAG, "Waiting for OpenOCD connection...");
     while (!esp_apptrace_host_is_connected(ESP_APPTRACE_DEST_JTAG)) {
-        wait_count++;
-        if (wait_count % 100 == 0) {
-            ESP_LOGI(TAG, "Still waiting... (count: %lu)", (unsigned long)wait_count);
-        }
-        vTaskDelay(1);  // 1 tick delay (not 100ms!) to poll frequently
+        vTaskDelay(1);
     }
 
-    ESP_LOGI(TAG, "=== OPENOCD CONNECTED! ===");
-    ESP_LOGI(TAG, "Starting STRESS TEST - sending 500 messages with NO delay!");
+    ESP_LOGI(TAG, "=== CONNECTED! Starting continuous stream ===");
 
-    // STRESS TEST: Same format as before but NO DELAY between writes
-    // This tests maximum throughput of the simple message format
-    int64_t test_start = esp_timer_get_time();
+    uint32_t msg_count = 0;
     uint32_t total_bytes = 0;
+    int64_t test_start = esp_timer_get_time();
+    int64_t last_report = test_start;
 
-    for (heartbeat_count = 1; heartbeat_count <= 500; heartbeat_count++) {
-        int64_t uptime_ms = (esp_timer_get_time() - start_time_us) / 1000;
+    // PRODUCTION PATTERN: Loop while host is connected!
+    // This is the KEY - not while(1), but while(connected)!
+    while (esp_apptrace_host_is_connected(ESP_APPTRACE_DEST_JTAG)) {
+        msg_count++;
+        int64_t uptime_ms = (esp_timer_get_time() - start_time) / 1000;
         uint32_t free_heap = esp_get_free_heap_size();
 
         char trace_buf[128];
         int len = snprintf(trace_buf, sizeof(trace_buf),
-                          "[TRACE] beat=%lu uptime=%lldms heap=%lu\n",
-                          (unsigned long)heartbeat_count,
+                          "[TRACE] msg=%lu uptime=%lldms heap=%lu\n",
+                          (unsigned long)msg_count,
                           (long long)uptime_ms,
                           (unsigned long)free_heap);
 
-        // Write (no delay!)
+        // Write with infinite timeout
         esp_err_t res = esp_apptrace_write(ESP_APPTRACE_DEST_JTAG,
                                            trace_buf,
                                            len,
                                            ESP_APPTRACE_TMO_INFINITE);
-        if (res == ESP_OK) {
-            total_bytes += len;
+        if (res != ESP_OK) {
+            ESP_LOGE(TAG, "Write FAILED: %s - exiting", esp_err_to_name(res));
+            break;
         }
 
-        // Flush every 50 writes (not every write - better throughput)
-        if (heartbeat_count % 50 == 0) {
-            esp_apptrace_flush(ESP_APPTRACE_DEST_JTAG, 1000);
+        total_bytes += len;
 
-            // Progress report
-            int64_t elapsed_us = esp_timer_get_time() - test_start;
-            float elapsed_s = elapsed_us / 1000000.0;
+        // Flush every 10 writes
+        if (msg_count % 10 == 0) {
+            esp_apptrace_flush(ESP_APPTRACE_DEST_JTAG, 1000);
+        }
+
+        // Report throughput every second
+        int64_t now = esp_timer_get_time();
+        if ((now - last_report) >= 1000000) {  // 1 second
+            float elapsed_s = (now - last_report) / 1000000.0;
             float throughput_kbps = (total_bytes / 1024.0) / elapsed_s;
 
-            ESP_LOGI(TAG, "Progress: %lu/500 | %.1f KB | %.1f KB/s",
-                    (unsigned long)heartbeat_count, total_bytes / 1024.0, throughput_kbps);
+            ESP_LOGI(TAG, "Throughput: %.2f KB/s | Total: %lu msgs, %.1f KB",
+                    throughput_kbps, (unsigned long)msg_count, (msg_count * len) / 1024.0);
+
+            total_bytes = 0;
+            last_report = now;
         }
 
-        // NO DELAY - maximum speed!
+        // NO DELAY - send as fast as possible for stress test!
+        // For production: add vTaskDelay or only send when data available
     }
 
-    // Final flush
-    esp_apptrace_flush(ESP_APPTRACE_DEST_JTAG, ESP_APPTRACE_TMO_INFINITE);
-
+    // Cleanup when host disconnects
     int64_t test_end = esp_timer_get_time();
     float total_time_s = (test_end - test_start) / 1000000.0;
-    float throughput_kbps = (total_bytes / 1024.0) / total_time_s;
+    float avg_throughput = ((msg_count * 50) / 1024.0) / total_time_s;  // ~50 bytes/msg
 
-    ESP_LOGI(TAG, "=== STRESS TEST COMPLETE! ===");
-    ESP_LOGI(TAG, "Sent %lu messages (%lu bytes = %.2f KB)",
-            (unsigned long)heartbeat_count - 1, (unsigned long)total_bytes, total_bytes / 1024.0);
+    ESP_LOGI(TAG, "=== HOST DISCONNECTED ===");
+    ESP_LOGI(TAG, "Total messages: %lu", (unsigned long)msg_count);
     ESP_LOGI(TAG, "Total time: %.3f seconds", total_time_s);
-    ESP_LOGI(TAG, "Throughput: %.2f KB/s", throughput_kbps);
+    ESP_LOGI(TAG, "Average throughput: %.2f KB/s", avg_throughput);
+    ESP_LOGI(TAG, "Done!");
 }

@@ -1,11 +1,28 @@
-# Minimal config for ESP32-C6
+# ESP32-C6 Apptrace Test Configuration
+# ======================================
+# This config enables high-speed trace streaming via OpenOCD JTAG interface
+#
+# CRITICAL for RISC-V ESP chips (C6, C3, H2, C5):
+# - Chip must boot AFTER OpenOCD connects (semihosting handshake)
+# - Start apptrace within 1-2 seconds of reset
+# - Use poll_period >= 1ms in OpenOCD command
+#
+# See: https://github.com/espressif/openocd-esp32/issues/188
+#      https://github.com/espressif/esp-idf/issues/18213
+
 CONFIG_IDF_TARGET="esp32c6"
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
 
-# USB Serial/JTAG console (for regular debug output)
+# USB Serial/JTAG console (for regular debug output via ESP_LOGI)
+# ESP32-C6 has built-in USB-JTAG supporting BOTH debug and serial console
+# This does NOT conflict with apptrace - both work simultaneously
+# Alternative: CONFIG_ESP_CONSOLE_UART=y (requires external USB-UART adapter)
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
-# Application trace via JTAG (for high-speed streaming)
+# Application trace via JTAG (for high-speed trace streaming)
+# Enables esp_app_trace.h API and internal ring buffer
+# On RISC-V, triggers semihosting call during boot to advertise buffer to OpenOCD
+# JTAG destination is faster than UART and doesn't interfere with console
 CONFIG_APPTRACE_DEST_JTAG=y
 CONFIG_APPTRACE_ENABLE=y

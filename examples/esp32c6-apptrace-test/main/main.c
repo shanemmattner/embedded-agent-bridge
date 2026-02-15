@@ -2,14 +2,40 @@
  * EAB ESP32-C6 Apptrace Test Firmware
  *
  * Demonstrates high-speed trace streaming via OpenOCD esp_apptrace.
- * Sends periodic heartbeat messages and responds to commands via apptrace.
+ * Sends periodic heartbeat messages via apptrace for performance analysis.
+ *
+ * CRITICAL QUIRKS FOR RISC-V ESP32 CHIPS (C6, C3, H2, C5):
+ * ========================================================
+ *
+ * 1. TIMING: Start apptrace within 1-2 seconds of reset (not 5+!)
+ *    - Firmware waits in esp_apptrace_host_is_connected() loop
+ *    - If you start apptrace too late, firmware finishes and exits
+ *    - Result: 0 bytes captured even though connection succeeds
+ *
+ * 2. RESET SEQUENCE: Chip must boot AFTER OpenOCD connects
+ *    - During boot, firmware calls esp_apptrace_advertise_ctrl_block()
+ *    - This uses semihosting to tell OpenOCD where trace buffer is
+ *    - If OpenOCD not running, semihosting call fails, no buffer info
+ *    - Always: Start OpenOCD → reset chip → start apptrace quickly
+ *    - See: https://github.com/espressif/openocd-esp32/issues/188
+ *
+ * 3. POLL PERIOD: Must be non-zero (use 1ms or 3ms)
+ *    - Command: esp apptrace start file://log.txt 1 2000 10 0 0
+ *                                                   ^ poll_period in ms
+ *    - poll_period=0 may use default, but 1ms is explicit and works
+ *
+ * 4. WRITE FROM app_main(): Don't use FreeRTOS tasks
+ *    - ESP-IDF examples write directly from app_main()
+ *    - Task scheduling can cause timing issues
+ *    - Keep it simple: wait for connection, write, done
  *
  * OpenOCD commands (via telnet localhost 4444):
- *   esp apptrace start file:///tmp/apptrace.log 0 0 1 0 0
+ *   reset run
+ *   esp apptrace start file:///tmp/apptrace.log 1 2000 10 0 0
  *   esp apptrace stop
  *   esp apptrace status
  *
- * EAB commands:
+ * EAB integration (future):
  *   eabctl trace start --source apptrace --device esp32c6 -o /tmp/trace.rttbin
  *   eabctl trace stop
  *   eabctl trace export -i /tmp/trace.rttbin -o /tmp/trace.json
@@ -139,20 +165,26 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Waiting for OpenOCD apptrace connection...");
 
-    // Wait for OpenOCD (like ESP-IDF example)
+    // CRITICAL: Wait for OpenOCD connection (blocking loop)
+    // This loop runs AFTER "reset run" command in OpenOCD
+    // OpenOCD must start apptrace within ~1-2 seconds or firmware will timeout/finish
+    // On RISC-V ESP chips, this check reads ASSIST_DEBUG register to detect debugger
     uint32_t wait_count = 0;
     while (!esp_apptrace_host_is_connected(ESP_APPTRACE_DEST_JTAG)) {
         wait_count++;
         if (wait_count % 100 == 0) {
             ESP_LOGI(TAG, "Still waiting... (count: %lu)", (unsigned long)wait_count);
         }
-        vTaskDelay(1);
+        vTaskDelay(1);  // 1 tick delay (not 100ms!) to poll frequently
     }
 
     ESP_LOGI(TAG, "=== OPENOCD CONNECTED! ===");
     ESP_LOGI(TAG, "Sending test data...");
 
-    // Send 50 heartbeat messages (like ESP-IDF example)
+    // Send 50 heartbeat messages (matches ESP-IDF app_trace_basic example)
+    // IMPORTANT: Write directly from app_main(), NOT from a FreeRTOS task
+    // ESP-IDF examples use this pattern to avoid task scheduling issues
+    // Each write is flushed immediately for low-latency streaming
     for (heartbeat_count = 1; heartbeat_count <= 50; heartbeat_count++) {
         int64_t uptime_ms = (esp_timer_get_time() - start_time_us) / 1000;
         uint32_t free_heap = esp_get_free_heap_size();
@@ -170,6 +202,8 @@ void app_main(void)
         }
 
         // Write with infinite timeout (like ESP-IDF example)
+        // INFINITE timeout ensures write completes even if JTAG is slow
+        // Alternative: Use pdMS_TO_TICKS(10) for 10ms timeout with error handling
         esp_err_t res = esp_apptrace_write(ESP_APPTRACE_DEST_JTAG,
                                            trace_buf,
                                            len,
@@ -180,7 +214,9 @@ void app_main(void)
             ESP_LOGI(TAG, "Write SUCCESS");
         }
 
-        // Flush after every write (like ESP-IDF example)
+        // Flush after every write (ESP-IDF example pattern)
+        // This ensures low-latency delivery to OpenOCD
+        // For higher throughput, flush every N writes instead of every write
         esp_apptrace_flush(ESP_APPTRACE_DEST_JTAG, 1000);
 
         // Status every 10 beats

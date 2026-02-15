@@ -824,7 +824,7 @@ class TestGDBCommandEntryPoints:
         script.write_text("print('test')")
         
         # Mock the entire chain
-        with patch("eab.cli.debug_cmds.get_debug_probe") as mock_probe_factory:
+        with patch("eab.cli.debug.gdb_cmds._build_probe") as mock_probe_factory:
             mock_probe = MagicMock()
             mock_probe.gdb_port = 2331
             mock_probe.start_gdb_server.return_value = GDBServerStatus(
@@ -833,8 +833,8 @@ class TestGDBCommandEntryPoints:
                 port=2331,
             )
             mock_probe_factory.return_value = mock_probe
-            
-            with patch("eab.cli.debug_cmds.run_gdb_python") as mock_gdb:
+
+            with patch("eab.cli.debug.gdb_cmds.run_gdb_python") as mock_gdb:
                 mock_gdb.return_value = GDBResult(
                     success=True,
                     stdout="Success",

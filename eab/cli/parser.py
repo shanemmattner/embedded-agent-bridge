@@ -456,4 +456,27 @@ def _build_parser() -> argparse.ArgumentParser:
     p_dev_rm = device_sub.add_parser("remove", help="Unregister a device")
     p_dev_rm.add_argument("name", help="Device name to remove")
 
+    # Trace capture (Tonbandgerät/Perfetto integration)
+    p_trace = sub.add_parser("trace", help="Trace capture (RTT/serial/logfile) and export to Perfetto")
+    trace_sub = p_trace.add_subparsers(dest="trace_action", required=True)
+
+    p_trace_start = trace_sub.add_parser("start", help="Start trace capture to binary file")
+    p_trace_start.add_argument("--output", "-o", required=True, help="Output .rttbin file")
+    p_trace_start.add_argument("--source", default="rtt", choices=["rtt", "serial", "logfile"],
+                                help="Capture source (default: rtt)")
+    p_trace_start.add_argument("--device", default="NRF5340_XXAA_APP", help="J-Link device string (rtt mode)")
+    p_trace_start.add_argument("--channel", type=int, default=0, help="RTT channel (default: 0)")
+    p_trace_start.add_argument("--trace-dir", dest="trace_dir", default=None,
+                                help="Device base dir for serial mode (default: /tmp/eab-devices/{device})")
+    p_trace_start.add_argument("--logfile", default=None,
+                                help="Log file path for logfile mode")
+
+    trace_sub.add_parser("stop", help="Stop active trace capture")
+
+    p_trace_export = trace_sub.add_parser("export", help="Export .rttbin to Perfetto JSON")
+    p_trace_export.add_argument("--input", "-i", required=True, help="Input .rttbin file")
+    p_trace_export.add_argument("--output", "-o", required=True, help="Output .json file")
+    p_trace_export.add_argument("--format", default="perfetto", choices=["perfetto"],
+                                 help="Output format (default: perfetto)")
+
     return parser

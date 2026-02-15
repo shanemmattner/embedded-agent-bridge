@@ -239,6 +239,34 @@ This checks:
 - Device is connected
 - Health status is good
 
+## Trace Capture (Perfetto Integration)
+
+Capture device output to `.rttbin` and export to Perfetto JSON for visualization. Works with **any board** — not just J-Link/RTT.
+
+```bash
+# RTT capture (nRF5340 via J-Link — original mode)
+eabctl trace start --source rtt -o /tmp/trace.rttbin --device NRF5340_XXAA_APP
+
+# Serial capture (any board with an EAB daemon running)
+eabctl trace start --source serial --trace-dir /tmp/eab-devices/esp32 -o /tmp/trace.rttbin
+eabctl trace start --source serial --trace-dir /tmp/eab-devices/nrf5340 -o /tmp/trace.rttbin
+
+# Auto-derive device dir from --device name (NRF5340_XXAA_APP → /tmp/eab-devices/nrf5340/)
+eabctl trace start --source serial --device NRF5340_XXAA_APP -o /tmp/trace.rttbin
+
+# Logfile replay (tail any text file)
+eabctl trace start --source logfile --logfile /path/to/old.log -o /tmp/trace.rttbin
+
+# Stop capture
+eabctl trace stop
+
+# Export to Perfetto JSON (works with any source)
+eabctl trace export -i /tmp/trace.rttbin -o /tmp/trace.json
+# Open trace.json in https://ui.perfetto.dev
+```
+
+All sources write the same `.rttbin` format. The serial/logfile modes tail the log file and write each line as a frame with wall-clock timestamps. Log rotation (file truncation) is handled gracefully.
+
 ## All Commands
 
 ```
@@ -259,6 +287,9 @@ eabctl fault-analyze       # Decode Cortex-M fault registers via GDB
 eabctl profile-function    # Profile function execution time (J-Link + DWT)
 eabctl profile-region      # Profile address region execution time (J-Link + DWT)
 eabctl dwt-status          # Display DWT register state
+eabctl trace start         # Start trace capture (rtt/serial/logfile → .rttbin)
+eabctl trace stop          # Stop active trace capture
+eabctl trace export        # Export .rttbin to Perfetto JSON
 ```
 
 ## Binary Framing (Optional)

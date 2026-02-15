@@ -217,7 +217,8 @@ impl ProbeRsSession {
     /// describes RTT channel buffers) and initializes RTT for reading/writing channels.
     ///
     /// Three methods to locate the control block (in priority order):
-    /// 1. If `block_address` provided: Use that exact address (fastest)
+    /// Priority order (if both parameters provided, block_address takes precedence):
+    /// 1. If `block_address` provided: Use that exact address (fastest, elf_path ignored)
     /// 2. If `elf_path` provided: Read _SEGGER_RTT symbol from ELF (reliable)
     /// 3. Otherwise: Scan all RAM for the control block signature (slow, may fail)
     ///
@@ -226,7 +227,7 @@ impl ProbeRsSession {
     ///         probe-rs will read the _SEGGER_RTT symbol address from the ELF.
     ///         This is the RECOMMENDED approach - always works if firmware has RTT.
     ///     block_address: Optional RTT control block address (e.g., 0x20001010).
-    ///         If provided, skips ELF parsing and RAM scanning.
+    ///         If provided, skips ELF parsing and RAM scanning (elf_path is ignored).
     ///         Use this for maximum speed if you know the exact address.
     ///
     /// Returns:
@@ -261,10 +262,7 @@ impl ProbeRsSession {
         } else if let Some(ref elf) = elf_path {
             // Priority 2: Read _SEGGER_RTT symbol from ELF
             match find_rtt_symbol(elf)? {
-                Some(addr) => {
-                    eprintln!("Found _SEGGER_RTT symbol in ELF at 0x{:08x}", addr);
-                    Some(addr)
-                }
+                Some(addr) => Some(addr),
                 None => {
                     return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
                         "_SEGGER_RTT symbol not found in ELF file '{}'.\n\

@@ -28,7 +28,7 @@ except ImportError:
     sys.exit(1)
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Test probe-rs RTT with ELF symbol reading")
     parser.add_argument("--chip", required=True, help="Target chip (e.g., STM32L432KCUx)")
     parser.add_argument("--elf", help="Path to ELF file (RECOMMENDED)")

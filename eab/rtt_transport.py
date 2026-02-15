@@ -321,7 +321,7 @@ class ProbeRsNativeTransport(RTTTransport):
         device: str,
         interface: str = "SWD",
         speed: int = 4000,
-        probe_selector: str | None = None,
+        probe_selector: Optional[str] = None,
     ) -> None:
         """Connect to target via probe-rs.
 
@@ -347,28 +347,30 @@ class ProbeRsNativeTransport(RTTTransport):
         self._session.attach()
         logger.info("ProbeRsNativeTransport connected to %s", device)
 
-    def start_rtt(self, block_address: int | None = None) -> int:
+    def start_rtt(self, block_address: int | None = None, elf_path: str | None = None) -> int:
         """Start RTT on the target.
 
         Args:
-            block_address: Optional RTT control block address.
-                If None, scans RAM automatically.
+            block_address: Optional RTT control block address (not supported by probe-rs).
+            elf_path: Optional path to ELF file for symbol reading (RECOMMENDED).
 
         Returns:
             Number of up (target→host) channels found.
 
         Raises:
             RuntimeError: If not connected or RTT control block not found
+            ValueError: If block_address is provided (not supported)
         """
         if not self._session:
             raise RuntimeError("Not connected. Call connect() first.")
 
-        # probe-rs doesn't support explicit block addresses yet
-        # It always scans RAM automatically
         if block_address is not None:
-            logger.warning("probe-rs does not support explicit RTT block addresses. Ignoring.")
+            raise ValueError(
+                "probe-rs transport does not support explicit RTT block addresses. "
+                "Use elf_path parameter instead to read _SEGGER_RTT symbol from ELF."
+            )
 
-        num_channels = self._session.start_rtt()
+        num_channels = self._session.start_rtt(elf_path=elf_path)
         logger.info("RTT started: %d up channels found", num_channels)
         return num_channels
 

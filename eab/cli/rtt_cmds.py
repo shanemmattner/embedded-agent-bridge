@@ -61,7 +61,9 @@ def cmd_rtt_start(
         return 0 if status.running else 1
 
     elif transport == "probe-rs":
-        # Use native probe-rs transport (Rust extension via PyO3)
+        # probe-rs transport not yet integrated with daemon (unlike JLinkBridge).
+        # TODO: add background logging support via daemon for continuous RTT capture.
+        # For now, this is for testing connectivity and firmware RTT setup verification.
         from eab.rtt_transport import ProbeRsNativeTransport
 
         try:
@@ -109,6 +111,15 @@ def cmd_rtt_start(
 
 
 def cmd_rtt_stop(*, base_dir: str, json_mode: bool) -> int:
+    """Stop RTT streaming and terminate the background JLinkRTTLogger process.
+
+    Args:
+        base_dir: EAB session directory
+        json_mode: Output JSON
+
+    Returns:
+        Exit code (0 = success)
+    """
     bridge = JLinkBridge(base_dir)
     status = bridge.stop_rtt()
     _print(
@@ -119,6 +130,15 @@ def cmd_rtt_stop(*, base_dir: str, json_mode: bool) -> int:
 
 
 def cmd_rtt_status(*, base_dir: str, json_mode: bool) -> int:
+    """Query current RTT streaming status.
+
+    Args:
+        base_dir: EAB session directory
+        json_mode: Output JSON
+
+    Returns:
+        Exit code (0 = success)
+    """
     bridge = JLinkBridge(base_dir)
     status = bridge.rtt_status()
     _print(
@@ -142,6 +162,16 @@ def cmd_rtt_reset(
     wait: float,
     json_mode: bool,
 ) -> int:
+    """Reset the target device and restart RTT streaming.
+
+    Args:
+        base_dir: EAB session directory
+        wait: Seconds to wait after reset before reconnecting
+        json_mode: Output JSON
+
+    Returns:
+        Exit code (0 = success, 1 = RTT not running after reset)
+    """
     bridge = JLinkBridge(base_dir)
     status = bridge.reset_rtt_target(wait_after_reset_s=wait)
     _print(
@@ -159,6 +189,16 @@ def cmd_rtt_reset(
 
 
 def cmd_rtt_tail(*, base_dir: str, lines: int, json_mode: bool) -> int:
+    """Display the last N lines of RTT output.
+
+    Args:
+        base_dir: EAB session directory
+        lines: Number of lines to display
+        json_mode: Output JSON
+
+    Returns:
+        Exit code (0 = success)
+    """
     # JLinkRTTLogger writes raw data to rtt-raw.log. The tailer thread
     # processes it into rtt.log, but the tailer only runs in-process.
     # For cross-process CLI use, prefer whichever file was modified most

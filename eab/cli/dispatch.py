@@ -429,5 +429,26 @@ def main(argv: Optional[list[str]] = None) -> int:
                 json_mode=args.json,
             )
 
+    if args.cmd == "trace":
+        if args.trace_action == "start":
+            return cli.cmd_trace_start(
+                output=args.output,
+                source=args.source,
+                device=args.device,
+                channel=args.channel,
+                trace_dir=args.trace_dir,
+                logfile=args.logfile,
+                json_mode=args.json,
+            )
+        if args.trace_action == "stop":
+            return cli.cmd_trace_stop(json_mode=args.json)
+        if args.trace_action == "export":
+            return cli.cmd_trace_export(
+                input=args.input,
+                output=args.output,
+                format=args.format,
+                json_mode=args.json,
+            )
+
     parser.error(f"Unknown command: {args.cmd}")
     return 2

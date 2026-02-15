@@ -174,6 +174,10 @@ test_esp32c6() {
 
     log "Using port: $port"
 
+    # Stop daemon if running (OpenOCD USB-JTAG needs exclusive access)
+    eabctl --device esp32c6 stop 2>/dev/null || true
+    sleep 1
+
     # Step 1: Chip info
     log "Step 1: Chip identification"
     local chip_output

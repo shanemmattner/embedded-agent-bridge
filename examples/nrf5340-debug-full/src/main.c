@@ -17,6 +17,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/tracing/tracing.h>
+#include <zephyr/random/random.h>
 #include <string.h>
 
 LOG_MODULE_REGISTER(debug_full, LOG_LEVEL_INF);
@@ -164,6 +165,13 @@ static int cmd_fault_div0(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* Recursive function to blow the stack */
+static void overflow_recursive(void) {
+	volatile char buffer[1024];
+	memset((void *)buffer, 0xFF, sizeof(buffer));
+	overflow_recursive();
+}
+
 /* Shell command: trigger stack overflow */
 static int cmd_fault_stack(const struct shell *sh, size_t argc, char **argv)
 {
@@ -174,14 +182,7 @@ static int cmd_fault_stack(const struct shell *sh, size_t argc, char **argv)
 	shell_print(sh, "MPU will detect overflow");
 	k_msleep(100);
 
-	/* Recursive function to blow the stack */
-	static void overflow(void) {
-		volatile char buffer[1024];
-		memset((void *)buffer, 0xFF, sizeof(buffer));
-		overflow();
-	}
-
-	overflow();
+	overflow_recursive();
 	return 0;
 }
 

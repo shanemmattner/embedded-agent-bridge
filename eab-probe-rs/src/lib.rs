@@ -179,6 +179,11 @@ impl ProbeRsSession {
     /// probe-rs automatically scans RAM for the RTT control block using the default
     /// search pattern (magic number "_SEGGER_RTT").
     ///
+    /// Args:
+    ///     block_address: Optional RTT control block address (e.g., 0x20001010).
+    ///         If provided, skips scanning and uses this exact address.
+    ///         Use this if auto-detection fails or for faster startup.
+    ///
     /// Returns:
     ///     int: Number of up (target→host) channels found
     ///
@@ -186,9 +191,12 @@ impl ProbeRsSession {
     ///     RuntimeError: If not attached, or RTT control block not found
     ///
     /// Example:
+    ///     >>> # Auto-detect (scans all RAM)
     ///     >>> num_channels = session.start_rtt()
-    ///     >>> print(f"Found {num_channels} RTT channels")
-    fn start_rtt(&self) -> PyResult<usize> {
+    ///     >>> # Use explicit address (faster, always works if address is correct)
+    ///     >>> num_channels = session.start_rtt(block_address=0x20001010)
+    #[pyo3(signature = (block_address=None))]
+    fn start_rtt(&self, block_address: Option<u64>) -> PyResult<usize> {
         let mut session_guard = self.session.lock().unwrap();
         let session = session_guard
             .as_mut()
@@ -199,13 +207,25 @@ impl ProbeRsSession {
             pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to attach to core: {}", e))
         })?;
 
-        // Scan for RTT control block (probe-rs scans RAM automatically)
-        let mut rtt = Rtt::attach(&mut core).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!(
-                "RTT control block not found: {}. Ensure firmware has RTT enabled.",
-                e
-            ))
-        })?;
+        // Scan for RTT control block or use explicit address
+        let mut rtt = if let Some(addr) = block_address {
+            // Use explicit address (faster and more reliable when address is known)
+            Rtt::attach_at(&mut core, addr).map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "RTT control block not found at 0x{:08x}: {}",
+                    addr, e
+                ))
+            })?
+        } else {
+            // Auto-scan RAM regions
+            Rtt::attach(&mut core).map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "RTT control block not found: {}. Ensure firmware has RTT enabled.\n\
+                     Tip: If you know the control block address, use start_rtt(block_address=0xXXXXXXXX)",
+                    e
+                ))
+            })?
+        };
 
         let num_up = rtt.up_channels().len();
 

@@ -1,7 +1,7 @@
 # ESP32-C6 Apptrace Blocker
 
 **Date**: 2026-02-15
-**Status**: ✅ RESOLVED - Apptrace initialization working with reset sequence
+**Status**: ✅✅✅ FULLY WORKING - Data capture confirmed! 2KB trace data captured successfully!
 
 ## ✅ Solution Found
 
@@ -36,7 +36,35 @@ Targets connected.
 
 **Official Documentation**: [OpenOCD Troubleshooting FAQ - RISC-V Apptrace](https://github.com/espressif/openocd-esp32/wiki/Troubleshooting-FAQ#failed-to-start-application-level-tracing-on-riscv-chip)
 
-**Next Steps**: Debug firmware to verify data capture (currently 0 bytes written, likely firmware not resuming or not reaching trace write loop).
+## ✅✅✅ WORKING PROCEDURE (TESTED & CONFIRMED)
+
+```bash
+# 1. Start OpenOCD
+~/.espressif/tools/openocd-esp32/v0.12.0-esp32-20241016/openocd-esp32/bin/openocd \
+  -f board/esp32c6-builtin.cfg -l /tmp/openocd.log &
+
+# 2. Reset chip
+echo "reset run" | nc localhost 4444
+
+# 3. IMMEDIATELY start apptrace (within 1-2 seconds! not 5!)
+sleep 1
+echo "esp apptrace start file:///tmp/apptrace.log 1 2000 10 0 0" | nc localhost 4444
+#                                                  ^ poll_period=1ms (CRITICAL!)
+
+# 4. Wait for data collection (10 second timeout)
+sleep 11
+
+# 5. Verify data
+cat /tmp/apptrace.log
+```
+
+**Result**: 2KB trace data captured (48 heartbeat messages)!
+```
+[TRACE] beat=1 uptime=639ms heap=428060
+[TRACE] beat=2 uptime=739ms heap=428060
+...
+[TRACE] beat=48 uptime=5339ms heap=4280
+```
 
 ---
 

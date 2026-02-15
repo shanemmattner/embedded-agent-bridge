@@ -132,6 +132,18 @@ test_nrf5340() {
     return 0
 }
 
+# Run trace pipeline tests (no hardware required)
+test_trace_pipeline() {
+    echo "=== Testing Trace Pipeline ===" | tee -a "$TEST_LOG"
+    if bash "$SCRIPT_DIR/test-trace-pipeline.sh" >> "$TEST_LOG" 2>&1; then
+        echo "Trace pipeline test PASSED" | tee -a "$TEST_LOG"
+        return 0
+    else
+        echo "FAIL: Trace pipeline tests failed" | tee -a "$TEST_LOG"
+        return 1
+    fi
+}
+
 # Run tests
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -143,6 +155,12 @@ else
 fi
 
 if test_nrf5340; then
+    ((PASS_COUNT++))
+else
+    ((FAIL_COUNT++))
+fi
+
+if test_trace_pipeline; then
     ((PASS_COUNT++))
 else
     ((FAIL_COUNT++))

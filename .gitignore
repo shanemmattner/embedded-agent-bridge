@@ -53,5 +53,8 @@ sdkconfig.old
 managed_components/
 dependencies.lock
 
+# E2E test results (binary traces, logs)
+e2e-results/
+
 # Temp files
 tmp/

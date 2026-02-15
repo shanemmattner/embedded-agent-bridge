@@ -450,5 +450,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                 json_mode=args.json,
             )
 
+    if args.cmd == "regression":
+        from eab.cli.regression import cmd_regression
+        return cmd_regression(
+            suite=args.suite,
+            test=args.test,
+            filter_pattern=args.filter_pattern,
+            timeout=args.timeout,
+            json_mode=args.json,
+        )
+
     parser.error(f"Unknown command: {args.cmd}")
     return 2

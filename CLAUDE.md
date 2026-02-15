@@ -290,7 +290,87 @@ eabctl dwt-status          # Display DWT register state
 eabctl trace start         # Start trace capture (rtt/serial/logfile → .rttbin)
 eabctl trace stop          # Stop active trace capture
 eabctl trace export        # Export .rttbin to Perfetto JSON
+eabctl regression          # Run hardware-in-the-loop regression tests
 ```
+
+## Regression Testing (Hardware-in-the-Loop)
+
+Define repeatable hardware tests in YAML. Each step shells out to `eabctl --json` — same commands you'd run manually or in CI. Tests get JSON pass/fail results.
+
+```bash
+# Run all tests in a directory
+eabctl regression --suite tests/hw/ --json
+
+# Run a single test file
+eabctl regression --test tests/hw/nrf5340_hello.yaml --json
+
+# Filter by pattern
+eabctl regression --suite tests/hw/ --filter "*nrf*" --json
+
+# Override per-test timeout
+eabctl regression --suite tests/hw/ --timeout 120 --json
+```
+
+### Test YAML Format
+
+```yaml
+name: nRF5340 Hello World
+device: nrf5340              # EAB device name
+chip: nrf5340                # for flash/debug commands
+timeout: 60                  # per-test timeout (seconds)
+
+setup:
+  - flash:
+      firmware: samples/hello_world
+      runner: jlink
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "Hello from"
+      timeout: 10
+  - send:
+      text: "status"
+      await_ack: true
+  - read_vars:
+      elf: build/zephyr/zephyr.elf
+      vars:
+        - name: error_count
+          expect_eq: 0
+        - name: heap_free
+          expect_gt: 1024
+  - fault_check:
+      elf: build/zephyr/zephyr.elf
+      expect_clean: true
+
+teardown:
+  - reset: {}
+```
+
+### Step Types
+
+| Step | Maps to | Key params |
+|------|---------|------------|
+| `flash` | `eabctl flash` | firmware, chip, runner, address |
+| `reset` | `eabctl reset` | chip, method |
+| `send` | `eabctl send` | text, await_ack, timeout |
+| `wait` | `eabctl wait` | pattern, timeout |
+| `wait_event` | `eabctl wait-event` | event_type, contains, timeout |
+| `assert_log` | `eabctl wait` | pattern, timeout (alias for readability) |
+| `sleep` | `time.sleep()` | seconds |
+| `read_vars` | `eabctl read-vars` | elf, vars[] with expect_eq/gt/lt |
+| `fault_check` | `eabctl fault-analyze` | elf, device, chip, expect_clean |
+
+### Execution Model
+
+- **Setup**: Runs first. Any failure → test fails immediately, skips steps.
+- **Steps**: Run in order. First failure → stops, remaining steps skipped.
+- **Teardown**: Always runs, even on failure. Errors logged but don't cause test failure.
+- **Exit code**: 0 = all pass, 1 = any fail. JSON output includes per-step timing and details.
+
+### Requires
+
+`pip install pyyaml` (or `pip install embedded-agent-bridge[regression]`)
 
 ## Binary Framing (Optional)
 

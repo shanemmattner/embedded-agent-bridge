@@ -81,6 +81,13 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 - Chip profiles for nRF5340, MCXN947, RP2040
 - Board detection from CMakeCache.txt
 
+**Hardware-in-the-Loop Regression Testing**
+- Define tests in YAML — flash, reset, send commands, assert log output, check variables
+- `eabctl regression --suite tests/hw/ --json` runs a full suite with pass/fail JSON output
+- Setup/teardown phases, variable assertions (expect_eq/gt/lt), fault checking
+- CI-friendly: exit code 0 = all pass, 1 = any fail
+- Steps shell out to `eabctl --json` for full isolation
+
 **Agent-Friendly Design**
 - All output in files — agents read with `cat`, `tail`, or their native file tools
 - `--json` flag on every command for structured output
@@ -166,6 +173,7 @@ eabctl openocd stop
 - [x] Cortex-M fault analysis ([#68](https://github.com/shanemmattner/embedded-agent-bridge/issues/68))
 - [x] Debug probe abstraction ([#69](https://github.com/shanemmattner/embedded-agent-bridge/issues/69))
 - [x] Windows compatibility — portalocker ([#61](https://github.com/shanemmattner/embedded-agent-bridge/issues/61))
+- [x] Hardware-in-the-loop regression testing ([#28](https://github.com/shanemmattner/embedded-agent-bridge/issues/28))
 - [ ] Multiple simultaneous port support
 - [ ] GDB MI protocol wrapper (persistent debugging sessions)
 - [ ] MCP server (for agents that support it)
@@ -176,6 +184,7 @@ eabctl openocd stop
 
 - [Agent Skill](.claude/skills/eab/SKILL.md) — Drop-in skill for Claude Code (follows [Agent Skills](https://agentskills.io) standard)
 - [Agent Guide](AGENT_GUIDE.md) — Detailed instructions for LLM agents (also serves as `llms.txt`)
+- [Regression Testing](docs/regression.md) — YAML-based hardware-in-the-loop test runner
 - [Protocol](PROTOCOL.md) — Binary framing format for high-speed streaming
 - [Plotter Guide](docs/plotter.md) — Real-time data visualization
 - [Examples](examples/) — Test firmware and usage examples
@@ -223,6 +232,11 @@ eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
 # from eab.rtt import JLinkBridge
 # bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
 # bridge.start(); bridge.stop()
+
+# Regression testing (hardware-in-the-loop)
+eabctl regression --suite tests/hw/ --json       # Run all tests in directory
+eabctl regression --test tests/hw/smoke.yaml     # Run single test
+eabctl regression --suite tests/hw/ --filter "*nrf*" --json  # Filter by pattern
 ```
 
 ## Related Projects

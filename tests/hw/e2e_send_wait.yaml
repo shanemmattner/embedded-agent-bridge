@@ -1,0 +1,19 @@
+# Test send command + wait for output cycle.
+# Requires: EAB daemon running. Board must be outputting (bootloop is fine).
+name: E2E Send and Wait
+device: nrf5340
+timeout: 30
+
+steps:
+  # Board is bootlooping — we can wait for known boot output
+  - wait:
+      pattern: "boot"
+      timeout: 15
+  # Send a command (board may not respond, but send should succeed)
+  - send:
+      text: "test"
+      timeout: 5
+  # Wait for next boot cycle output to confirm board is still alive
+  - wait:
+      pattern: "ESP-IDF"
+      timeout: 15

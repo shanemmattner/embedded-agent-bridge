@@ -1,0 +1,18 @@
+# Verify teardown always runs even when a step fails.
+# The wait for "NONEXISTENT_STRING" will fail, but teardown should still execute.
+name: E2E Teardown on Failure
+device: nrf5340
+timeout: 30
+
+steps:
+  - wait:
+      pattern: "boot"
+      timeout: 10
+  # This step SHOULD fail — we're testing that teardown runs after failure
+  - wait:
+      pattern: "NONEXISTENT_STRING_THAT_WILL_NEVER_APPEAR"
+      timeout: 3
+
+teardown:
+  - sleep:
+      seconds: 0.1

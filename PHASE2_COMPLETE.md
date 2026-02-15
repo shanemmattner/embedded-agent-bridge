@@ -142,9 +142,9 @@ Repeatable validation: `bash scripts/e2e-hardware-validation.sh all`
 
 ## Known Limitations
 
-1. **ESP32-C6**: esptool serial access conflicts with OpenOCD JTAG flash. Use OpenOCD exclusively or add auto-reset to bootloader mode.
-2. **MCX N947**: Requires NXP LinkServer for flash (probe-rs address mapping limitation).
-3. **ESP32 debug-full firmware**: Needs fixing — missing `esp_trace.h` header, heap trace config issues.
+1. **ESP32-C6 USB state**: USB-JTAG can enter a state where libusb communication fails (`libusb_get_string_descriptor_ascii() failed with -1`). Physical unplug/replug resolves it. OpenOCD flash validated successfully in earlier runs (commit 40aa1f5, c071952 artifacts show full ESP32-C6 pipeline working).
+2. **MCX N947**: Requires NXP LinkServer for flash (probe-rs address mapping limitation for secure address 0x10000000).
+3. **ESP32-C6 debug-full firmware**: Needs fixing — missing `esp_trace.h` header, heap trace config issues. The working `esp32c6-apptrace-test` firmware demonstrates full SystemView tracing.
 
 ## Statistics
 

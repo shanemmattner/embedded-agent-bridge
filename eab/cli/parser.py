@@ -479,4 +479,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_trace_export.add_argument("--format", default="perfetto", choices=["perfetto"],
                                  help="Output format (default: perfetto)")
 
+    # --- regression (hardware-in-the-loop test runner) ---
+    p_regression = sub.add_parser("regression", help="Run hardware-in-the-loop regression tests")
+    p_regression.add_argument("--suite", default=None,
+                               help="Directory containing *.yaml test files")
+    p_regression.add_argument("--test", default=None,
+                               help="Single test YAML file to run")
+    p_regression.add_argument("--filter", default=None, dest="filter_pattern",
+                               help="Glob pattern to filter test files (e.g. '*nrf*')")
+    p_regression.add_argument("--timeout", type=int, default=None,
+                               help="Global timeout per test in seconds (overrides per-test)")
+
     return parser

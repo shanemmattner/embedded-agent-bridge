@@ -1,0 +1,28 @@
+# Example hardware-in-the-loop test for nRF5340
+# Requires: nRF5340 DK connected via J-Link, hello_world firmware
+name: nRF5340 Hello World
+device: nrf5340
+chip: nrf5340
+timeout: 60
+
+setup:
+  - flash:
+      firmware: samples/hello_world
+      runner: jlink
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "Hello from"
+      timeout: 10
+  - send:
+      text: "status"
+      await_ack: true
+  - wait:
+      pattern: "OK"
+      timeout: 5
+  - sleep:
+      seconds: 2
+
+teardown:
+  - reset: {}

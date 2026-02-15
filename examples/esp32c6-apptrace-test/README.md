@@ -25,6 +25,38 @@ ESP-IDF's apptrace is a high-speed bidirectional communication channel between f
 - Dual logging: JTAG apptrace + USB-Serial console
 - Ready for Perfetto visualization (future EAB integration)
 
+## About This Example
+
+**Purpose**: Simplified apptrace test for EAB development, demonstrating continuous streaming pattern and documenting RISC-V quirks.
+
+**This is a streamlined version** based on official ESP-IDF examples. For production use or advanced features, see:
+
+### Official ESP-IDF Examples (Recommended Reading)
+
+Located at `$IDF_PATH/examples/system/`:
+
+1. **app_trace_basic** - Simple test (50 messages, file output)
+   - Path: `~/esp/esp-idf/examples/system/app_trace_basic/`
+   - [Source](https://github.com/espressif/esp-idf/tree/master/examples/system/app_trace_basic)
+   - Good for: Verifying basic functionality
+
+2. **app_trace_to_plot** - **TCP streaming + real-time visualization** ⭐
+   - Path: `~/esp/esp-idf/examples/system/app_trace_to_plot/`
+   - [Source](https://github.com/espressif/esp-idf/tree/master/examples/system/app_trace_to_plot)
+   - Good for: High-speed continuous streaming, production pattern
+   - **Proven: 90.5 KB/s throughput on ESP32-C6!**
+
+3. **sysview_tracing** - SEGGER SystemView OS profiling
+   - Path: `~/esp/esp-idf/examples/system/sysview_tracing/`
+   - [Source](https://github.com/espressif/esp-idf/tree/master/examples/system/sysview_tracing)
+   - Good for: FreeRTOS task analysis, performance profiling
+
+### Official Documentation
+
+- **Application Level Tracing Guide**: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/app_trace.html
+- **API Reference**: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/app_trace.html
+- **OpenOCD Troubleshooting FAQ**: https://github.com/espressif/openocd-esp32/wiki/Troubleshooting-FAQ
+
 ## Build and Flash
 
 ```bash
@@ -136,12 +168,95 @@ In telnet session:
 esp apptrace stop
 ```
 
-## EAB Integration (Future)
+## High-Speed Streaming (TCP Method)
 
-Once `eab/apptrace_transport.py` is implemented:
+**For continuous high-speed capture, use TCP streaming** (recommended for production):
+
+### 1. Start TCP Listener
 
 ```bash
-# Start apptrace capture to .rttbin format
+# Using netcat (simple)
+nc -l 53535 > /tmp/apptrace.log &
+
+# OR using ESP-IDF's Python tool (advanced, with plotting)
+cd ~/esp/esp-idf/examples/system/app_trace_to_plot
+python read_trace.py --source tcp://localhost:53535 --output-file /tmp/trace.log
+```
+
+### 2. Start OpenOCD
+
+```bash
+~/.espressif/tools/openocd-esp32/*/openocd-esp32/bin/openocd \
+  -f board/esp32c6-builtin.cfg &
+```
+
+### 3. Start Apptrace to TCP
+
+```bash
+sleep 3
+printf "reset run\nesp apptrace start tcp://localhost:53535 0 -1 10\n" | nc localhost 4444
+```
+
+**Parameters:**
+- `tcp://localhost:53535` - Stream to TCP socket (not file!)
+- `0` - poll_period (0 = use default, ~1ms)
+- `-1` - size (unlimited, capture until timeout)
+- `10` - stop timeout (10 seconds)
+
+### 4. Wait and Check Results
+
+```bash
+sleep 11
+ls -lh /tmp/apptrace.log
+wc -l /tmp/apptrace.log
+head /tmp/apptrace.log
+```
+
+**Proven results**: 36KB in 10 seconds, 916 messages, **90.5 KB/s throughput**
+
+## Method Comparison
+
+| Method | Use Case | Throughput | Notes |
+|--------|----------|------------|-------|
+| **File output** | Small captures | ~20 KB/s | Good for basic testing, limited size |
+| **TCP streaming** | Continuous streaming | ~90 KB/s | **Production method**, unlimited capture |
+| **UART** | Basic logging | ~14 KB/s | Baseline comparison |
+
+**Recommendation**: Use TCP streaming for any capture > 10KB or continuous operation.
+
+## References & Documentation
+
+### Official ESP-IDF Resources
+
+| Resource | URL | Purpose |
+|----------|-----|---------|
+| **App Trace Guide** | https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/app_trace.html | Complete guide, OpenOCD commands |
+| **API Reference** | https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/app_trace.html | Function documentation |
+| **app_trace_basic** | https://github.com/espressif/esp-idf/tree/master/examples/system/app_trace_basic | Simple file output example |
+| **app_trace_to_plot** | https://github.com/espressif/esp-idf/tree/master/examples/system/app_trace_to_plot | **TCP streaming + plotting** ⭐ |
+| **OpenOCD FAQ** | https://github.com/espressif/openocd-esp32/wiki/Troubleshooting-FAQ | RISC-V quirks, troubleshooting |
+
+### GitHub Issues (RISC-V Quirks)
+
+| Issue | Topic | Key Takeaway |
+|-------|-------|--------------|
+| [openocd-esp32#188](https://github.com/espressif/openocd-esp32/issues/188) | RISC-V apptrace init | Must reset AFTER OpenOCD connects |
+| [esp-idf#18213](https://github.com/espressif/esp-idf/issues/18213) | Semihosting handshake | Explains `esp_cpu_dbgr_is_attached()` behavior |
+
+### Tools & Scripts
+
+| Tool | Location | Purpose |
+|------|----------|---------|
+| **read_trace.py** | `$IDF_PATH/examples/system/app_trace_to_plot/` | Python TCP listener + real-time plotting |
+| **espytrace** | `$IDF_PATH/tools/esp_app_trace/` | Python library for parsing apptrace data |
+| **pytest tests** | `$IDF_PATH/examples/system/app_trace_basic/pytest_app_trace_basic.py` | Automated testing examples |
+
+## EAB Integration (Future)
+
+Once `eab/transports/apptrace_transport.py` is implemented:
+
+```bash
+# Start apptrace capture to .rttbin format (via TCP socket)
 eabctl trace start --source apptrace --device esp32c6 -o /tmp/trace.rttbin
 
 # Stop capture
@@ -152,6 +267,12 @@ eabctl trace export -i /tmp/trace.rttbin -o /tmp/trace.json
 
 # Open in https://ui.perfetto.dev
 ```
+
+**Implementation notes**:
+- Use TCP socket method (`tcp://localhost:53535`)
+- Parse incoming stream and write to .rttbin format
+- Reuse existing trace worker pattern from RTT implementation
+- See `eab/cli/trace/_rtt_worker.py` for subprocess pattern
 
 ## Apptrace Command Format
 

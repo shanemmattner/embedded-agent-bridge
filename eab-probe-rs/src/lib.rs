@@ -49,6 +49,47 @@ use probe_rs::{
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use std::sync::Mutex;
+use std::fs;
+use object::{Object, ObjectSymbol};
+
+/// Parse an ELF file and extract the RTT control block address from the _SEGGER_RTT symbol.
+///
+/// # Arguments
+/// * `elf_path` - Path to the ELF file (e.g., "build/zephyr/zephyr.elf")
+///
+/// # Returns
+/// * `Ok(Some(address))` - Symbol found at this address
+/// * `Ok(None)` - ELF parsed successfully but no _SEGGER_RTT symbol found
+/// * `Err(...)` - Failed to read or parse the ELF file
+fn find_rtt_symbol(elf_path: &str) -> PyResult<Option<u64>> {
+    // Read the ELF file
+    let file_data = fs::read(elf_path).map_err(|e| {
+        pyo3::exceptions::PyIOError::new_err(format!(
+            "Failed to read ELF file '{}': {}",
+            elf_path, e
+        ))
+    })?;
+
+    // Parse the ELF
+    let elf_file = object::File::parse(&*file_data).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "Failed to parse ELF file '{}': {}",
+            elf_path, e
+        ))
+    })?;
+
+    // Search for _SEGGER_RTT symbol
+    for symbol in elf_file.symbols() {
+        if let Ok(name) = symbol.name() {
+            if name == "_SEGGER_RTT" {
+                return Ok(Some(symbol.address()));
+            }
+        }
+    }
+
+    // Symbol not found
+    Ok(None)
+}
 
 /// A probe-rs session with RTT support.
 ///
@@ -172,17 +213,21 @@ impl ProbeRsSession {
 
     /// Start RTT on the target.
     ///
-    /// This scans the target's RAM for the RTT control block (a struct placed by
-    /// the firmware that describes RTT channel buffers). Once found, it initializes
-    /// the RTT state for reading/writing channels.
+    /// This finds the RTT control block (a struct placed by the firmware that
+    /// describes RTT channel buffers) and initializes RTT for reading/writing channels.
     ///
-    /// probe-rs automatically scans RAM for the RTT control block using the default
-    /// search pattern (magic number "_SEGGER_RTT").
+    /// Three methods to locate the control block (in priority order):
+    /// 1. If `block_address` provided: Use that exact address (fastest)
+    /// 2. If `elf_path` provided: Read _SEGGER_RTT symbol from ELF (reliable)
+    /// 3. Otherwise: Scan all RAM for the control block signature (slow, may fail)
     ///
     /// Args:
+    ///     elf_path: Optional path to ELF file (e.g., "build/zephyr/zephyr.elf").
+    ///         probe-rs will read the _SEGGER_RTT symbol address from the ELF.
+    ///         This is the RECOMMENDED approach - always works if firmware has RTT.
     ///     block_address: Optional RTT control block address (e.g., 0x20001010).
-    ///         If provided, skips scanning and uses this exact address.
-    ///         Use this if auto-detection fails or for faster startup.
+    ///         If provided, skips ELF parsing and RAM scanning.
+    ///         Use this for maximum speed if you know the exact address.
     ///
     /// Returns:
     ///     int: Number of up (target→host) channels found
@@ -191,12 +236,14 @@ impl ProbeRsSession {
     ///     RuntimeError: If not attached, or RTT control block not found
     ///
     /// Example:
-    ///     >>> # Auto-detect (scans all RAM)
+    ///     >>> # RECOMMENDED: Use ELF to find RTT symbol (works with any probe)
+    ///     >>> num_channels = session.start_rtt(elf_path="build/zephyr/zephyr.elf")
+    ///     >>> # Fallback: Auto-scan RAM (may fail with some probes/targets)
     ///     >>> num_channels = session.start_rtt()
-    ///     >>> # Use explicit address (faster, always works if address is correct)
+    ///     >>> # Fastest: Use known address
     ///     >>> num_channels = session.start_rtt(block_address=0x20001010)
-    #[pyo3(signature = (block_address=None))]
-    fn start_rtt(&self, block_address: Option<u64>) -> PyResult<usize> {
+    #[pyo3(signature = (elf_path=None, block_address=None))]
+    fn start_rtt(&self, elf_path: Option<String>, block_address: Option<u64>) -> PyResult<usize> {
         let mut session_guard = self.session.lock().unwrap();
         let session = session_guard
             .as_mut()
@@ -207,21 +254,49 @@ impl ProbeRsSession {
             pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to attach to core: {}", e))
         })?;
 
-        // Scan for RTT control block or use explicit address
-        let mut rtt = if let Some(addr) = block_address {
-            // Use explicit address (faster and more reliable when address is known)
+        // Determine RTT control block address (priority: explicit > ELF symbol > RAM scan)
+        let rtt_address = if let Some(addr) = block_address {
+            // Priority 1: Explicit address provided (fastest)
+            Some(addr)
+        } else if let Some(ref elf) = elf_path {
+            // Priority 2: Read _SEGGER_RTT symbol from ELF
+            match find_rtt_symbol(elf)? {
+                Some(addr) => {
+                    eprintln!("Found _SEGGER_RTT symbol in ELF at 0x{:08x}", addr);
+                    Some(addr)
+                }
+                None => {
+                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "_SEGGER_RTT symbol not found in ELF file '{}'.\n\
+                         Make sure firmware was built with RTT enabled (CONFIG_USE_SEGGER_RTT=y for Zephyr)",
+                        elf
+                    )));
+                }
+            }
+        } else {
+            // Priority 3: Will scan RAM (may fail)
+            None
+        };
+
+        // Attach to RTT control block
+        let mut rtt = if let Some(addr) = rtt_address {
+            // Use known address (from explicit param or ELF symbol)
             Rtt::attach_at(&mut core, addr).map_err(|e| {
                 pyo3::exceptions::PyRuntimeError::new_err(format!(
-                    "RTT control block not found at 0x{:08x}: {}",
+                    "RTT control block not found at 0x{:08x}: {}.\n\
+                     The address is correct but the control block may not be initialized yet.\n\
+                     Make sure firmware has called SEGGER_RTT_Init() or rtt_init!() before connecting.",
                     addr, e
                 ))
             })?
         } else {
-            // Auto-scan RAM regions
+            // Auto-scan RAM regions (slowest, may fail with some probes)
             Rtt::attach(&mut core).map_err(|e| {
                 pyo3::exceptions::PyRuntimeError::new_err(format!(
-                    "RTT control block not found: {}. Ensure firmware has RTT enabled.\n\
-                     Tip: If you know the control block address, use start_rtt(block_address=0xXXXXXXXX)",
+                    "RTT control block not found via RAM scan: {}.\n\
+                     RECOMMENDED FIX: Use start_rtt(elf_path='build/zephyr/zephyr.elf') instead.\n\
+                     This reads the _SEGGER_RTT symbol address from your ELF file, which is\n\
+                     much more reliable than scanning (especially with ST-Link probes).",
                     e
                 ))
             })?

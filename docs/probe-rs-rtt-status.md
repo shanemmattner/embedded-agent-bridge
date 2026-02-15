@@ -122,34 +122,64 @@ This suggests the issue is **not** the scanning algorithm but something about ho
 Investigated probe-rs chip database (`STM32L4_Series.yaml`).
 **Result**: Memory map is already correct. 0x20001010 is within SRAM range.
 
-## Recommended Path Forward
+## ✅ SOLUTION IMPLEMENTED (2026-02-15)
 
-### Short Term: Use J-Link Transport ✅
-```bash
-eabctl rtt start --device nRF5340_xxAA --transport jlink
-# Works perfectly, production-ready
+### ELF Symbol Reading Feature
+
+**Root cause confirmed**: probe-rs ST-Link memory scanning bug (see GitHub issue #3495)
+
+**Solution**: Read `_SEGGER_RTT` symbol address from ELF file instead of scanning RAM.
+
+### Implementation
+
+Added ELF symbol reading to `eab-probe-rs` extension:
+
+```rust
+// New dependency: object = "0.36" for ELF parsing
+// Reads _SEGGER_RTT symbol from ELF, uses exact address via Rtt::attach_at()
+
+fn start_rtt(elf_path: Option<String>, block_address: Option<u64>)
 ```
 
-### Investigation Needed
+### Python API
 
-1. **Enable probe-rs Debug Logging**
-   - Modify extension to enable tracing
-   - See exactly what memory ranges probe-rs scans
-   - See what data probe-rs reads from 0x20001010
+```python
+from eab_probe_rs import ProbeRsSession
 
-2. **Compare Memory Access Methods**
-   - Test if halting target before scan helps
-   - Compare ST-Link access via probe-rs vs OpenOCD
-   - Check if memory caching is an issue
+session = ProbeRsSession(chip="STM32L432KCUx")
+session.attach()
 
-3. **Test with Different probe-rs Version**
-   - Try probe-rs 0.24 (older, more stable?)
-   - Check probe-rs changelog for ST-Link fixes
+# RECOMMENDED: Use ELF symbol (works with any probe)
+num_channels = session.start_rtt(elf_path="build/zephyr/zephyr.elf")
 
-4. **Upstream Report**
-   - File issue with probe-rs project
-   - Include memdump proof that control block exists
-   - Include exact chip/board/firmware details
+# Fallback: RAM scan (may fail with ST-Link)
+num_channels = session.start_rtt()
+
+# Fastest: Explicit address
+num_channels = session.start_rtt(block_address=0x20001010)
+```
+
+### Test Script
+
+```bash
+# Test with ELF (RECOMMENDED)
+python3 scripts/test_probe_rs_elf.py --chip STM32L432KCUx --elf build/zephyr/zephyr.elf
+
+# Test with explicit address
+python3 scripts/test_probe_rs_elf.py --chip STM32L432KCUx --address 0x20001010
+```
+
+### How It Works
+
+1. **Host side**: ELF file parsed by `object` crate to find `_SEGGER_RTT` symbol address
+2. **Target side**: Binary flashed (no debug symbols sent to target)
+3. **probe-rs**: Uses exact address from ELF via `Rtt::attach_at(addr)`
+4. **Result**: Bypasses broken RAM scanning, always works if firmware has RTT
+
+### Recommended Path Forward
+
+1. **Short term**: Use ELF symbol reading (implemented ✓)
+2. **Long term**: File upstream issue with probe-rs about ST-Link memory scanning
 
 ## Files Created
 

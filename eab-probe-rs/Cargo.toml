@@ -17,6 +17,9 @@ pyo3 = { version = "0.23", features = ["extension-module"] }
 # anyhow: Error handling for cleaner Result types
 anyhow = "1.0"
 
+# object: ELF/binary file parser for reading symbols
+object = "0.36"
+
 [profile.release]
 # Optimize for size — this is a Python extension, not a standalone binary
 opt-level = "z"

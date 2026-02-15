@@ -13,43 +13,43 @@ logger = logging.getLogger(__name__)
 
 def cmd_trace_export(
     *,
-    input: str,
-    output: str,
-    format: str = "perfetto",
+    input_file: str,
+    output_file: str,
+    fmt: str = "perfetto",
     json_mode: bool = False,
 ) -> int:
     """Export .rttbin trace to a visualization format.
 
     Args:
-        input: Path to input .rttbin file.
-        output: Path to output file (.json for Perfetto).
-        format: Output format (``"perfetto"`` or ``"tband"``).
+        input_file: Path to input .rttbin file.
+        output_file: Path to output file (.json for Perfetto).
+        fmt: Output format (``"perfetto"`` or ``"tband"``).
         json_mode: Emit machine-parseable JSON output.
 
     Returns:
         0 on success, 1 on failure.
     """
-    input_path = Path(input).resolve()
-    output_path = Path(output).resolve()
+    input_path = Path(input_file).resolve()
+    output_path = Path(output_file).resolve()
 
     if not input_path.exists():
-        result = {"error": f"Input file not found: {input}"}
+        result = {"error": f"Input file not found: {input_file}"}
         if json_mode:
             print(json.dumps(result))
         else:
-            print(f"Error: Input file not found: {input}")
+            print(f"Error: Input file not found: {input_file}")
         return 1
 
-    if format == "perfetto":
+    if fmt == "perfetto":
         return _export_perfetto(input_path, output_path, json_mode)
-    elif format == "tband":
+    elif fmt == "tband":
         return _export_tband(input_path, output_path, json_mode)
     else:
-        result = {"error": f"Unsupported format: {format} (use 'perfetto' or 'tband')"}
+        result = {"error": f"Unsupported format: {fmt} (use 'perfetto' or 'tband')"}
         if json_mode:
             print(json.dumps(result))
         else:
-            print(f"Error: Unsupported format: {format}")
+            print(f"Error: Unsupported format: {fmt}")
         return 1
 
 

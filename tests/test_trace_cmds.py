@@ -246,8 +246,8 @@ class TestRttbinToPerfetto:
 class TestCmdTraceExport:
     def test_missing_input(self, capsys, tmp_path):
         rc = cmd_trace_export(
-            input=str(tmp_path / "nope.rttbin"),
-            output=str(tmp_path / "out.json"),
+            input_file=str(tmp_path / "nope.rttbin"),
+            output_file=str(tmp_path / "out.json"),
             json_mode=True,
         )
         assert rc == 1
@@ -265,8 +265,8 @@ class TestCmdTraceExport:
 
         out_json = tmp_path / "test.json"
         rc = cmd_trace_export(
-            input=str(rttbin),
-            output=str(out_json),
+            input_file=str(rttbin),
+            output_file=str(out_json),
             json_mode=True,
         )
         assert rc == 0

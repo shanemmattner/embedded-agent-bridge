@@ -444,9 +444,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             return cli.cmd_trace_stop(json_mode=args.json)
         if args.trace_action == "export":
             return cli.cmd_trace_export(
-                input=args.input,
-                output=args.output,
-                format=args.format,
+                input_file=args.input,
+                output_file=args.output,
+                fmt=args.format,
                 json_mode=args.json,
             )
 

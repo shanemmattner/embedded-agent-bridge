@@ -284,3 +284,154 @@ class ProbeRSTransport(RTTTransport):
         if halt:
             cmd.append("--halt")
         subprocess.run(cmd, capture_output=True, timeout=30)
+
+
+class ProbeRsNativeTransport(RTTTransport):
+    """RTT transport using native probe-rs library (Rust extension via PyO3).
+
+    This transport provides full binary RTT access via the probe-rs Rust library,
+    with zero text conversion overhead. Supports all probe-rs-compatible probes:
+    ST-Link, CMSIS-DAP, J-Link, and ESP USB JTAG.
+
+    Requires:
+        - ``eab-probe-rs`` Rust extension (built via maturin)
+        - ``cargo install probe-rs-tools`` (optional, for standalone CLI)
+
+    Key advantages over JLinkTransport:
+        - Probe-agnostic: works with ST-Link, CMSIS-DAP, etc. (not just J-Link)
+        - Native binary RTT access (same as JLinkTransport)
+        - Bidirectional: supports RTT down channels
+        - Open source: no SEGGER license restrictions
+
+    Example:
+        >>> from eab.rtt_transport import ProbeRsNativeTransport
+        >>> transport = ProbeRsNativeTransport()
+        >>> transport.connect("STM32L476RG")
+        >>> num_channels = transport.start_rtt()
+        >>> data = transport.read(channel=0)
+        >>> transport.write(channel=0, b"command")
+        >>> transport.disconnect()
+    """
+
+    def __init__(self):
+        self._session = None
+
+    def connect(
+        self,
+        device: str,
+        interface: str = "SWD",
+        speed: int = 4000,
+        probe_selector: Optional[str] = None,
+    ) -> None:
+        """Connect to target via probe-rs.
+
+        Args:
+            device: Chip name (e.g., "STM32L476RG", "nRF52840_xxAA")
+            interface: Debug interface ("SWD" or "JTAG") - currently SWD only
+            speed: Interface speed in kHz (ignored by probe-rs — uses auto-detect)
+            probe_selector: Optional probe selector (serial number or VID:PID)
+
+        Raises:
+            ImportError: If eab-probe-rs extension not installed
+            RuntimeError: If no probe found or connection fails
+        """
+        try:
+            from eab_probe_rs import ProbeRsSession
+        except ImportError:
+            raise ImportError(
+                "eab-probe-rs Rust extension not installed. "
+                "Build with: cd eab-probe-rs && maturin develop --release"
+            )
+
+        self._session = ProbeRsSession(chip=device, probe_selector=probe_selector)
+        self._session.attach()
+        logger.info("ProbeRsNativeTransport connected to %s", device)
+
+    def start_rtt(self, block_address: int | None = None, elf_path: str | None = None) -> int:
+        """Start RTT on the target.
+
+        Args:
+            block_address: Optional RTT control block address (not supported by probe-rs).
+            elf_path: Optional path to ELF file for symbol reading (RECOMMENDED).
+
+        Returns:
+            Number of up (target→host) channels found.
+
+        Raises:
+            RuntimeError: If not connected or RTT control block not found
+            ValueError: If block_address is provided (not supported)
+        """
+        if not self._session:
+            raise RuntimeError("Not connected. Call connect() first.")
+
+        if block_address is not None:
+            raise ValueError(
+                "probe-rs transport does not support explicit RTT block addresses. "
+                "Use elf_path parameter instead to read _SEGGER_RTT symbol from ELF."
+            )
+
+        num_channels = self._session.start_rtt(elf_path=elf_path)
+        logger.info("RTT started: %d up channels found", num_channels)
+        return num_channels
+
+    def read(self, channel: int, max_bytes: int = 4096) -> bytes:
+        """Read raw bytes from an RTT up channel.
+
+        Non-blocking: returns empty bytes if no data available.
+
+        Args:
+            channel: RTT up channel index
+            max_bytes: Maximum bytes to read (ignored — probe-rs reads up to 4KB)
+
+        Returns:
+            Raw bytes from the channel (may be empty)
+        """
+        if not self._session:
+            return b""
+        try:
+            return self._session.rtt_read(channel=channel)
+        except Exception as e:
+            logger.error("RTT read error: %s", e)
+            return b""
+
+    def write(self, channel: int, data: bytes) -> int:
+        """Write raw bytes to an RTT down channel.
+
+        Args:
+            channel: RTT down channel index
+            data: Bytes to send
+
+        Returns:
+            Number of bytes actually written
+        """
+        if not self._session:
+            return 0
+        try:
+            return self._session.rtt_write(channel=channel, data=data)
+        except Exception as e:
+            logger.error("RTT write error: %s", e)
+            return 0
+
+    def stop_rtt(self) -> None:
+        """Stop RTT (detaches from target)."""
+        # probe-rs doesn't have a separate "stop RTT" — it's part of disconnect
+        pass
+
+    def disconnect(self) -> None:
+        """Disconnect from the target and close the probe."""
+        if self._session:
+            try:
+                self._session.detach()
+            except Exception:
+                pass
+            self._session = None
+
+    def reset(self, halt: bool = False) -> None:
+        """Reset the target.
+
+        Args:
+            halt: If True, halt CPU after reset
+        """
+        if not self._session:
+            raise RuntimeError("Not connected")
+        self._session.reset(halt=halt)

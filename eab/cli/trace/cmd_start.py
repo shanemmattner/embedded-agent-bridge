@@ -1,9 +1,10 @@
 """Start trace capture to binary file.
 
-Supports three capture sources:
-  - rtt:     J-Link RTT binary capture (requires J-Link probe + pylink)
-  - serial:  Tail the EAB daemon's latest.log for a device
-  - logfile: Tail any arbitrary text file (useful for replaying old logs)
+Supports four capture sources:
+  - rtt:      J-Link RTT binary capture (requires J-Link probe + pylink)
+  - apptrace: ESP32 apptrace via OpenOCD (requires ESP32 with USB-JTAG)
+  - serial:   Tail the EAB daemon's latest.log for a device
+  - logfile:  Tail any arbitrary text file (useful for replaying old logs)
 
 All sources write the same .rttbin format, so ``trace export`` works
 regardless of how the data was captured.
@@ -40,16 +41,17 @@ def cmd_trace_start(
     logfile: str | None = None,
     json_mode: bool = False,
 ) -> int:
-    """Start trace capture from RTT, serial daemon log, or arbitrary logfile.
+    """Start trace capture from RTT, apptrace, serial daemon log, or arbitrary logfile.
 
     The capture runs as a detached subprocess.  Its PID is written to
     ``/tmp/eab-trace.pid`` so that ``trace stop`` can find and SIGTERM it.
 
     Args:
         output: Path to output .rttbin file.
-        source: Capture source — ``"rtt"``, ``"serial"``, or ``"logfile"``.
-        device: J-Link device name, used by RTT mode and as a fallback to
-            derive the daemon directory in serial mode.
+        source: Capture source — ``"rtt"``, ``"apptrace"``, ``"serial"``, or ``"logfile"``.
+        device: Device name. For RTT: J-Link device (e.g., "NRF5340_XXAA_APP").
+            For apptrace: ESP32 variant (e.g., "esp32c6", "esp32s3").
+            For serial: used to derive daemon directory.
         channel: RTT channel to capture (RTT mode only, default 0).
         trace_dir: Explicit device base directory for serial mode.  When
             omitted, derived from *device* →
@@ -100,6 +102,9 @@ def cmd_trace_start(
     if source == "rtt":
         cmd = [sys.executable, "-m", "eab.cli.trace._rtt_worker",
                device, str(channel), str(output_path), eab_root]
+    elif source == "apptrace":
+        cmd = [sys.executable, "-m", "eab.cli.trace._apptrace_worker",
+               device, str(output_path), eab_root]
     else:
         assert log_path_str is not None
         cmd = [sys.executable, "-m", "eab.cli.trace._tail_worker",
@@ -136,6 +141,8 @@ def cmd_trace_start(
     if source == "rtt":
         result["device"] = device
         result["channel"] = channel
+    elif source == "apptrace":
+        result["device"] = device
     else:
         result["log_path"] = log_path_str
 
@@ -145,7 +152,11 @@ def cmd_trace_start(
         print(f"Trace capture started (PID {proc.pid})")
         print(f"Source: {source}")
         print(f"Output: {output_path}")
-        if source != "rtt":
+        if source == "rtt":
+            print(f"Device: {device}, Channel: {channel}")
+        elif source == "apptrace":
+            print(f"Device: {device}")
+        else:
             print(f"Tailing: {log_path_str}")
         print("Stop with: eabctl trace stop")
 

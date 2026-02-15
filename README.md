@@ -59,9 +59,9 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 - `eab-flash` wrapper: auto-pauses daemon, flashes, daemon resumes
 - Works with `idf.py flash` and `esptool` directly
 
-**RTT (Real-Time Transfer) via J-Link**
-- JLinkRTTLogger subprocess management via JLinkBridge facade
-- RTTStreamProcessor with multi-format output (rtt.log, rtt.jsonl, rtt.csv)
+**RTT (Real-Time Transfer)**
+- **J-Link transport**: JLinkRTTLogger subprocess with background logging, multi-format output (rtt.log, rtt.jsonl, rtt.csv)
+- **probe-rs transport**: Native Rust extension (PyO3) for probe-agnostic RTT (ST-Link, CMSIS-DAP, J-Link, ESP USB-JTAG)
 - Log rotation, boot/reset detection
 - Real-time plotter (browser-based uPlot + WebSocket, parses `DATA: key=value` from RTT stream)
 
@@ -170,6 +170,7 @@ eabctl openocd stop
 - [x] Claude Code agent skill (`.claude/skills/eab/SKILL.md`)
 - [x] Zephyr RTOS support ([#60](https://github.com/shanemmattner/embedded-agent-bridge/issues/60), [#62](https://github.com/shanemmattner/embedded-agent-bridge/issues/62))
 - [x] RTT via J-Link ([#55](https://github.com/shanemmattner/embedded-agent-bridge/issues/55), [#62](https://github.com/shanemmattner/embedded-agent-bridge/issues/62))
+- [x] RTT via probe-rs (native Rust extension, all probe types) ([#117](https://github.com/shanemmattner/embedded-agent-bridge/pull/117))
 - [x] Cortex-M fault analysis ([#68](https://github.com/shanemmattner/embedded-agent-bridge/issues/68))
 - [x] Debug probe abstraction ([#69](https://github.com/shanemmattner/embedded-agent-bridge/issues/69))
 - [x] Windows compatibility — portalocker ([#61](https://github.com/shanemmattner/embedded-agent-bridge/issues/61))
@@ -228,10 +229,14 @@ eabctl openocd stop                  # Stop OpenOCD
 eabctl fault-analyze --device NRF5340_XXAA_APP --json
 eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
 
-# RTT (Python API — no CLI yet)
-# from eab.rtt import JLinkBridge
-# bridge = JLinkBridge(device="NRF5340_XXAA_APP", rtt_port=0)
-# bridge.start(); bridge.stop()
+# RTT (Real-Time Transfer) streaming
+# J-Link transport (subprocess-based, background logging)
+eabctl rtt start --device NRF5340_XXAA_APP --transport jlink
+eabctl rtt stop; eabctl rtt status --json; eabctl rtt tail 100
+
+# probe-rs transport (native Rust extension, all probe types)
+eabctl rtt start --device STM32L476RG --transport probe-rs
+eabctl rtt start --device STM32L476RG --transport probe-rs --probe-selector "0483:374b"
 
 # Regression testing (hardware-in-the-loop)
 eabctl regression --suite tests/hw/ --json       # Run all tests in directory

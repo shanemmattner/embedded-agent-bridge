@@ -369,10 +369,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             return cli.cmd_rtt_start(
                 base_dir=base_dir,
                 device=args.device,
+                transport=args.transport,
                 interface=args.interface,
                 speed=args.speed,
                 channel=args.channel,
                 block_address=args.block_address,
+                probe_selector=args.probe_selector,
                 json_mode=args.json,
             )
         if args.rtt_action == "stop":

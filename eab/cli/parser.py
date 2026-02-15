@@ -390,13 +390,17 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rtt = sub.add_parser("rtt", help="J-Link RTT streaming (start/stop/reset/tail)")
     rtt_sub = p_rtt.add_subparsers(dest="rtt_action", required=True)
 
-    p_rtt_start = rtt_sub.add_parser("start", help="Start RTT streaming via JLinkRTTLogger")
-    p_rtt_start.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_rtt_start = rtt_sub.add_parser("start", help="Start RTT streaming via JLinkRTTLogger or probe-rs")
+    p_rtt_start.add_argument("--device", required=True, help="Device/chip string (e.g., NRF5340_XXAA_APP, STM32L476RG)")
+    p_rtt_start.add_argument("--transport", default="jlink", choices=["jlink", "probe-rs"],
+                             help="RTT transport backend (default: jlink)")
     p_rtt_start.add_argument("--interface", default="SWD", choices=["SWD", "JTAG"], help="Debug interface (default: SWD)")
     p_rtt_start.add_argument("--speed", type=int, default=4000, help="Interface speed in kHz (default: 4000)")
     p_rtt_start.add_argument("--channel", type=int, default=0, help="RTT channel number (default: 0)")
     p_rtt_start.add_argument("--block-address", type=lambda x: int(x, 0), default=None,
                              help="RTT control block address (hex, e.g., 0x20000410)")
+    p_rtt_start.add_argument("--probe-selector", default=None,
+                             help="Probe selector for probe-rs (serial number or VID:PID, e.g., 0483:374b)")
 
     rtt_sub.add_parser("stop", help="Stop RTT streaming")
     rtt_sub.add_parser("status", help="Get RTT streaming status")
@@ -462,9 +466,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_trace_start = trace_sub.add_parser("start", help="Start trace capture to binary file")
     p_trace_start.add_argument("--output", "-o", required=True, help="Output .rttbin file")
-    p_trace_start.add_argument("--source", default="rtt", choices=["rtt", "serial", "logfile"],
+    p_trace_start.add_argument("--source", default="rtt", choices=["rtt", "apptrace", "serial", "logfile"],
                                 help="Capture source (default: rtt)")
-    p_trace_start.add_argument("--device", default="NRF5340_XXAA_APP", help="J-Link device string (rtt mode)")
+    p_trace_start.add_argument("--device", default="NRF5340_XXAA_APP",
+                                help="Device (rtt: J-Link device, apptrace: ESP32 variant like esp32c6)")
     p_trace_start.add_argument("--channel", type=int, default=0, help="RTT channel (default: 0)")
     p_trace_start.add_argument("--trace-dir", dest="trace_dir", default=None,
                                 help="Device base dir for serial mode (default: /tmp/eab-devices/{device})")

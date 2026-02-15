@@ -1,6 +1,6 @@
 """Tests for RTT transport ABC and backends (with mocks)."""
 
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 

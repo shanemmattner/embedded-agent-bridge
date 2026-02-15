@@ -10,7 +10,6 @@ The goal is to keep all chip interaction "through EAB", including USB-JTAG workf
 
 from __future__ import annotations
 
-import os
 import socket
 import subprocess
 import time
@@ -18,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .file_utils import read_json_file, write_json_file, tail_file
+from .file_utils import write_json_file, tail_file
 from .process_utils import pid_alive, read_pid_file, cleanup_pid_file, stop_process_graceful, popen_is_alive
 
 

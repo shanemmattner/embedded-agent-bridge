@@ -6,14 +6,11 @@ and integration with the main CLI entry point.
 
 from __future__ import annotations
 
-import sys
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from eab.cli.profile._helpers import (
     _detect_cpu_freq,
-    CHIP_CPU_FREQ,
 )
 from eab.dwt_profiler import ProfileResult
 

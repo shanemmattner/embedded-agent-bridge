@@ -27,7 +27,7 @@ from pathlib import Path
 
 try:
     from eab.rtt_transport import JLinkTransport
-    from eab.rtt_binary import BinaryWriter, BinaryReader, RTTBinaryCapture, MAGIC, VERSION
+    from eab.rtt_binary import BinaryWriter, BinaryReader, RTTBinaryCapture, MAGIC, VERSION  # noqa: F401
     from eab.rtt_convert import to_csv
 except ImportError:
     print("ERROR: pip install embedded-agent-bridge[jlink]")
@@ -184,7 +184,7 @@ def test_convert_numpy(rttbin_path, channel, sample_width):
     header("TEST 5: Convert to numpy")
 
     try:
-        import numpy as np
+        import numpy as np  # noqa: F401
         from eab.rtt_convert import to_numpy
     except ImportError:
         print("  SKIP (numpy not installed)")

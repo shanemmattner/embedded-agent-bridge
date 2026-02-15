@@ -5,15 +5,14 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import tempfile
 from dataclasses import asdict
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
 
 from eab.cli.regression.models import (
-    StepSpec, TestSpec, StepResult, TestResult, SuiteResult,
+    StepSpec, TestSpec, StepResult, SuiteResult,
 )
 from eab.cli.regression.runner import (
     cmd_regression, discover_tests, parse_test, run_test, run_suite, _parse_steps,

@@ -10,7 +10,6 @@ variable listing from DWARF debug info on a live target.
 
 from __future__ import annotations
 
-import fnmatch
 import logging
 import re
 import subprocess

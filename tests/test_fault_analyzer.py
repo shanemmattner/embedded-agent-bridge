@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from eab.debug_probes.base import DebugProbe, GDBServerStatus
 from eab.debug_probes.jlink import JLinkProbe
@@ -192,7 +191,7 @@ class TestAnalyzeFaultIntegration:
         mock_result.stderr = ""
         mock_gdb_batch.return_value = mock_result
 
-        report = analyze_fault(bridge, device="NRF5340_XXAA_APP", restart_rtt=True)
+        analyze_fault(bridge, device="NRF5340_XXAA_APP", restart_rtt=True)
 
         bridge.stop_rtt.assert_called_once()
         bridge.start_rtt.assert_called_once_with(device="NRF5340_XXAA_APP")
@@ -212,7 +211,7 @@ class TestAnalyzeFaultIntegration:
         mock_result.stderr = ""
         mock_gdb_batch.return_value = mock_result
 
-        report = analyze_fault(probe, device="MCXN947", chip="mcxn947")
+        analyze_fault(probe, device="MCXN947", chip="mcxn947")
 
         # DebugProbe has no rtt_status — should never be called
         assert not hasattr(probe, "rtt_status") or not probe.rtt_status.called

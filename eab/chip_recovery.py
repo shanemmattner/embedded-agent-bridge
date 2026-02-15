@@ -12,7 +12,7 @@ Provides:
 
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional, List, Callable, Deque
 from enum import Enum
@@ -445,15 +445,15 @@ class ChipRecovery:
             except Exception:
                 pass
             self._log("Boot loop recovery: hard reset...")
-            result = self._reset_callback("hard_reset")
+            self._reset_callback("hard_reset")
         elif health.state == ChipState.BOOTLOADER:
             # In bootloader: just hard reset
             self._log("Bootloader recovery: hard reset...")
-            result = self._reset_callback("hard_reset")
+            self._reset_callback("hard_reset")
         else:
             # Default: hard reset
             self._log("Standard recovery: hard reset...")
-            result = self._reset_callback("hard_reset")
+            self._reset_callback("hard_reset")
 
         self._set_state(ChipState.RECOVERY)
         return True

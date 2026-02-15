@@ -6,7 +6,6 @@ All functions work on closed .rttbin files (not live captures).
 from __future__ import annotations
 
 import csv
-import struct
 import wave
 from pathlib import Path
 

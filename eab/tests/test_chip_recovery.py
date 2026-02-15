@@ -56,7 +56,7 @@ def test_gave_up_flag_persists_across_operations():
     assert recovery._gave_up is False
 
     # Check health
-    health = recovery.get_health()
+    recovery.get_health()
     assert recovery._gave_up is False
 
     # Check needs_recovery

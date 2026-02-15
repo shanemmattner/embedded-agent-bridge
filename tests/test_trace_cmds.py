@@ -4,13 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-import signal
-import struct
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 
 from eab.cli.trace.cmd_start import (
     _emit,
@@ -233,7 +228,7 @@ class TestRttbinToPerfetto:
         out_json = tmp_path / "long.json"
         self._write_rttbin(rttbin, ["x" * 200])
 
-        summary = rttbin_to_perfetto(rttbin, out_json)
+        rttbin_to_perfetto(rttbin, out_json)
         data = json.loads(out_json.read_text())
         instant = [e for e in data["traceEvents"] if e.get("ph") == "i"][0]
         assert len(instant["name"]) == 80  # truncated

@@ -240,7 +240,6 @@ class TestCmdReadVars:
 
         assert rc == 0
         # Verify only filtered symbols were requested
-        call_args = mock_gdb.call_args
         # The script_path arg was passed; verify parse_symbols was called
         mock_parse.assert_called_once_with("/path/to/app.elf")
 

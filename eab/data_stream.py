@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import zlib
-from typing import Optional
 
 from .interfaces import FileSystemInterface, ClockInterface
 

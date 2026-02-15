@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import os
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from eab.cli.flash import cmd_flash
-from eab.chips.zephyr import ZephyrProfile
 
 
 @pytest.fixture
@@ -76,7 +74,7 @@ def test_cmd_flash_jlink_hex_success(hex_firmware):
         assert "-CommanderScript" in call_args
         
         # Verify temp script was created and cleaned up
-        script_path = call_args[2]
+        call_args[2]
         # Script should be cleaned up after execution
         # (in real execution; mocked here)
 

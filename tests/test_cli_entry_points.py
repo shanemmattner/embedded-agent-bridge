@@ -115,7 +115,6 @@ class TestControlEntryPoint:
     def test_lines_positional_arg(self, cmd, default):
         """tail/alerts/events accept positional line count: eabctl tail 10"""
         from eab.control import main as ctl_main
-        import argparse
 
         # Test positional form: eabctl tail 10
         result = ctl_main(["--base-dir", "/tmp/eab-test-nonexistent", cmd, "10"])
@@ -213,7 +212,7 @@ class TestProfileCommands:
     
     def test_profile_function_command_registered(self):
         """profile-function command should be registered and parse required args."""
-        from eab.cli import main, _build_parser
+        from eab.cli import _build_parser
         
         # Verify parser accepts the command
         parser = _build_parser()
@@ -471,7 +470,7 @@ class TestGDBCommandEntryPoints:
         with patch("eab.cli.cmd_gdb_script") as mock_cmd:
             mock_cmd.return_value = 0
             
-            result = main([
+            main([
                 "gdb-script",
                 str(script_file),
                 "--device", "NRF5340_XXAA_APP",
@@ -511,7 +510,7 @@ class TestGDBCommandEntryPoints:
         with patch("eab.cli.cmd_inspect") as mock_cmd:
             mock_cmd.return_value = 0
             
-            result = main([
+            main([
                 "inspect",
                 "_kernel",
                 "--device", "NRF5340_XXAA_APP",
@@ -542,7 +541,7 @@ class TestGDBCommandEntryPoints:
         with patch("eab.cli.cmd_inspect") as mock_cmd:
             mock_cmd.return_value = 0
             
-            result = main(["inspect", "g_state"])
+            main(["inspect", "g_state"])
             
             assert mock_cmd.called
             call_kwargs = mock_cmd.call_args[1]
@@ -572,7 +571,7 @@ class TestGDBCommandEntryPoints:
         with patch("eab.cli.cmd_threads") as mock_cmd:
             mock_cmd.return_value = 0
             
-            result = main([
+            main([
                 "threads",
                 "--device", "MCXN947",
                 "--elf", "/path/to/mcxn.elf",
@@ -602,7 +601,7 @@ class TestGDBCommandEntryPoints:
         with patch("eab.cli.cmd_threads") as mock_cmd:
             mock_cmd.return_value = 0
             
-            result = main(["threads"])
+            main(["threads"])
             
             assert mock_cmd.called
             call_kwargs = mock_cmd.call_args[1]
@@ -624,7 +623,7 @@ class TestGDBCommandEntryPoints:
         with patch("eab.cli.cmd_watch") as mock_cmd:
             mock_cmd.return_value = 0
             
-            result = main([
+            main([
                 "watch",
                 "g_counter",
                 "--device", "NRF5340_XXAA_APP",
@@ -656,7 +655,7 @@ class TestGDBCommandEntryPoints:
         with patch("eab.cli.cmd_watch") as mock_cmd:
             mock_cmd.return_value = 0
             
-            result = main(["watch", "my_var"])
+            main(["watch", "my_var"])
             
             assert mock_cmd.called
             call_kwargs = mock_cmd.call_args[1]
@@ -699,7 +698,7 @@ class TestGDBCommandEntryPoints:
         with patch("eab.cli.cmd_memdump") as mock_cmd:
             mock_cmd.return_value = 0
             
-            result = main([
+            main([
                 "memdump",
                 "0x20000000",
                 "1024",
@@ -733,7 +732,7 @@ class TestGDBCommandEntryPoints:
         with patch("eab.cli.cmd_memdump") as mock_cmd:
             mock_cmd.return_value = 0
             
-            result = main([
+            main([
                 "memdump",
                 "0x20001000",
                 "256",
@@ -807,7 +806,7 @@ class TestGDBCommandEntryPoints:
             mock_cmd.return_value = 0
             
             # --json before subcommand
-            result = main(["--json", "inspect", "myvar"])
+            main(["--json", "inspect", "myvar"])
             
             assert mock_cmd.called
             call_kwargs = mock_cmd.call_args[1]

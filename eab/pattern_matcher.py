@@ -7,7 +7,6 @@ Detects configurable patterns in serial output and logs alerts.
 from typing import Optional, List, Dict
 from datetime import datetime
 import re
-from dataclasses import dataclass
 
 from .interfaces import FileSystemInterface, ClockInterface, AlertMatch
 

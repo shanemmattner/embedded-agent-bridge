@@ -106,7 +106,7 @@ class PortLock:
                 self._log(f"Acquired lock for {self._port}")
                 return True
 
-            except (IOError, OSError) as e:
+            except (IOError, OSError):
                 # Lock is held by someone else
                 if self._lock_fd:
                     self._lock_fd.close()

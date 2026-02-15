@@ -26,7 +26,6 @@ import logging
 import os
 import select
 import shutil
-import signal
 import socket
 import subprocess
 import time

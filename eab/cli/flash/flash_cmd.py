@@ -6,13 +6,13 @@ import logging
 import os
 import subprocess
 import time
-from typing import Any, Optional
+from typing import Optional
 
 from eab.chips import get_chip_profile
 from eab.chips.zephyr import ZephyrProfile
 from eab.cli.helpers import _now_iso, _print
 
-from eab.cli.flash._helpers import _wait_for_port, _write_esptool_cfg_for_usb_jtag
+from eab.cli.flash._helpers import _write_esptool_cfg_for_usb_jtag
 from eab.cli.flash._retries import (
     _retry_stm32_connect_under_reset,
     _retry_esp32_usb_jtag,

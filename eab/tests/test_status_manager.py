@@ -5,7 +5,6 @@ The status manager writes connection state and statistics to a JSON file
 that agents can read to understand daemon state.
 """
 
-import pytest
 from datetime import datetime
 import json
 import sys

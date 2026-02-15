@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from eab.jlink_rtt import JLinkRTTManager
 
@@ -90,7 +88,7 @@ class TestResetTargetSequence:
             with patch.object(mgr, "start") as mock_start:
                 mock_start.return_value = MagicMock(running=True, last_error=None)
 
-                result = mgr.reset_target(wait_after_reset_s=0.5)
+                mgr.reset_target(wait_after_reset_s=0.5)
 
         # Verify pylink sequence
         mock_jlink_cls.assert_called_once()

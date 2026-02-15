@@ -115,7 +115,7 @@ def test_wrapper_blocks_when_eab_running():
         
         # Try to run wrapper with write_flash on same port
         # This should fail with exit code 1
-        result = subprocess.run(
+        subprocess.run(
             ["bash", str(wrapper_path), "-p", "/dev/ttyUSB0", "write_flash", "0x0", "test.bin"],
             capture_output=True,
             text=True,

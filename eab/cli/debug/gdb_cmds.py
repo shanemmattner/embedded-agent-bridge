@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 from typing import Optional
 
 from eab.gdb_bridge import run_gdb_batch, run_gdb_python

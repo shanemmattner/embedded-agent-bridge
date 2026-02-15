@@ -4,7 +4,6 @@ Tests for session-based logging.
 These tests define the expected session logging behavior BEFORE implementation.
 """
 
-import pytest
 from datetime import datetime
 import sys
 import os
@@ -624,7 +623,7 @@ class TestLogRotation:
 
     def test_default_config_when_none_provided(self):
         """Should use default LogRotationConfig when none provided."""
-        from eab.session_logger import SessionLogger, LogRotationConfig
+        from eab.session_logger import SessionLogger
 
         fs = MockFileSystem()
         clock = MockClock(datetime(2025, 12, 11, 1, 30, 0))

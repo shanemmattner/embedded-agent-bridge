@@ -7,13 +7,11 @@ nRF5340, nRF52840, MCXN947, and J-Link fallback behavior.
 from __future__ import annotations
 
 import os
-import tempfile
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 from eab.chips.zephyr import ZephyrProfile
-from eab.chips.base import FlashCommand
 from eab.cli.flash import cmd_reset
 
 

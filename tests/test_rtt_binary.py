@@ -2,15 +2,12 @@
 
 import io
 import struct
-import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from eab.rtt_binary import (
-    MAGIC, VERSION, HEADER_SIZE, HEADER_FMT, FRAME_HEADER_FMT, FRAME_HEADER_SIZE,
-    BinaryWriter, BinaryReader, RTTBinaryCapture,
+    MAGIC, VERSION, HEADER_SIZE, BinaryWriter, BinaryReader,
 )
 
 
@@ -22,7 +19,7 @@ from eab.rtt_binary import (
 class TestBinaryWriterReader:
     def test_header_magic_and_version(self, tmp_path):
         path = tmp_path / "test.rttbin"
-        with BinaryWriter(path, channels=[0]) as w:
+        with BinaryWriter(path, channels=[0]):
             pass
 
         with open(path, "rb") as f:
@@ -74,7 +71,7 @@ class TestBinaryWriterReader:
 
     def test_channel_mask(self, tmp_path):
         path = tmp_path / "test.rttbin"
-        with BinaryWriter(path, channels=[0, 3, 7]) as w:
+        with BinaryWriter(path, channels=[0, 3, 7]):
             pass
 
         with BinaryReader(path) as r:
@@ -101,7 +98,7 @@ class TestBinaryWriterReader:
 
     def test_empty_file_no_frames(self, tmp_path):
         path = tmp_path / "test.rttbin"
-        with BinaryWriter(path, channels=[0]) as w:
+        with BinaryWriter(path, channels=[0]):
             pass
 
         with BinaryReader(path) as r:

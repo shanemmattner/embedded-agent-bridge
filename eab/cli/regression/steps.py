@@ -245,6 +245,10 @@ def _run_fault_check(step: StepSpec, *, device: Optional[str],
     )
 
 
+from eab.cli.regression.trace_steps import (
+    _run_trace_start, _run_trace_stop, _run_trace_export, _run_trace_validate,
+)
+
 _STEP_DISPATCH = {
     "flash": _run_flash,
     "reset": _run_reset,
@@ -255,4 +259,8 @@ _STEP_DISPATCH = {
     "sleep": _run_sleep,
     "read_vars": _run_read_vars,
     "fault_check": _run_fault_check,
+    "trace_start": _run_trace_start,
+    "trace_stop": _run_trace_stop,
+    "trace_export": _run_trace_export,
+    "trace_validate": _run_trace_validate,
 }

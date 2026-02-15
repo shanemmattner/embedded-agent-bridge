@@ -1,0 +1,34 @@
+# Full trace pipeline regression test — nRF5340 DK via J-Link.
+# Requires: EAB daemon running, nRF5340 DK connected, firmware with trace support.
+name: E2E Trace Pipeline - nRF5340
+device: nrf5340
+chip: nrf5340
+timeout: 120
+
+setup:
+  - flash:
+      firmware: examples/nrf5340-debug-full/build/zephyr/zephyr.elf
+      runner: jlink
+
+steps:
+  - sleep:
+      seconds: 3
+  - trace_start:
+      source: rtt
+      output: /tmp/eab-regression-trace.rttbin
+      device: NRF5340_XXAA_APP
+  - sleep:
+      seconds: 10
+  - trace_stop: {}
+  - trace_export:
+      input: /tmp/eab-regression-trace.rttbin
+      output: /tmp/eab-regression-trace.json
+      format: auto
+  - trace_validate:
+      input: /tmp/eab-regression-trace.json
+      min_events: 1
+      required_fields: [name, ts, ph, pid, tid]
+      schema: perfetto
+
+teardown:
+  - trace_stop: {}

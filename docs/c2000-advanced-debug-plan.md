@@ -411,3 +411,72 @@ To add variable streaming:
 | ESP32 | Espressif SVD files | XML → convert | github.com/espressif |
 
 Long-term: write a `svd2regmap.py` converter that turns CMSIS SVD XML into our JSON format. Covers hundreds of ARM chips automatically.
+
+## Research Links (from prior sessions)
+
+### GitHub Repos
+- **C2000-IDEA** (TI's VS Code extension with register data): https://github.com/TexasInstruments/C2000-IDEA
+  - Register JSON data: https://github.com/TexasInstruments/C2000-IDEA/tree/main/register_data
+  - Register links: https://github.com/TexasInstruments/C2000-IDEA/tree/main/register_links
+  - Register reserved data: https://github.com/TexasInstruments/C2000-IDEA/tree/main/register_rsvd_data
+  - Register-to-function mapping: https://github.com/TexasInstruments/C2000-IDEA/tree/main/register_to_function_data
+- **MCUViewer** (real-time variable viewer, inspiration for var streaming): https://github.com/klonyyy/MCUViewer
+- **TI OpenOCD** (TI's fork with XDS110 support): https://github.com/TexasInstruments/ti-openocd
+- **XDS110 MCP Server** (Shane's MCP server for XDS110): https://github.com/shanemmattner/XDS110_MCP_server
+
+### TI Product & Tool Pages
+- **TMS320F280039C** product page: https://www.ti.com/product/TMS320F280039C
+- **TMS320F28379D** product page: https://www.ti.com/product/TMS320F28379D
+- **LAUNCHXL-F280039C** dev kit: https://www.ti.com/tool/LAUNCHXL-F280039C
+- **C2000WARE** SDK: https://www.ti.com/tool/C2000WARE
+- **Code Composer Studio**: https://www.ti.com/tool/CCSTUDIO
+- **CCS Theia** (latest IDE): https://www.ti.com/tool/download/CCSTUDIO-THEIA/1.5.1
+- **UniFlash**: https://www.ti.com/tool/UNIFLASH
+- **XDS110 standalone probe**: https://www.ti.com/tool/TMDSEMU110-U
+
+### TI Documentation (SPR numbers)
+- **SPRSP69** — F28003x Technical Reference Manual (register addresses, bit fields)
+- **SPRUIW9** — F28003x Data Sheet
+- **SPRUJ30** — C2000 Real-Time Control MCUs Reference Guide
+- **SPRACM7** — ERAD Application Report
+- **SPRADL6** — C2000 Debug Systems Application Note
+- **SPRA820** — DSP/BIOS Boot Loader
+
+### ERAD (Enhanced Realtime Analysis and Diagnostics)
+- **C28x Academy ERAD tutorial**: https://dev.ti.com/tirex/explore/content/c28x_academy_1_02_00_00/_build_c28x_academy_1_02_00_00/source/c2000_debug_systems/c2000_erad.html
+- **ERAD block diagram**: https://dev.ti.com/tirex/explore/content/c28x_academy_1_02_00_00/_build_c28x_academy_1_02_00_00/_images/erad_block_diagram.png
+- **TI Resource Explorer ERAD**: https://dev.ti.com/tirex/local?id=source_c2000_debug_systems_c2000_erad&packageId=C28X-ACADEMY
+
+### XDS110 Debug Probe
+- **XDS110 documentation**: https://software-dl.ti.com/ccs/esd/documents/xdsdebugprobes/emu_xds110.html
+- **XDS software downloads**: https://software-dl.ti.com/ccs/esd/documents/xdsdebugprobes/emu_xds_software_package_download.html
+- **Element14 XDS110 first steps**: https://community.element14.com/technologies/embedded/b/blog/posts/new-debug-jtag-probe---xds110-first-steps
+- **OpenOCD XDS110 source**: https://openocd.org/doc-release/doxygen/xds110_8c_source.html
+
+### TI E2E Forum Threads
+- **Flashing without CCS**: https://e2e.ti.com/support/microcontrollers/c2000/f/c2000-microcontrollers-forum/958244/ccs-tms320f28069m-debugging-and-flashing-without-ccs
+- **XDS110 on ARM64 (Apple Silicon)**: https://e2e.ti.com/support/tools/code-composer-studio-group/ccs/f/code-composer-studio-forum/1094114/support-for-xds110-on-arm64
+- **XDS110 JTAG connectivity debug**: https://e2e.ti.com/support/microcontrollers/c2000-microcontrollers-group/c2000/f/c2000-microcontrollers-forum/657613/ccs-tms320f28075-c28xx-xds110-jtag-connectivity---debug-help
+
+### Other
+- **MATLAB C2000 serial communication**: https://de.mathworks.com/help/ti-c2000/ug/serial-communication-example.html
+
+## Implementation Status
+
+### Completed (Phase 0 — Foundation)
+- ✅ `eab/chips/c2000.py` — C2000Profile with DSLite flash/reset/erase commands
+- ✅ `eab/chips/__init__.py` — C2000 registered in chip profile registry + detection
+- ✅ `eab/c2000_map_parser.py` — TI MAP file parser (symbols, addresses, sizes)
+- ✅ `eab/debug_probes/xds110.py` — XDS110Probe with memory_read, reset, identifyProbe
+- ✅ `tests/test_c2000.py` — Full test coverage for all above
+- ✅ `tests/hw/c2000_launchxl.yaml` — Hardware regression test definition
+
+### Not Started
+- ❌ Phase 1: Register map infrastructure (`eab/register_maps/`)
+- ❌ Phase 2: Fault analysis for C2000
+- ❌ Phase 3: ERAD profiling
+- ❌ Phase 4: Variable streaming
+- ❌ Phase 5: DLOG buffer capture
+- ❌ Phase 6: DSS bridge (persistent debug session)
+- ❌ Phase 7: Trace/Perfetto export
+- ❌ Phase 8: CLI wiring + tests

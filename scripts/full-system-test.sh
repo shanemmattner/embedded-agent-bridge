@@ -45,7 +45,7 @@ echo ""
 echo -e "${YELLOW}Building ESP32-S3 firmware...${NC}"
 cd "$REPO_ROOT/examples/esp32s3-debug-full"
 idf.py build
-if [ ! -f "build/debug_full_main.bin" ]; then
+if [ ! -f "build/esp32s3-debug-full.bin" ]; then
     echo -e "${RED}ERROR: ESP32-S3 build failed${NC}"
     exit 1
 fi

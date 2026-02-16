@@ -18,6 +18,7 @@ def cmd_profile_function(
     cpu_freq: Optional[int],
     probe_type: str = "jlink",
     chip: Optional[str] = None,
+    probe_selector: Optional[str] = None,
     json_mode: bool,
 ) -> int:
     """Profile a function using DWT cycle counter.

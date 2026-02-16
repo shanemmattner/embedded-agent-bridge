@@ -18,6 +18,7 @@ def cmd_profile_region(
     cpu_freq: Optional[int],
     probe_type: str = "jlink",
     chip: Optional[str] = None,
+    probe_selector: Optional[str] = None,
     json_mode: bool,
 ) -> int:
     """Profile an address region using DWT cycle counter.

@@ -15,6 +15,7 @@ def cmd_dwt_status(
     device: Optional[str],
     probe_type: str = "jlink",
     chip: Optional[str] = None,
+    probe_selector: Optional[str] = None,
     json_mode: bool,
 ) -> int:
     """Display DWT register state.
@@ -44,7 +45,7 @@ def cmd_dwt_status(
 
         probe = None
         try:
-            probe, bridge = _setup_openocd_probe(base_dir, chip)
+            probe, bridge = _setup_openocd_probe(base_dir, chip, adapter_serial=probe_selector)
             status = get_dwt_status_openocd(bridge)
 
             trcena_enabled = bool(status["DEMCR"] & DEMCR_TRCENA)

@@ -35,12 +35,13 @@ def _detect_cpu_freq(device: str, chip: Optional[str] = None) -> Optional[int]:
     return None
 
 
-def _setup_openocd_probe(base_dir: str, chip: str) -> tuple:
+def _setup_openocd_probe(base_dir: str, chip: str, adapter_serial: Optional[str] = None) -> tuple:
     """Create and start an OpenOCD probe for the given chip.
 
     Args:
         base_dir: Session directory for probe state files.
         chip: Chip type for ZephyrProfile lookup (e.g., stm32l4, mcxn947).
+        adapter_serial: Probe serial for multi-probe selection (OpenOCD ``adapter serial``).
 
     Returns:
         (probe, bridge) tuple — OpenOCDProbe and OpenOCDBridge instances.
@@ -63,6 +64,7 @@ def _setup_openocd_probe(base_dir: str, chip: str) -> tuple:
         transport=ocd_cfg.transport,
         extra_commands=ocd_cfg.extra_commands,
         halt_command=ocd_cfg.halt_command,
+        adapter_serial=adapter_serial,
     )
 
     status = probe.start_gdb_server()

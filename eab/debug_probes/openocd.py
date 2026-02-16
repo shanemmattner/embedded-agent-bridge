@@ -54,6 +54,7 @@ class OpenOCDProbe(DebugProbe):
         transport: Optional[str] = None,
         extra_commands: Optional[list[str]] = None,
         halt_command: str = "halt",
+        adapter_serial: Optional[str] = None,
         gdb_port: int = DEFAULT_GDB_PORT,
         telnet_port: int = DEFAULT_TELNET_PORT,
         tcl_port: int = DEFAULT_TCL_PORT,
@@ -65,6 +66,7 @@ class OpenOCDProbe(DebugProbe):
         self._transport = transport
         self._extra_commands = extra_commands or []
         self._halt_command = halt_command
+        self._adapter_serial = adapter_serial
         self._gdb_port = gdb_port
         self._telnet_port = telnet_port
         self._tcl_port = tcl_port
@@ -85,6 +87,10 @@ class OpenOCDProbe(DebugProbe):
         cmd = ["openocd"]
         if scripts:
             cmd += ["-s", scripts]
+
+        # Adapter serial (must come before interface config to select probe)
+        if self._adapter_serial:
+            cmd += ["-c", f"adapter serial {self._adapter_serial}"]
 
         # Interface config
         cmd += ["-f", self._interface_cfg] if self._interface_cfg else []

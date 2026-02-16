@@ -133,6 +133,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             elf=args.elf,
             chip=args.chip,
             probe_type=args.probe,
+            probe_selector=args.probe_selector,
             json_mode=args.json,
         )
     if args.cmd == "profile-function":
@@ -144,6 +145,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             cpu_freq=args.cpu_freq,
             probe_type=args.probe,
             chip=args.chip,
+            probe_selector=args.probe_selector,
             json_mode=args.json,
         )
     if args.cmd == "profile-region":
@@ -155,6 +157,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             cpu_freq=args.cpu_freq,
             probe_type=args.probe,
             chip=args.chip,
+            probe_selector=args.probe_selector,
             json_mode=args.json,
         )
     if args.cmd == "dwt-status":
@@ -163,6 +166,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             device=args.device,
             probe_type=args.probe,
             chip=args.chip,
+            probe_selector=args.probe_selector,
             json_mode=args.json,
         )
     if args.cmd == "gdb-script":

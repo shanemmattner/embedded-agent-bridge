@@ -1,0 +1,26 @@
+name: C2000 LaunchXL-F280039C
+device: c2000
+chip: c2000
+timeout: 60
+
+setup:
+  - flash:
+      firmware: firmware/motor_control.out
+      chip: c2000
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "Ready"
+      timeout: 10
+  - send:
+      text: "status"
+      await_ack: true
+  - read_vars:
+      elf: firmware/motor_control.out
+      vars:
+        - name: motorVars_M1.motorState
+          expect_eq: 0
+
+teardown:
+  - reset: {}

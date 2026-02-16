@@ -186,6 +186,7 @@ Use `--cpu-freq` to override auto-detection or support unlisted devices.
 | STM32 | stm32l4, stm32f4, stm32h7, stm32g4 | OpenOCD + ST-Link | st-flash |
 | nRF | nRF5340 | J-Link SWD | west flash (Zephyr) |
 | NXP MCX | MCXN947 | OpenOCD CMSIS-DAP | west flash (Zephyr) |
+| C2000 | F28003x, F28004x | XDS110 | CCS / eabctl flash |
 
 ## GDB Debugging (ESP32-C6)
 
@@ -211,6 +212,70 @@ openocd -f board/esp32c6-builtin.cfg -c "program_esp app.bin 0x10000 verify" -c 
 ```
 
 ESP32-C6 supports 4 hardware breakpoints, 4 watchpoints, and full CSR/debug register access.
+
+## C2000 Development (TI Microcontrollers)
+
+EAB supports TI C2000 microcontrollers (F28003x, F28004x) via XDS110 debug probe and CCS Scripting Server.
+
+### Building C2000 Firmware
+
+**Use Docker for headless builds - no local CCS installation required:**
+
+```bash
+# From examples/c2000-stress-test directory
+./docker-build.sh
+
+# First time only: pull Docker image (~2GB)
+docker pull whuzfb/ccstudio:20.2-ubuntu24.04
+```
+
+The Docker build:
+- Uses pre-configured CCS 20.2 with C2000 compiler
+- Imports project via ccs-server-cli
+- Builds firmware to `Debug/launchxl_ex1_f280039c_demo.out`
+- No local CCS installation needed
+- Works in CI/CD pipelines
+
+**Output:** `Debug/<project>.out` (COFF/ELF binary ready to flash)
+
+### Flashing C2000 Firmware
+
+```bash
+# Flash via EAB (auto-detects XDS110, uses CCS DSS transport)
+eabctl flash examples/c2000-stress-test
+
+# Or manually via CCS debugger GUI
+```
+
+### Live Debug Access
+
+C2000 supports live variable access via CCS Scripting Server (persistent debug session):
+
+```bash
+# Read variables during execution
+eabctl c2000 read-vars --vars error_count,heap_free
+
+# Stream variables to file
+eabctl c2000 stream-vars --vars sensor_data --rate 100
+
+# Trace execution with ERAD profiler
+eabctl c2000 trace start --buffer-size 1024
+```
+
+### Hardware Support
+
+- **F28003x**: LAUNCHXL-F280039C dev kit
+- **Debug Probe**: XDS110 (onboard USB-JTAG)
+- **Transport**: CCS DSS (Debug Server Scripting) for live memory access
+- **Throughput**: ~31 KB/s (bulk reads), ~12 Hz (DLOG snapshots)
+
+### Known Limitations
+
+- Requires CCS installed locally OR Docker for builds
+- Flash via CCS GUI or eabctl (no standalone flash tool)
+- DSS transport requires Node.js for CCS scripting client
+
+See `examples/c2000-stress-test/README.md` for complete build and test documentation.
 
 ## Diagnostics
 

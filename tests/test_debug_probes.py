@@ -165,6 +165,36 @@ class TestOpenOCDProbe:
         assert "openocd" in call_args[0]
         assert "interface/cmsis-dap.cfg" in call_args
 
+    @patch("eab.debug_probes.openocd.subprocess.Popen")
+    @patch("eab.debug_probes.openocd.pid_alive", return_value=True)
+    def test_adapter_serial_injected(self, mock_alive, mock_popen, tmp_path):
+        """adapter_serial should inject 'adapter serial' command before interface config."""
+        mock_proc = MagicMock()
+        mock_proc.pid = 99999
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        probe = OpenOCDProbe(
+            str(tmp_path),
+            interface_cfg="interface/cmsis-dap.cfg",
+            adapter_serial="MYSERIAL123",
+        )
+
+        with patch("eab.debug_probes.openocd.time.sleep"):
+            status = probe.start_gdb_server()
+
+        assert status.running is True
+        call_args = mock_popen.call_args[0][0]
+        # adapter serial must appear before interface config
+        serial_idx = call_args.index("adapter serial MYSERIAL123")
+        iface_idx = call_args.index("interface/cmsis-dap.cfg")
+        assert serial_idx < iface_idx
+
+    def test_no_adapter_serial_by_default(self, tmp_path):
+        """OpenOCDProbe without adapter_serial should not inject adapter serial command."""
+        probe = OpenOCDProbe(str(tmp_path))
+        assert probe._adapter_serial is None
+
 
 # =============================================================================
 # MCXN947 Decoder Registration

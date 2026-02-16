@@ -15,6 +15,7 @@ Usage:
 """
 
 from .base import ChipProfile, ChipFamily
+from .c2000 import C2000Profile
 from .esp32 import ESP32Profile
 from .stm32 import STM32Profile
 from .zephyr import ZephyrProfile
@@ -22,6 +23,7 @@ from .zephyr import ZephyrProfile
 __all__ = [
     "ChipProfile",
     "ChipFamily",
+    "C2000Profile",
     "ESP32Profile",
     "STM32Profile",
     "ZephyrProfile",
@@ -32,6 +34,9 @@ __all__ = [
 
 # Registry of chip profiles
 _PROFILES: dict[str, type[ChipProfile]] = {
+    "c2000": C2000Profile,
+    "c2000_f280039c": C2000Profile,
+    "c2000_f28379d": C2000Profile,
     "esp32": ESP32Profile,
     "esp32s2": ESP32Profile,
     "esp32s3": ESP32Profile,
@@ -71,6 +76,11 @@ def get_chip_profile(chip: str, variant: str | None = None) -> ChipProfile:
     if chip_lower == "auto":
         # Return ESP32 as default for now - detection happens via serial output
         return ESP32Profile(variant=variant)
+
+    # C2000 profiles
+    if chip_lower.startswith("c2000"):
+        variant_part = chip_lower[len("c2000"):].lstrip("_") or None
+        return C2000Profile(variant=variant_part)
 
     # Alias mapping: bare chip names to zephyr_ prefixed versions
     # Check if chip name matches any key in ZephyrProfile.BOARD_DEFAULTS
@@ -142,6 +152,11 @@ def detect_chip_family(line: str) -> ChipFamily | None:
     nrf_indicators = ["nrf52", "nrf5340", "softdevice", "nordic"]
     if any(ind in line_lower for ind in nrf_indicators):
         return ChipFamily.NRF52
+
+    # C2000 detection
+    c2000_indicators = ["c2000", "tms320", "c28x", "xds110", "flash_boot", "sci boot"]
+    if any(ind in line_lower for ind in c2000_indicators):
+        return ChipFamily.C2000
 
     # Zephyr detection (AFTER chip-specific checks to allow chip detection first)
     # If we see Zephyr but no chip-specific indicators, return ZEPHYR sentinel

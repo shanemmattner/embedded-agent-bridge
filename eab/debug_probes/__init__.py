@@ -10,18 +10,21 @@ Usage:
 from .base import DebugProbe, GDBServerStatus
 from .jlink import JLinkProbe
 from .openocd import OpenOCDProbe
+from .xds110 import XDS110Probe
 
 __all__ = [
     "DebugProbe",
     "GDBServerStatus",
     "JLinkProbe",
     "OpenOCDProbe",
+    "XDS110Probe",
     "get_debug_probe",
 ]
 
 _PROBES: dict[str, type[DebugProbe]] = {
     "jlink": JLinkProbe,
     "openocd": OpenOCDProbe,
+    "xds110": XDS110Probe,
 }
 
 
@@ -53,5 +56,12 @@ def get_debug_probe(probe_type: str, base_dir: str, **kwargs) -> DebugProbe:
 
     if cls is OpenOCDProbe:
         return OpenOCDProbe(base_dir=base_dir, **kwargs)
+
+    if cls is XDS110Probe:
+        return XDS110Probe(
+            base_dir=base_dir,
+            dslite_path=kwargs.pop("dslite_path", None),
+            ccxml=kwargs.pop("ccxml", None),
+        )
 
     return cls(base_dir=base_dir, **kwargs)

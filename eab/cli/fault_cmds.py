@@ -17,6 +17,7 @@ def cmd_fault_analyze(
     elf: Optional[str],
     chip: str,
     probe_type: str,
+    probe_selector: Optional[str] = None,
     json_mode: bool,
 ) -> int:
     """Analyze fault registers via GDB (J-Link or OpenOCD).
@@ -30,6 +31,7 @@ def cmd_fault_analyze(
         elf: Optional path to ELF file for GDB symbols.
         chip: Chip type for GDB executable selection and decoder lookup.
         probe_type: Debug probe type ('jlink' or 'openocd').
+        probe_selector: Probe serial/identifier for multi-probe selection.
         json_mode: Emit machine-parseable JSON output.
 
     Returns:
@@ -47,6 +49,8 @@ def cmd_fault_analyze(
             probe_kwargs["transport"] = ocd_cfg.transport
         probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
         probe_kwargs["halt_command"] = ocd_cfg.halt_command
+        if probe_selector:
+            probe_kwargs["adapter_serial"] = probe_selector
 
     probe = get_debug_probe(probe_type, base_dir=base_dir, **probe_kwargs)
 

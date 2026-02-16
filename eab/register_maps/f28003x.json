@@ -1,0 +1,303 @@
+{
+  "chip": "f28003x",
+  "family": "c2000",
+  "cpu_freq_hz": 120000000,
+
+  "fault_registers": {
+    "_description": "NMI, PIE, and reset cause registers for fault diagnosis",
+    "NMIFLG": {
+      "address": "0x7060",
+      "size": 2,
+      "description": "NMI Flag Register",
+      "bits": {
+        "NMIINT":     { "bit": 0, "description": "NMI Interrupt Flag" },
+        "CLOCKFAIL":  { "bit": 1, "description": "Clock Fail Detect Flag" },
+        "RAMUNCERR":  { "bit": 2, "description": "RAM Uncorrectable Error NMI" },
+        "FLUNCERR":   { "bit": 3, "description": "Flash Uncorrectable Error NMI" },
+        "PIEVECTERR": { "bit": 4, "description": "PIE Vector Fetch Error" },
+        "SYSDBGNMI":  { "bit": 8, "description": "System Debug NMI Flag" },
+        "RLNMI":      { "bit": 9, "description": "Reconfigurable Logic NMI Flag" },
+        "SDFM1ERR":   { "bit": 13, "description": "SDFM1 Error NMI" },
+        "SDFM2ERR":   { "bit": 14, "description": "SDFM2 Error NMI" }
+      }
+    },
+    "NMISHDFLG": {
+      "address": "0x7064",
+      "size": 2,
+      "description": "NMI Shadow Flag Register (latched, survives clear)"
+    },
+    "PIECTRL": {
+      "address": "0x0CE0",
+      "size": 2,
+      "description": "PIE Control Register",
+      "bits": {
+        "ENPIE":   { "bit": 0, "description": "PIE Enable" },
+        "PIEVECT": { "bits": [1, 15], "description": "PIE Vector Address" }
+      }
+    },
+    "PIEIFR1": {
+      "address": "0x0CE2",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 1"
+    },
+    "PIEIFR2": {
+      "address": "0x0CE4",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 2"
+    },
+    "PIEIFR3": {
+      "address": "0x0CE6",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 3"
+    },
+    "PIEIFR4": {
+      "address": "0x0CE8",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 4"
+    },
+    "PIEIFR5": {
+      "address": "0x0CEA",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 5"
+    },
+    "PIEIFR6": {
+      "address": "0x0CEC",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 6"
+    },
+    "PIEIFR7": {
+      "address": "0x0CEE",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 7"
+    },
+    "PIEIFR8": {
+      "address": "0x0CF0",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 8"
+    },
+    "PIEIFR9": {
+      "address": "0x0CF2",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 9"
+    },
+    "PIEIFR10": {
+      "address": "0x0CF4",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 10"
+    },
+    "PIEIFR11": {
+      "address": "0x0CF6",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 11"
+    },
+    "PIEIFR12": {
+      "address": "0x0CF8",
+      "size": 2,
+      "description": "PIE Interrupt Flag Register Group 12"
+    },
+    "RESC": {
+      "address": "0x5D00C",
+      "size": 4,
+      "description": "Reset Cause Register",
+      "bits": {
+        "POR":       { "bit": 0, "description": "Power-On Reset" },
+        "XRSN":      { "bit": 1, "description": "External Reset (XRSn pin)" },
+        "WDRSN":     { "bit": 2, "description": "Watchdog Reset" },
+        "NMIWDRSN":  { "bit": 3, "description": "NMI Watchdog Reset" },
+        "SCCRESETN": { "bit": 8, "description": "SCC Module Reset" }
+      }
+    }
+  },
+
+  "watchdog": {
+    "_description": "Watchdog timer registers",
+    "WDCR": {
+      "address": "0x7029",
+      "size": 2,
+      "description": "Watchdog Control Register",
+      "bits": {
+        "WDPS":    { "bits": [0, 2], "description": "Watchdog Prescaler", "values": { "0": "/1", "1": "/1", "2": "/2", "3": "/4", "4": "/8", "5": "/16", "6": "/32", "7": "/64" } },
+        "WDCHK":   { "bits": [3, 5], "description": "Watchdog Check Bits (must be 101b)" },
+        "WDDIS":   { "bit": 6, "description": "Watchdog Disable (1=disabled)" },
+        "WDFLG":   { "bit": 7, "description": "Watchdog Reset Status Flag" }
+      }
+    },
+    "WDWCR": {
+      "address": "0x7026",
+      "size": 2,
+      "description": "Watchdog Window Control Register",
+      "bits": {
+        "MIN":     { "bits": [0, 7], "description": "Minimum Threshold" },
+        "FIRSTKEY": { "bit": 8, "description": "First Key Detect Flag" }
+      }
+    },
+    "WDCNTR": {
+      "address": "0x7023",
+      "size": 2,
+      "description": "Watchdog Counter Register"
+    }
+  },
+
+  "clock": {
+    "_description": "Clock source and PLL configuration",
+    "CLKSRCCTL1": {
+      "address": "0x5D208",
+      "size": 4,
+      "description": "Clock Source Control Register 1",
+      "bits": {
+        "OSCCLKSRCSEL": { "bits": [0, 1], "description": "Oscillator Clock Source Select", "values": { "0": "INTOSC2", "1": "XTAL", "2": "INTOSC1", "3": "reserved" } },
+        "INTOSC2OFF":   { "bit": 3, "description": "Internal Oscillator 2 Off" },
+        "WDHALTI":      { "bit": 5, "description": "Watchdog HALT Ignore" }
+      }
+    },
+    "SYSPLLCTL1": {
+      "address": "0x5D20E",
+      "size": 4,
+      "description": "System PLL Control Register 1",
+      "bits": {
+        "PLLEN":  { "bit": 0, "description": "PLL Enable" },
+        "PLLCLKEN": { "bit": 1, "description": "PLL Clock Enable" }
+      }
+    },
+    "SYSCLKDIVSEL": {
+      "address": "0x5D222",
+      "size": 2,
+      "description": "System Clock Divider Select",
+      "bits": {
+        "PLLSYSCLKDIV": { "bits": [0, 5], "description": "PLL System Clock Divider", "values": { "0": "/1", "1": "/2", "2": "/4", "3": "/6", "4": "/8", "5": "/10", "6": "/12" } }
+      }
+    }
+  },
+
+  "erad": {
+    "_description": "Enhanced Realtime Analysis and Diagnostics (C2000 equivalent of ARM DWT)",
+    "GLBL_EVENT_STAT": {
+      "address": "0x5E800",
+      "size": 2,
+      "description": "ERAD Global Event Status"
+    },
+    "GLBL_HALT_STAT": {
+      "address": "0x5E802",
+      "size": 2,
+      "description": "ERAD Global Halt Status"
+    },
+    "GLBL_ENABLE": {
+      "address": "0x5E804",
+      "size": 2,
+      "description": "ERAD Global Enable"
+    },
+    "GLBL_CTM_RESET": {
+      "address": "0x5E806",
+      "size": 2,
+      "description": "ERAD Global Counter Reset"
+    },
+    "GLBL_NMI_CTL": {
+      "address": "0x5E808",
+      "size": 2,
+      "description": "ERAD Global NMI Control"
+    },
+    "EBC1_CNTL": {
+      "address": "0x5E820",
+      "size": 2,
+      "description": "Enhanced Bus Comparator 1 Control",
+      "bits": {
+        "BUS_SEL":   { "bits": [0, 3], "description": "Bus Select", "values": { "0": "DWAB", "1": "DRAB", "2": "DWDB", "3": "DRDB", "4": "VPC", "5": "PAB" } },
+        "HALT":      { "bit": 4, "description": "Halt on match" },
+        "INTERRUPT": { "bit": 5, "description": "Interrupt on match" },
+        "NMI":       { "bit": 6, "description": "NMI on match" },
+        "ENABLE":    { "bit": 15, "description": "Comparator enable" }
+      }
+    },
+    "EBC1_STATUS": {
+      "address": "0x5E822",
+      "size": 2,
+      "description": "Enhanced Bus Comparator 1 Status"
+    },
+    "EBC1_STATUSCLEAR": {
+      "address": "0x5E824",
+      "size": 2,
+      "description": "Enhanced Bus Comparator 1 Status Clear"
+    },
+    "EBC1_REFL": {
+      "address": "0x5E828",
+      "size": 4,
+      "description": "EBC1 Reference Address Low"
+    },
+    "EBC1_REFH": {
+      "address": "0x5E82A",
+      "size": 4,
+      "description": "EBC1 Reference Address High (mask)"
+    },
+    "EBC2_CNTL": {
+      "address": "0x5E830",
+      "size": 2,
+      "description": "Enhanced Bus Comparator 2 Control",
+      "bits": {
+        "BUS_SEL":   { "bits": [0, 3], "description": "Bus Select", "values": { "0": "DWAB", "1": "DRAB", "2": "DWDB", "3": "DRDB", "4": "VPC", "5": "PAB" } },
+        "HALT":      { "bit": 4, "description": "Halt on match" },
+        "INTERRUPT": { "bit": 5, "description": "Interrupt on match" },
+        "NMI":       { "bit": 6, "description": "NMI on match" },
+        "ENABLE":    { "bit": 15, "description": "Comparator enable" }
+      }
+    },
+    "EBC2_REFL": {
+      "address": "0x5E838",
+      "size": 4,
+      "description": "EBC2 Reference Address Low"
+    },
+    "EBC2_REFH": {
+      "address": "0x5E83A",
+      "size": 4,
+      "description": "EBC2 Reference Address High (mask)"
+    },
+    "SEC1_CNTL": {
+      "address": "0x5E880",
+      "size": 2,
+      "description": "System Event Counter 1 Control",
+      "bits": {
+        "MODE":         { "bits": [0, 1], "description": "Counter Mode", "values": { "0": "continuous", "1": "timer", "2": "start_stop" } },
+        "EDGE_LEVEL":   { "bit": 2, "description": "Edge/Level Select", "values": { "0": "edge", "1": "level" } },
+        "START_STOP_CUMULATIVE": { "bit": 3, "description": "Cumulative start/stop counting" },
+        "RST_ON_MATCH": { "bit": 4, "description": "Reset on match" },
+        "ENABLE":       { "bit": 15, "description": "Counter enable" }
+      }
+    },
+    "SEC1_STATUS": {
+      "address": "0x5E882",
+      "size": 2,
+      "description": "System Event Counter 1 Status"
+    },
+    "SEC1_COUNT": {
+      "address": "0x5E888",
+      "size": 4,
+      "description": "System Event Counter 1 Count Value"
+    },
+    "SEC1_MAX_COUNT": {
+      "address": "0x5E88A",
+      "size": 4,
+      "description": "System Event Counter 1 Max Count (worst-case)"
+    },
+    "SEC1_REF": {
+      "address": "0x5E890",
+      "size": 4,
+      "description": "System Event Counter 1 Reference Value"
+    },
+    "SEC1_INPUT_SEL1": {
+      "address": "0x5E894",
+      "size": 2,
+      "description": "SEC1 Start Event Select (input from EBC)"
+    },
+    "SEC1_INPUT_SEL2": {
+      "address": "0x5E896",
+      "size": 2,
+      "description": "SEC1 Stop Event Select (input from EBC)"
+    }
+  },
+
+  "datalog": {
+    "_description": "DLOG_4CH circular buffer — addresses come from MAP file at runtime",
+    "_note": "This group has no fixed register addresses; use MAP parser to resolve symbols",
+    "typical_symbols": ["dBuff1", "dBuff2", "dBuff3", "dBuff4", "dLog1"],
+    "buffer_size_symbol": "DBUFF_SIZE"
+  }
+}

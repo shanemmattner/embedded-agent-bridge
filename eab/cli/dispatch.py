@@ -133,6 +133,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             elf=args.elf,
             chip=args.chip,
             probe_type=args.probe,
+            probe_selector=args.probe_selector,
             json_mode=args.json,
         )
     if args.cmd == "profile-function":
@@ -144,6 +145,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             cpu_freq=args.cpu_freq,
             probe_type=args.probe,
             chip=args.chip,
+            probe_selector=args.probe_selector,
             json_mode=args.json,
         )
     if args.cmd == "profile-region":
@@ -155,6 +157,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             cpu_freq=args.cpu_freq,
             probe_type=args.probe,
             chip=args.chip,
+            probe_selector=args.probe_selector,
             json_mode=args.json,
         )
     if args.cmd == "dwt-status":
@@ -163,6 +166,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             device=args.device,
             probe_type=args.probe,
             chip=args.chip,
+            probe_selector=args.probe_selector,
             json_mode=args.json,
         )
     if args.cmd == "gdb-script":
@@ -451,6 +455,59 @@ def main(argv: Optional[list[str]] = None) -> int:
                 fmt=args.format,
                 json_mode=args.json,
             )
+
+    if args.cmd == "reg-read":
+        from eab.cli.c2000 import cmd_reg_read
+        return cmd_reg_read(
+            chip=args.chip,
+            register=args.register,
+            group=args.group,
+            ccxml=args.ccxml,
+            json_mode=args.json,
+        )
+    if args.cmd == "erad-status":
+        from eab.cli.c2000 import cmd_erad_status
+        return cmd_erad_status(
+            chip=args.chip,
+            json_mode=args.json,
+        )
+    if args.cmd == "stream-vars":
+        from eab.cli.c2000 import cmd_stream_vars
+        if not args.var_specs:
+            _print({"error": "Specify --var name:address:type"}, json_mode=args.json)
+            return 2
+        return cmd_stream_vars(
+            map_file=args.map_file,
+            var_specs=args.var_specs,
+            interval_ms=args.interval,
+            count=args.count,
+            output=args.output,
+            json_mode=args.json,
+        )
+    if args.cmd == "dlog-capture":
+        from eab.cli.c2000 import cmd_dlog_capture
+        if not args.buffer_specs:
+            _print({"error": "Specify --buffer name:address"}, json_mode=args.json)
+            return 2
+        return cmd_dlog_capture(
+            status_addr=args.status_addr,
+            size_addr=args.size_addr,
+            buffer_specs=args.buffer_specs,
+            buffer_size=args.buffer_size,
+            output=args.output,
+            output_format=args.output_format,
+            json_mode=args.json,
+        )
+    if args.cmd == "c2000-trace-export":
+        from eab.cli.c2000 import cmd_c2000_trace_export
+        return cmd_c2000_trace_export(
+            output_file=args.output,
+            erad_data=args.erad_data,
+            dlog_data=args.dlog_data,
+            log_file=args.log_file,
+            process_name=args.process_name,
+            json_mode=args.json,
+        )
 
     if args.cmd == "regression":
         from eab.cli.regression import cmd_regression

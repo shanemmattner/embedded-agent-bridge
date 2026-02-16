@@ -165,39 +165,47 @@ def _build_parser() -> argparse.ArgumentParser:
     p_fault.add_argument("--device", default="NRF5340_XXAA_APP", help="Device string (e.g., NRF5340_XXAA_APP, MCXN947)")
     p_fault.add_argument("--elf", default=None, help="ELF file for GDB symbols")
     p_fault.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
-    p_fault.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_fault.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
+    p_fault.add_argument("--probe-selector", default=None,
+                        help="Probe serial number or identifier (OpenOCD: adapter serial, J-Link: serial number)")
 
     p_profile_func = sub.add_parser("profile-function", help="Profile a function using DWT cycle counter")
     p_profile_func.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
     p_profile_func.add_argument("--elf", required=True, help="Path to ELF file with debug symbols")
     p_profile_func.add_argument("--function", required=True, help="Function name to profile")
     p_profile_func.add_argument("--cpu-freq", type=int, default=None, help="CPU frequency in Hz (auto-detect if omitted)")
-    p_profile_func.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_profile_func.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
     p_profile_func.add_argument("--chip", default=None, help="Chip type for OpenOCD config (e.g., stm32l4, mcxn947)")
+    p_profile_func.add_argument("--probe-selector", default=None,
+                        help="Probe serial number or identifier (OpenOCD: adapter serial, J-Link: serial number)")
 
     p_profile_region = sub.add_parser("profile-region", help="Profile an address region using DWT cycle counter")
     p_profile_region.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
     p_profile_region.add_argument("--start", type=lambda x: int(x, 0), required=True, help="Start address (hex or decimal)")
     p_profile_region.add_argument("--end", type=lambda x: int(x, 0), required=True, help="End address (hex or decimal)")
     p_profile_region.add_argument("--cpu-freq", type=int, default=None, help="CPU frequency in Hz (auto-detect if omitted)")
-    p_profile_region.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_profile_region.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
     p_profile_region.add_argument("--chip", default=None, help="Chip type for OpenOCD config (e.g., stm32l4, mcxn947)")
+    p_profile_region.add_argument("--probe-selector", default=None,
+                        help="Probe serial number or identifier (OpenOCD: adapter serial, J-Link: serial number)")
 
     p_dwt_status = sub.add_parser("dwt-status", help="Display DWT register state")
     p_dwt_status.add_argument("--device", default=None, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
-    p_dwt_status.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_dwt_status.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
     p_dwt_status.add_argument("--chip", default=None, help="Chip type for OpenOCD config (e.g., stm32l4, mcxn947)")
+    p_dwt_status.add_argument("--probe-selector", default=None,
+                        help="Probe serial number or identifier (OpenOCD: adapter serial, J-Link: serial number)")
 
     p_gdb_script = sub.add_parser("gdb-script", help="Execute custom GDB Python script via debug probe")
     p_gdb_script.add_argument("script_path", help="Path to GDB Python script")
     p_gdb_script.add_argument("--device", default=None, help="Device string for J-Link (e.g., NRF5340_XXAA_APP)")
     p_gdb_script.add_argument("--elf", default=None, help="ELF file for GDB symbols")
     p_gdb_script.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
-    p_gdb_script.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_gdb_script.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
     p_gdb_script.add_argument("--port", type=int, default=None, help="GDB server port override")
 
@@ -206,7 +214,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_inspect.add_argument("--device", default=None, help="Device string for J-Link")
     p_inspect.add_argument("--elf", default=None, help="ELF file for GDB symbols")
     p_inspect.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
-    p_inspect.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_inspect.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
     p_inspect.add_argument("--port", type=int, default=None, help="GDB server port override")
 
@@ -215,7 +223,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_threads.add_argument("--elf", default=None, help="ELF file for GDB symbols")
     p_threads.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
     p_threads.add_argument("--rtos", default="zephyr", help="RTOS type (default: zephyr)")
-    p_threads.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_threads.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
     p_threads.add_argument("--port", type=int, default=None, help="GDB server port override")
 
@@ -225,7 +233,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_watch.add_argument("--elf", default=None, help="ELF file for GDB symbols")
     p_watch.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
     p_watch.add_argument("--max-hits", type=int, default=100, help="Maximum hits to log (default: 100)")
-    p_watch.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_watch.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
     p_watch.add_argument("--port", type=int, default=None, help="GDB server port override")
 
@@ -236,7 +244,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_memdump.add_argument("--device", default=None, help="Device string for J-Link")
     p_memdump.add_argument("--elf", default=None, help="ELF file for GDB symbols")
     p_memdump.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
-    p_memdump.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_memdump.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
     p_memdump.add_argument("--port", type=int, default=None, help="GDB server port override")
 
@@ -253,7 +261,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_read_vars.add_argument("--filter", dest="filter_pattern", default=None, help="Glob pattern when using --all")
     p_read_vars.add_argument("--device", default=None, help="Device string for J-Link (e.g., NRF5340_XXAA_APP)")
     p_read_vars.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
-    p_read_vars.add_argument("--probe", default="jlink", choices=["jlink", "openocd"],
+    p_read_vars.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
                         help="Debug probe type (default: jlink)")
     p_read_vars.add_argument("--port", type=int, default=None, help="GDB server port override")
 
@@ -483,6 +491,41 @@ def _build_parser() -> argparse.ArgumentParser:
     p_trace_export.add_argument("--format", default="auto", 
                                  choices=["auto", "perfetto", "tband", "systemview", "ctf"],
                                  help="Input format (default: auto)")
+
+    # --- C2000-specific commands ---
+    p_reg_read = sub.add_parser("reg-read", help="Read and decode a C2000 register or register group")
+    p_reg_read.add_argument("--chip", default="f28003x", help="Chip name for register map (default: f28003x)")
+    p_reg_read.add_argument("--register", default=None, help="Register name (e.g., NMIFLG)")
+    p_reg_read.add_argument("--group", default=None, help="Register group name (e.g., fault_registers)")
+    p_reg_read.add_argument("--ccxml", default=None, help="CCXML path for XDS110 probe")
+
+    p_erad_status = sub.add_parser("erad-status", help="Show ERAD profiler register info")
+    p_erad_status.add_argument("--chip", default="f28003x", help="Chip name (default: f28003x)")
+
+    p_stream_vars = sub.add_parser("stream-vars", help="Stream variable values from C2000 target")
+    p_stream_vars.add_argument("--map", dest="map_file", required=True, help="Path to MAP file")
+    p_stream_vars.add_argument("--var", dest="var_specs", action="append", default=[],
+                                help="Variable spec: name:address:type (repeatable)")
+    p_stream_vars.add_argument("--interval", type=int, default=100, help="Polling interval in ms (default: 100)")
+    p_stream_vars.add_argument("--count", type=int, default=0, help="Number of samples (0 = infinite)")
+    p_stream_vars.add_argument("--output", "-o", default=None, help="Output file path")
+
+    p_dlog = sub.add_parser("dlog-capture", help="Capture DLOG_4CH buffers from C2000")
+    p_dlog.add_argument("--buffer", dest="buffer_specs", action="append", default=[],
+                         help="Buffer spec: name:address (repeatable)")
+    p_dlog.add_argument("--status-addr", default=None, help="DLOG status register address")
+    p_dlog.add_argument("--size-addr", default=None, help="DLOG size register address")
+    p_dlog.add_argument("--buffer-size", type=int, default=200, help="Samples per buffer (default: 200)")
+    p_dlog.add_argument("--output", "-o", default=None, help="Output file path")
+    p_dlog.add_argument("--format", dest="output_format", default="json",
+                         choices=["json", "csv", "jsonl"], help="Output format (default: json)")
+
+    p_c2000_trace = sub.add_parser("c2000-trace-export", help="Export C2000 debug data to Perfetto JSON")
+    p_c2000_trace.add_argument("--output", "-o", required=True, help="Output .json file")
+    p_c2000_trace.add_argument("--erad-data", default=None, help="ERAD profiling results JSON file")
+    p_c2000_trace.add_argument("--dlog-data", default=None, help="DLOG capture results JSON file")
+    p_c2000_trace.add_argument("--log-file", default=None, help="Serial log file")
+    p_c2000_trace.add_argument("--process-name", default="C2000 Debug", help="Process name in trace")
 
     # --- regression (hardware-in-the-loop test runner) ---
     p_regression = sub.add_parser("regression", help="Run hardware-in-the-loop regression tests")

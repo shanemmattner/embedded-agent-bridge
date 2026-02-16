@@ -24,6 +24,7 @@ class ChipFamily(Enum):
     NRF52 = "nrf52"  # Future
     RP2040 = "rp2040"  # Future
     MCX = "mcx"  # NXP MCX series (MCXN947, etc.)
+    C2000 = "c2000"  # TI C2000 DSP (TMS320F280039C, etc.)
     ZEPHYR = "zephyr"  # Zephyr RTOS detected but specific architecture unknown
 
 

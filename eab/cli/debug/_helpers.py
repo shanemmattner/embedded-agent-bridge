@@ -36,6 +36,12 @@ def _build_probe(
             probe_kwargs["transport"] = ocd_cfg.transport
         probe_kwargs["extra_commands"] = ocd_cfg.extra_commands
         probe_kwargs["halt_command"] = ocd_cfg.halt_command
+    elif probe_type == "xds110":
+        # XDS110 probe for TI C2000 — no GDB server, uses dslite
+        from eab.chips.c2000 import C2000Profile
+        profile = C2000Profile(variant=chip)
+        probe_kwargs["dslite_path"] = profile.dslite
+        probe_kwargs["ccxml"] = profile.ccxml
     elif probe_type == "jlink" and port is not None:
         probe_kwargs["port"] = port
     return get_debug_probe(probe_type, base_dir=base_dir, **probe_kwargs)

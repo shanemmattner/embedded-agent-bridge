@@ -471,8 +471,14 @@ Long-term: write a `svd2regmap.py` converter that turns CMSIS SVD XML into our J
 - ✅ `tests/test_c2000.py` — Full test coverage for all above
 - ✅ `tests/hw/c2000_launchxl.yaml` — Hardware regression test definition
 
+### Completed (Phase 1 — Register Map Infrastructure)
+- ✅ `eab/register_maps/__init__.py` — JSON loader → RegisterMap dataclasses
+- ✅ `eab/register_maps/base.py` — BitField, Register, RegisterGroup, RegisterMap
+- ✅ `eab/register_maps/decoder.py` — Generic decode_register, decode_group, bytes_to_int
+- ✅ `eab/register_maps/f28003x.json` — F28003x registers (NMI, PIE, RESC, WD, clock, ERAD)
+- ✅ `tests/test_register_maps.py` — 34 tests covering all dataclasses, JSON loading, decoding
+
 ### Not Started
-- ❌ Phase 1: Register map infrastructure (`eab/register_maps/`)
 - ❌ Phase 2: Fault analysis for C2000
 - ❌ Phase 3: ERAD profiling
 - ❌ Phase 4: Variable streaming

@@ -25,21 +25,20 @@
 #include "freertos/task.h"
 #include "driver/gptimer.h"
 #include "driver/uart.h"
-#include "esp_trace.h"
 
 static const char *TAG = "debug_full";
 
-/* SystemView event IDs */
+/* SystemView event IDs (disabled for ESP32-S3 - not supported) */
 #define SYSVIEW_COMPUTE_EVENT_ID     0
 #define SYSVIEW_IO_EVENT_ID          1
 #define SYSVIEW_ALLOC_EVENT_ID       2
 
-#define SYSVIEW_COMPUTE_START()  SEGGER_SYSVIEW_OnUserStart(SYSVIEW_COMPUTE_EVENT_ID)
-#define SYSVIEW_COMPUTE_END()    SEGGER_SYSVIEW_OnUserStop(SYSVIEW_COMPUTE_EVENT_ID)
-#define SYSVIEW_IO_START()       SEGGER_SYSVIEW_OnUserStart(SYSVIEW_IO_EVENT_ID)
-#define SYSVIEW_IO_END()         SEGGER_SYSVIEW_OnUserStop(SYSVIEW_IO_EVENT_ID)
-#define SYSVIEW_ALLOC_START()    SEGGER_SYSVIEW_OnUserStart(SYSVIEW_ALLOC_EVENT_ID)
-#define SYSVIEW_ALLOC_END()      SEGGER_SYSVIEW_OnUserStop(SYSVIEW_ALLOC_EVENT_ID)
+#define SYSVIEW_COMPUTE_START()  do {} while(0)
+#define SYSVIEW_COMPUTE_END()    do {} while(0)
+#define SYSVIEW_IO_START()       do {} while(0)
+#define SYSVIEW_IO_END()         do {} while(0)
+#define SYSVIEW_ALLOC_START()    do {} while(0)
+#define SYSVIEW_ALLOC_END()      do {} while(0)
 
 /* Test heap tracing */
 #if CONFIG_HEAP_TRACING
@@ -220,21 +219,6 @@ static void cmd_task(void *arg)
             line[pos++] = c;
         }
     }
-}
-
-/* Configure trace parameters for apptrace */
-esp_trace_open_params_t esp_trace_get_user_params(void)
-{
-    static esp_apptrace_config_t app_trace_config = APPTRACE_CONFIG_DEFAULT();
-
-    esp_trace_open_params_t trace_params = {
-        .core_cfg = NULL,
-        .encoder_name = "sysview",
-        .encoder_cfg = NULL,
-        .transport_name = "apptrace",
-        .transport_cfg = &app_trace_config,
-    };
-    return trace_params;
 }
 
 void app_main(void)

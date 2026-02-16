@@ -483,10 +483,21 @@ Long-term: write a `svd2regmap.py` converter that turns CMSIS SVD XML into our J
 - ✅ `eab/fault_decoders/__init__.py` — C2000 registered in decoder registry
 - ✅ `tests/test_c2000_fault_decoder.py` — 22 tests: NMI, reset, watchdog, partial reads, formatting
 
+### Completed (Phase 3 — ERAD Profiling)
+- ✅ `eab/analyzers/erad.py` — configure_function_profile, read_profile_results, configure_watchpoint
+- ✅ `tests/test_erad.py` — 32 tests covering config sequence, timing math, watchpoints
+
+### Completed (Phase 4 — Variable Streaming)
+- ✅ `eab/analyzers/type_decode.py` — All C2000 types + IQ24/IQ20/IQ15/IQ10 fixed-point
+- ✅ `eab/analyzers/var_stream.py` — VarStream with read_once, stream_jsonl, read_batch
+- ✅ `tests/test_var_stream.py` — 44 tests covering all types, IQ edge cases, streaming
+
+### Completed (Phase 6 — DSS Bridge)
+- ✅ `eab/transports/dss_bridge.js` — DSS JavaScript bridge (JSON stdin/stdout protocol)
+- ✅ `eab/transports/dss.py` — DSSTransport Python wrapper (same interface as XDS110Probe)
+- ✅ `tests/test_dss_transport.py` — 20 tests covering protocol, lifecycle, errors
+
 ### Not Started
-- ❌ Phase 3: ERAD profiling
-- ❌ Phase 4: Variable streaming
 - ❌ Phase 5: DLOG buffer capture
-- ❌ Phase 6: DSS bridge (persistent debug session)
 - ❌ Phase 7: Trace/Perfetto export
 - ❌ Phase 8: CLI wiring + tests

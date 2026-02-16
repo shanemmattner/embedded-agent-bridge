@@ -1,0 +1,150 @@
+{
+  "nrf5340_rtt": {
+    "compute": [
+      {
+        "time": 5.48,
+        "value": 100
+      },
+      {
+        "time": 10.59,
+        "value": 200
+      },
+      {
+        "time": 15.69,
+        "value": 300
+      },
+      {
+        "time": 20.8,
+        "value": 400
+      },
+      {
+        "time": 25.91,
+        "value": 500
+      },
+      {
+        "time": 31.01,
+        "value": 600
+      },
+      {
+        "time": 36.12,
+        "value": 700
+      },
+      {
+        "time": 41.22,
+        "value": 800
+      },
+      {
+        "time": 46.33,
+        "value": 900
+      },
+      {
+        "time": 51.44,
+        "value": 1000
+      },
+      {
+        "time": 56.54,
+        "value": 1100
+      },
+      {
+        "time": 61.65,
+        "value": 1200
+      },
+      {
+        "time": 66.75,
+        "value": 1300
+      },
+      {
+        "time": 71.86,
+        "value": 1400
+      },
+      {
+        "time": 76.97,
+        "value": 1500
+      },
+      {
+        "time": 82.07,
+        "value": 1600
+      },
+      {
+        "time": 87.18,
+        "value": 1700
+      },
+      {
+        "time": 92.29,
+        "value": 1800
+      }
+    ],
+    "io": [
+      {
+        "time": 5.84,
+        "value": 50
+      },
+      {
+        "time": 11.36,
+        "value": 100
+      },
+      {
+        "time": 16.87,
+        "value": 150
+      },
+      {
+        "time": 22.39,
+        "value": 200
+      },
+      {
+        "time": 27.9,
+        "value": 250
+      },
+      {
+        "time": 33.41,
+        "value": 300
+      },
+      {
+        "time": 38.93,
+        "value": 350
+      },
+      {
+        "time": 44.44,
+        "value": 400
+      },
+      {
+        "time": 49.96,
+        "value": 450
+      },
+      {
+        "time": 55.47,
+        "value": 500
+      },
+      {
+        "time": 60.99,
+        "value": 550
+      },
+      {
+        "time": 66.5,
+        "value": 600
+      },
+      {
+        "time": 72.02,
+        "value": 650
+      },
+      {
+        "time": 77.53,
+        "value": 700
+      },
+      {
+        "time": 83.04,
+        "value": 750
+      },
+      {
+        "time": 88.56,
+        "value": 800
+      },
+      {
+        "time": 94.07,
+        "value": 850
+      }
+    ]
+  },
+  "rtt_logs": "[00:00:20.800,933] \u001b[0m<inf> debug_full: Compute: 400 iterations\u001b[0m\n[00:00:22.385,223] \u001b[0m<inf> debug_full: I/O: 200 operations\u001b[0m\n[00:00:25.906,982] \u001b[0m<inf> debug_full: Compute: 500 iterations\u001b[0m\n[00:00:27.899,810] \u001b[0m<inf> debug_full: I/O: 250 operations\u001b[0m\n[00:00:31.013,092] \u001b[0m<inf> debug_full: Compute: 600 iterations\u001b[0m\n[00:00:33.414,337] \u001b[0m<inf> debug_full: I/O: 300 operations\u001b[0m\n[00:00:36.119,079] \u001b[0m<inf> debug_full: Compute: 700 iterations\u001b[0m\n[00:00:38.928,833] \u001b[0m<inf> debug_full: I/O: 350 operations\u001b[0m\n[00:00:41.224,975] \u001b[0m<inf> debug_full: Compute: 800 iterations\u001b[0m\n[00:00:44.443,237] \u001b[0m<inf> debug_full: I/O: 400 operations\u001b[0m\n[00:00:46.331,024] \u001b[0m<inf> debug_full: Compute: 900 iterations\u001b[0m\n[00:00:49.957,733] \u001b[0m<inf> debug_full: I/O: 450 operations\u001b[0m\n[00:00:51.436,920] \u001b[0m<inf> debug_full: Compute: 1000 iterations\u001b[0m\n[00:00:55.471,984] \u001b[0m<inf> debug_full: I/O: 500 operations\u001b[0m\n[00:00:56.542,877] \u001b[0m<inf> debug_full: Compute: 1100 iterations\u001b[0m\n[00:01:00.986,358] \u001b[0m<inf> debug_full: I/O: 550 operations\u001b[0m\n[00:01:01.648,773] \u001b[0m<inf> debug_full: Compute: 1200 iterations\u001b[0m\n[00:01:06.500,976] \u001b[0m<inf> debug_full: I/O: 600 operations\u001b[0m\n[00:01:06.754,821] \u001b[0m<inf> debug_full: Compute: 1300 iterations\u001b[0m\n[00:01:11.860,870] \u001b[0m<inf> debug_full: Compute: 1400 iterations\u001b[0m\n[00:01:12.015,563] \u001b[0m<inf> debug_full: I/O: 650 operations\u001b[0m\n[00:01:16.966,888] \u001b[0m<inf> debug_full: Compute: 1500 iterations\u001b[0m\n[00:01:17.530,029] \u001b[0m<inf> debug_full: I/O: 700 operations\u001b[0m\n[00:01:22.072,967] \u001b[0m<inf> debug_full: Compute: 1600 iterations\u001b[0m\n[00:01:23.044,586] \u001b[0m<inf> debug_full: I/O: 750 operations\u001b[0m\n[00:01:27.179,107] \u001b[0m<inf> debug_full: Compute: 1700 iterations\u001b[0m\n[00:01:28.559,234] \u001b[0m<inf> debug_full: I/O: 800 operations\u001b[0m\n[00:01:32.285,217] \u001b[0m<inf> debug_full: Compute: 1800 iterations\u001b[0m\n[00:01:34.073,852] \u001b[0m<inf> debug_full: I/O: 850 operations\u001b[0m\n\n",
+  "timestamp": "Mon Feb 16 12:34:21 PST 2026"
+}

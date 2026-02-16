@@ -1,0 +1,111 @@
+{
+  "test_config": {
+    "duration_seconds": 60,
+    "device_count": 7,
+    "devices": [
+      "esp32-c6",
+      "esp32-p4",
+      "nrf5340",
+      "mcxn947",
+      "stm32l4-v3",
+      "stm32-n6",
+      "c2000"
+    ]
+  },
+  "device_metrics": {
+    "esp32-c6": {
+      "name": "esp32-c6",
+      "chip": "esp32c6",
+      "transport": "apptrace",
+      "bytes_received": 0,
+      "messages_received": 0,
+      "dropped_frames": 0,
+      "reconnects": 0,
+      "errors": 0,
+      "start_time": 1771268050.368556,
+      "end_time": 1771268111.698742
+    },
+    "esp32-p4": {
+      "name": "esp32-p4",
+      "chip": "esp32p4",
+      "transport": "serial",
+      "bytes_received": 0,
+      "messages_received": 0,
+      "dropped_frames": 0,
+      "reconnects": 0,
+      "errors": 0,
+      "start_time": 1771268050.36869,
+      "end_time": 1771268111.6988108
+    },
+    "nrf5340": {
+      "name": "nrf5340",
+      "chip": "nrf5340",
+      "transport": "rtt",
+      "bytes_received": 0,
+      "messages_received": 0,
+      "dropped_frames": 0,
+      "reconnects": 0,
+      "errors": 0,
+      "start_time": 1771268050.3687942,
+      "end_time": 1771268111.7261922
+    },
+    "mcxn947": {
+      "name": "mcxn947",
+      "chip": "mcxn947",
+      "transport": "rtt",
+      "bytes_received": 0,
+      "messages_received": 0,
+      "dropped_frames": 0,
+      "reconnects": 0,
+      "errors": 0,
+      "start_time": 1771268050.3688672,
+      "end_time": 1771268110.7199202
+    },
+    "stm32l4-v3": {
+      "name": "stm32l4-v3",
+      "chip": "stm32l476rg",
+      "transport": "rtt",
+      "bytes_received": 0,
+      "messages_received": 0,
+      "dropped_frames": 0,
+      "reconnects": 0,
+      "errors": 0,
+      "start_time": 1771268050.368947,
+      "end_time": 1771268111.698772
+    },
+    "stm32-n6": {
+      "name": "stm32-n6",
+      "chip": "stm32n6",
+      "transport": "rtt",
+      "bytes_received": 0,
+      "messages_received": 0,
+      "dropped_frames": 0,
+      "reconnects": 0,
+      "errors": 0,
+      "start_time": 1771268050.36901,
+      "end_time": 1771268111.6987898
+    },
+    "c2000": {
+      "name": "c2000",
+      "chip": "f28003x",
+      "transport": "dss",
+      "bytes_received": 0,
+      "messages_received": 0,
+      "dropped_frames": 0,
+      "reconnects": 0,
+      "errors": 0,
+      "start_time": 1771268050.369073,
+      "end_time": 1771268110.7199528
+    }
+  },
+  "system_metrics": {
+    "avg_cpu_percent": 5.861818181818181,
+    "avg_memory_mb": 23.321875,
+    "samples": 55
+  },
+  "aggregate": {
+    "total_throughput_kbps": 0.0,
+    "total_messages": 0,
+    "total_errors": 0
+  }
+}

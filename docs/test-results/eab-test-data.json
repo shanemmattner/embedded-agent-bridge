@@ -1,0 +1,218 @@
+{
+  "nrf5340_rtt": {
+    "compute": [
+      {
+        "time": 5.4828790000000005,
+        "value": 100
+      },
+      {
+        "time": 10.588897,
+        "value": 200
+      },
+      {
+        "time": 15.694885,
+        "value": 300
+      },
+      {
+        "time": 20.800933,
+        "value": 400
+      },
+      {
+        "time": 25.906982,
+        "value": 500
+      },
+      {
+        "time": 31.013092,
+        "value": 600
+      },
+      {
+        "time": 36.119079,
+        "value": 700
+      },
+      {
+        "time": 41.22497499999999,
+        "value": 800
+      },
+      {
+        "time": 46.331024000000006,
+        "value": 900
+      },
+      {
+        "time": 51.43692,
+        "value": 1000
+      },
+      {
+        "time": 56.542877000000004,
+        "value": 1100
+      },
+      {
+        "time": 61.648773000000006,
+        "value": 1200
+      },
+      {
+        "time": 66.754821,
+        "value": 1300
+      },
+      {
+        "time": 71.86087,
+        "value": 1400
+      },
+      {
+        "time": 76.966888,
+        "value": 1500
+      },
+      {
+        "time": 82.072967,
+        "value": 1600
+      },
+      {
+        "time": 87.179107,
+        "value": 1700
+      },
+      {
+        "time": 92.285217,
+        "value": 1800
+      }
+    ],
+    "io": [
+      {
+        "time": 5.841796,
+        "value": 50
+      },
+      {
+        "time": 11.356292,
+        "value": 100
+      },
+      {
+        "time": 16.870697,
+        "value": 150
+      },
+      {
+        "time": 22.385223,
+        "value": 200
+      },
+      {
+        "time": 27.899810000000002,
+        "value": 250
+      },
+      {
+        "time": 33.414337,
+        "value": 300
+      },
+      {
+        "time": 38.928833,
+        "value": 350
+      },
+      {
+        "time": 44.443236999999996,
+        "value": 400
+      },
+      {
+        "time": 49.957733,
+        "value": 450
+      },
+      {
+        "time": 55.471984,
+        "value": 500
+      },
+      {
+        "time": 60.986357999999996,
+        "value": 550
+      },
+      {
+        "time": 66.500976,
+        "value": 600
+      },
+      {
+        "time": 72.015563,
+        "value": 650
+      },
+      {
+        "time": 77.530029,
+        "value": 700
+      },
+      {
+        "time": 83.044586,
+        "value": 750
+      },
+      {
+        "time": 88.559234,
+        "value": 800
+      },
+      {
+        "time": 94.07385199999999,
+        "value": 850
+      }
+    ]
+  },
+  "devices": [
+    {
+      "name": "STM32L4",
+      "size": 17,
+      "status": "\u2705 Working",
+      "flash": "J-Link"
+    },
+    {
+      "name": "nRF5340",
+      "size": 43,
+      "status": "\u2705 Working",
+      "flash": "J-Link"
+    },
+    {
+      "name": "MCXN947",
+      "size": 47,
+      "status": "\u26a0\ufe0f  HW Issue",
+      "flash": "J-Link"
+    },
+    {
+      "name": "STM32N6",
+      "size": 47,
+      "status": "\u274c Tool Missing",
+      "flash": "STM32Cube"
+    },
+    {
+      "name": "C2000",
+      "size": 83,
+      "status": "\u2705 Ready",
+      "flash": "XDS110"
+    },
+    {
+      "name": "ESP32-C6",
+      "size": 154,
+      "status": "\u274c Bootloader",
+      "flash": "esptool"
+    },
+    {
+      "name": "ESP32-S3",
+      "size": 203,
+      "status": "\u23f3 Pending",
+      "flash": "esptool"
+    },
+    {
+      "name": "ESP32-P4",
+      "size": 204,
+      "status": "\u23f3 Pending",
+      "flash": "esptool"
+    }
+  ],
+  "summary": {
+    "\u2705 Working": [
+      "nRF5340",
+      "STM32L4",
+      "C2000"
+    ],
+    "\u26a0\ufe0f  HW Issue": [
+      "MCXN947"
+    ],
+    "\u274c Tool Missing": [
+      "STM32N6"
+    ],
+    "\u274c Bootloader": [
+      "ESP32-C6"
+    ],
+    "\u23f3 Pending": [
+      "ESP32-S3",
+      "ESP32-P4"
+    ]
+  }
+}

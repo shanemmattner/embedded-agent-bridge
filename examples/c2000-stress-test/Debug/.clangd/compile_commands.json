@@ -1,0 +1,22 @@
+[
+   {
+      "directory" : "/workspaces/launchxl_ex1_f280039c_demo/Debug",
+      "command"   : "clang++ -I\"/workspaces/launchxl_ex1_f280039c_demo\" -I\"/workspaces/launchxl_ex1_f280039c_demo/device\" -I\"/tmp/c2000ware-core-sdk/driverlib/f28003x/driverlib/\" -I\"/opt/ti/ccs/tools/compiler/ti-cgt-c2000_22.6.2.LTS/include\" -DDEBUG -D_FLASH -D_LAUNCHXL_F280039C -xc",
+      "file"      : "/workspaces/launchxl_ex1_f280039c_demo/device/device.c"
+   },
+   {
+      "directory" : "/workspaces/launchxl_ex1_f280039c_demo/Debug",
+      "command"   : "clang++ -I\"/workspaces/launchxl_ex1_f280039c_demo\" -I\"/workspaces/launchxl_ex1_f280039c_demo/device\" -I\"/tmp/c2000ware-core-sdk/driverlib/f28003x/driverlib/\" -I\"/opt/ti/ccs/tools/compiler/ti-cgt-c2000_22.6.2.LTS/include\" -DDEBUG -D_FLASH -D_LAUNCHXL_F280039C",
+      "file"      : "/workspaces/launchxl_ex1_f280039c_demo/device/f28003x_codestartbranch.asm"
+   },
+   {
+      "directory" : "/workspaces/launchxl_ex1_f280039c_demo/Debug",
+      "command"   : "clang++ -I\"/workspaces/launchxl_ex1_f280039c_demo\" -I\"/workspaces/launchxl_ex1_f280039c_demo/device\" -I\"/tmp/c2000ware-core-sdk/driverlib/f28003x/driverlib/\" -I\"/opt/ti/ccs/tools/compiler/ti-cgt-c2000_22.6.2.LTS/include\" -DDEBUG -D_FLASH -D_LAUNCHXL_F280039C -xc",
+      "file"      : "/workspaces/launchxl_ex1_f280039c_demo/launchxl_ex1_sci_io_driverlib.c"
+   },
+   {
+      "directory" : "/workspaces/launchxl_ex1_f280039c_demo/Debug",
+      "command"   : "clang++ -I\"/workspaces/launchxl_ex1_f280039c_demo\" -I\"/workspaces/launchxl_ex1_f280039c_demo/device\" -I\"/tmp/c2000ware-core-sdk/driverlib/f28003x/driverlib/\" -I\"/opt/ti/ccs/tools/compiler/ti-cgt-c2000_22.6.2.LTS/include\" -DDEBUG -D_FLASH -D_LAUNCHXL_F280039C -xc",
+      "file"      : "/workspaces/launchxl_ex1_f280039c_demo/main.c"
+   }
+]

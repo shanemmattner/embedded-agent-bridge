@@ -56,7 +56,7 @@ echo ""
 echo -e "${YELLOW}Building ESP32-C6 firmware...${NC}"
 cd "$REPO_ROOT/examples/esp32c6-apptrace-test"
 idf.py build
-if [ ! -f "build/main.bin" ]; then
+if [ ! -f "build/eab-test-firmware.bin" ]; then
     echo -e "${RED}ERROR: ESP32-C6 build failed${NC}"
     exit 1
 fi

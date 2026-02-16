@@ -478,8 +478,12 @@ Long-term: write a `svd2regmap.py` converter that turns CMSIS SVD XML into our J
 - ✅ `eab/register_maps/f28003x.json` — F28003x registers (NMI, PIE, RESC, WD, clock, ERAD)
 - ✅ `tests/test_register_maps.py` — 34 tests covering all dataclasses, JSON loading, decoding
 
+### Completed (Phase 2 — Fault Analysis for C2000)
+- ✅ `eab/fault_decoders/c2000.py` — C2000Decoder with analyze(), format_report(), to_json()
+- ✅ `eab/fault_decoders/__init__.py` — C2000 registered in decoder registry
+- ✅ `tests/test_c2000_fault_decoder.py` — 22 tests: NMI, reset, watchdog, partial reads, formatting
+
 ### Not Started
-- ❌ Phase 2: Fault analysis for C2000
 - ❌ Phase 3: ERAD profiling
 - ❌ Phase 4: Variable streaming
 - ❌ Phase 5: DLOG buffer capture

@@ -1,0 +1,13 @@
+# Alternative: Build custom Docker image with C2000Ware pre-installed
+# Usage: docker build -f Dockerfile.build -t c2000-builder .
+
+FROM whuzfb/ccstudio:ubuntu24.04-20.2.0.00012
+
+# Install C2000Ware (if not already in the base image)
+# This step can be customized based on your C2000Ware needs
+
+# Set working directory
+WORKDIR /workspace
+
+# Default command
+CMD ["/bin/bash"]

@@ -58,3 +58,8 @@ tmp/
 
 # Research artifacts
 results/
+
+# CCS/C2000 build artifacts
+*.out
+*.obj
+*.map

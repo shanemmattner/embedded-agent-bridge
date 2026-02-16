@@ -1,0 +1,13 @@
+# Don't copy build artifacts into Docker
+Debug/
+Release/
+.settings/
+.ccsproject
+.cproject
+.project
+
+# Don't copy temp files
+*.tmp
+*.log
+*.bak
+*~

@@ -14,6 +14,23 @@ High-throughput stress test for LAUNCHXL-F280039C with controlled start/stop pat
 
 ### Docker Build (Headless, No CCS Installation Required)
 
+**Prerequisites (one-time setup):**
+
+```bash
+# 1. Pull Docker image (~2GB download)
+docker pull whuzfb/ccstudio:20.2-ubuntu24.04
+
+# 2. Clone C2000Ware SDK (required by firmware)
+cd /tmp
+git clone --depth=1 --filter=blob:none --sparse \
+  https://github.com/TexasInstruments/c2000ware-core-sdk.git
+cd c2000ware-core-sdk
+git sparse-checkout set device_support/f28003x driverlib/f28003x
+git checkout
+```
+
+**Build firmware:**
+
 ```bash
 # From this directory
 ./docker-build.sh
@@ -38,7 +55,7 @@ This uses a pre-configured Docker image with CCS 20.2 and all dependencies. **No
 
 ```bash
 # Pull Docker image (first time only - ~2GB)
-docker pull whuzfb/ccstudio:ubuntu24.04-20.2.0.00012
+docker pull whuzfb/ccstudio:20.2-ubuntu24.04
 
 # Build firmware
 ./docker-build.sh
@@ -153,7 +170,7 @@ examples/c2000-stress-test/
 ### Docker build fails with "image not found"
 
 ```bash
-docker pull whuzfb/ccstudio:ubuntu24.04-20.2.0.00012
+docker pull whuzfb/ccstudio:20.2-ubuntu24.04
 ```
 
 ### Build succeeds but no .out file

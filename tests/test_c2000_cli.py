@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from eab.cli.c2000_cmds import (
+from eab.cli.c2000 import (
     cmd_c2000_trace_export,
     cmd_dlog_capture,
     cmd_erad_status,

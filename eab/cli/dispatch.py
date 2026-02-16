@@ -457,7 +457,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             )
 
     if args.cmd == "reg-read":
-        from eab.cli.c2000_cmds import cmd_reg_read
+        from eab.cli.c2000 import cmd_reg_read
         return cmd_reg_read(
             chip=args.chip,
             register=args.register,
@@ -466,13 +466,13 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
     if args.cmd == "erad-status":
-        from eab.cli.c2000_cmds import cmd_erad_status
+        from eab.cli.c2000 import cmd_erad_status
         return cmd_erad_status(
             chip=args.chip,
             json_mode=args.json,
         )
     if args.cmd == "stream-vars":
-        from eab.cli.c2000_cmds import cmd_stream_vars
+        from eab.cli.c2000 import cmd_stream_vars
         if not args.var_specs:
             _print({"error": "Specify --var name:address:type"}, json_mode=args.json)
             return 2
@@ -485,7 +485,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
     if args.cmd == "dlog-capture":
-        from eab.cli.c2000_cmds import cmd_dlog_capture
+        from eab.cli.c2000 import cmd_dlog_capture
         if not args.buffer_specs:
             _print({"error": "Specify --buffer name:address"}, json_mode=args.json)
             return 2
@@ -499,7 +499,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
     if args.cmd == "c2000-trace-export":
-        from eab.cli.c2000_cmds import cmd_c2000_trace_export
+        from eab.cli.c2000 import cmd_c2000_trace_export
         return cmd_c2000_trace_export(
             output_file=args.output,
             erad_data=args.erad_data,

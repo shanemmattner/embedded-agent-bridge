@@ -219,19 +219,32 @@ EAB supports TI C2000 microcontrollers (F28003x, F28004x) via XDS110 debug probe
 
 ### Building C2000 Firmware
 
-**Use Docker for headless builds - no local CCS installation required:**
+**Prerequisites (one-time setup):**
+
+```bash
+# 1. Pull Docker image (~2GB)
+docker pull whuzfb/ccstudio:20.2-ubuntu24.04
+
+# 2. Clone C2000Ware SDK (required by firmware, sparse checkout ~50MB)
+cd /tmp
+git clone --depth=1 --filter=blob:none --sparse \
+  https://github.com/TexasInstruments/c2000ware-core-sdk.git
+cd c2000ware-core-sdk
+git sparse-checkout set device_support/f28003x driverlib/f28003x
+git checkout
+```
+
+**Build firmware:**
 
 ```bash
 # From examples/c2000-stress-test directory
 ./docker-build.sh
-
-# First time only: pull Docker image (~2GB)
-docker pull whuzfb/ccstudio:20.2-ubuntu24.04
 ```
 
 The Docker build:
 - Uses pre-configured CCS 20.2 with C2000 compiler
-- Imports project via ccs-server-cli
+- Mounts C2000Ware SDK from `/tmp/c2000ware-core-sdk`
+- Imports project via Docker image entrypoint
 - Builds firmware to `Debug/launchxl_ex1_f280039c_demo.out`
 - No local CCS installation needed
 - Works in CI/CD pipelines

@@ -67,7 +67,7 @@ echo ""
 echo -e "${YELLOW}Building ESP32-P4 firmware...${NC}"
 cd "$REPO_ROOT/examples/esp32p4-stress-test"
 idf.py build
-if [ ! -f "build/main.bin" ]; then
+if [ ! -f "build/esp32p4-stress-test.bin" ]; then
     echo -e "${RED}ERROR: ESP32-P4 build failed${NC}"
     exit 1
 fi

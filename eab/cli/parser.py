@@ -492,6 +492,41 @@ def _build_parser() -> argparse.ArgumentParser:
                                  choices=["auto", "perfetto", "tband", "systemview", "ctf"],
                                  help="Input format (default: auto)")
 
+    # --- C2000-specific commands ---
+    p_reg_read = sub.add_parser("reg-read", help="Read and decode a C2000 register or register group")
+    p_reg_read.add_argument("--chip", default="f28003x", help="Chip name for register map (default: f28003x)")
+    p_reg_read.add_argument("--register", default=None, help="Register name (e.g., NMIFLG)")
+    p_reg_read.add_argument("--group", default=None, help="Register group name (e.g., fault_registers)")
+    p_reg_read.add_argument("--ccxml", default=None, help="CCXML path for XDS110 probe")
+
+    p_erad_status = sub.add_parser("erad-status", help="Show ERAD profiler register info")
+    p_erad_status.add_argument("--chip", default="f28003x", help="Chip name (default: f28003x)")
+
+    p_stream_vars = sub.add_parser("stream-vars", help="Stream variable values from C2000 target")
+    p_stream_vars.add_argument("--map", dest="map_file", required=True, help="Path to MAP file")
+    p_stream_vars.add_argument("--var", dest="var_specs", action="append", default=[],
+                                help="Variable spec: name:address:type (repeatable)")
+    p_stream_vars.add_argument("--interval", type=int, default=100, help="Polling interval in ms (default: 100)")
+    p_stream_vars.add_argument("--count", type=int, default=0, help="Number of samples (0 = infinite)")
+    p_stream_vars.add_argument("--output", "-o", default=None, help="Output file path")
+
+    p_dlog = sub.add_parser("dlog-capture", help="Capture DLOG_4CH buffers from C2000")
+    p_dlog.add_argument("--buffer", dest="buffer_specs", action="append", default=[],
+                         help="Buffer spec: name:address (repeatable)")
+    p_dlog.add_argument("--status-addr", default=None, help="DLOG status register address")
+    p_dlog.add_argument("--size-addr", default=None, help="DLOG size register address")
+    p_dlog.add_argument("--buffer-size", type=int, default=200, help="Samples per buffer (default: 200)")
+    p_dlog.add_argument("--output", "-o", default=None, help="Output file path")
+    p_dlog.add_argument("--format", dest="output_format", default="json",
+                         choices=["json", "csv", "jsonl"], help="Output format (default: json)")
+
+    p_c2000_trace = sub.add_parser("c2000-trace-export", help="Export C2000 debug data to Perfetto JSON")
+    p_c2000_trace.add_argument("--output", "-o", required=True, help="Output .json file")
+    p_c2000_trace.add_argument("--erad-data", default=None, help="ERAD profiling results JSON file")
+    p_c2000_trace.add_argument("--dlog-data", default=None, help="DLOG capture results JSON file")
+    p_c2000_trace.add_argument("--log-file", default=None, help="Serial log file")
+    p_c2000_trace.add_argument("--process-name", default="C2000 Debug", help="Process name in trace")
+
     # --- regression (hardware-in-the-loop test runner) ---
     p_regression = sub.add_parser("regression", help="Run hardware-in-the-loop regression tests")
     p_regression.add_argument("--suite", default=None,

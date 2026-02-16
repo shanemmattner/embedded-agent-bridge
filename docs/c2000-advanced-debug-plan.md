@@ -493,11 +493,51 @@ Long-term: write a `svd2regmap.py` converter that turns CMSIS SVD XML into our J
 - ✅ `tests/test_var_stream.py` — 44 tests covering all types, IQ edge cases, streaming
 
 ### Completed (Phase 6 — DSS Bridge)
-- ✅ `eab/transports/dss_bridge.js` — DSS JavaScript bridge (JSON stdin/stdout protocol)
-- ✅ `eab/transports/dss.py` — DSSTransport Python wrapper (same interface as XDS110Probe)
+- ✅ `eab/transports/dss.py` — DSSTransport using CCS 2041 native Python scripting API
+- ✅ `eab/transports/dss_bridge.js` — Legacy Rhino/Java bridge (deprecated, CCS 2041 incompatible)
 - ✅ `tests/test_dss_transport.py` — 20 tests covering protocol, lifecycle, errors
+- ✅ `docs/c2000-dss-transport.md` — Full architecture doc with benchmarks
 
-### Not Started
-- ❌ Phase 5: DLOG buffer capture
-- ❌ Phase 7: Trace/Perfetto export
-- ❌ Phase 8: CLI wiring + tests
+**CCS 2041 Migration**: CCS 2041 is Theia-based (not Eclipse). The old Rhino/Java
+DSS API (`ScriptingEnvironment.instance()`) does not work. Rewrote to use TI's
+native Python scripting API (`from scripting import initScripting`) which communicates
+with DSLite via websockets through a cloud agent process.
+
+**Benchmarked Performance** (XDS110 USB, LAUNCHXL-F280039C):
+- Single word read: 1.8 ms (555 Hz) — 33x faster than DSLite subprocess
+- 200-word bulk: 12.8 ms — 5x faster than DSLite subprocess
+- DLOG 4-ch capture (3.2 KB): 83 ms (12 Hz snapshots)
+- Bottleneck is XDS110 JTAG hardware (~1.5ms/transaction), not software
+
+### Completed (Phase 5 — DLOG Buffer Capture)
+- ✅ `eab/analyzers/dlog.py` — DLOGCapture with read_buffers, wait_and_read, trigger_and_read
+- ✅ `tests/test_dlog.py` — 35 tests covering status, trigger, read, CSV/JSON/JSONL output
+
+### Completed (Phase 7 — Trace/Perfetto Export)
+- ✅ `eab/analyzers/perfetto_export.py` — PerfettoExporter: ERAD spans, DLOG tracks, log events
+- ✅ `tests/test_perfetto_export.py` — 23 tests covering all event types, file output, edge cases
+
+### Completed (Phase 8 — CLI Wiring + Tests)
+- ✅ `eab/cli/c2000_cmds.py` — reg-read, erad-status, stream-vars, dlog-capture, c2000-trace-export
+- ✅ `eab/cli/parser.py` — C2000 subcommand definitions added
+- ✅ `eab/cli/dispatch.py` — C2000 command routing added
+- ✅ `tests/test_c2000_cli.py` — 25 tests covering all CLI commands
+
+### Completed (Hardware Validation)
+- ✅ `tests/test_c2000_hw.py` — 10 hardware integration tests (all passing)
+- ✅ `tests/conftest.py` — `--hw` pytest flag for hardware-in-the-loop tests
+
+**Hardware test results** (LAUNCHXL-F280039C, XDS110 USB):
+- XDS110 probe detection: PASS
+- Memory read via DSLite: PASS
+- NMIFLG register decode: 0x0001 (NMIINT set) — PASS
+- RESC register decode: 0x00000000 (clean boot) — PASS
+- WDCR register: 0x0040 (watchdog disabled) — PASS
+- PIECTRL register: 0x0000 — PASS
+- Full fault analysis: decoded 19 registers, identified NMI + shadow flags — PASS
+- DSS persistent session read: NMIFLG = 0x0001 — PASS
+- DSS multiple reads in one session: 4 registers — PASS
+- ERAD GLBL_ENABLE: 0x0000 (disabled) — PASS
+
+### All 8 Phases + Hardware Validation Complete
+Total new tests: 245 (register maps 34 + fault decoder 22 + ERAD 32 + var stream 44 + DSS 20 + DLOG 35 + Perfetto 23 + CLI 25 + HW 10)

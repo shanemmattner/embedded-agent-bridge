@@ -25,7 +25,7 @@ def _parse_readelf_sections(elf: str) -> dict[str, int]:
 
     sections = {}
     for line in result.stdout.splitlines():
-        m = re.match(r'\s*\[\s*\d+\]\s+(\.\S+)\s+\S+\s+\S+\s+\S+\s+(\S+)', line)
+        m = re.match(r'\s*\[\s*\d+\]\s+(\S+)\s+\S+\s+\S+\s+\S+\s+(\S+)', line)
         if m:
             name = m.group(1)
             size = int(m.group(2), 16)
@@ -45,12 +45,14 @@ def cmd_size(
         _print({'error': str(e)}, json_mode=json_mode)
         return 1
 
-    text = sections.get('.text', 0)
-    rodata = sections.get('.rodata', 0)
-    data = sections.get('.data', 0)
-    bss = sections.get('.bss', 0)
-    flash_total = text + rodata + data
-    ram_total = data + bss
+    text = sections.get('.text', 0) + sections.get('text', 0)
+    rodata = sections.get('.rodata', 0) + sections.get('rodata', 0)
+    data = sections.get('.data', 0) + sections.get('datas', 0)
+    bss = sections.get('.bss', 0) + sections.get('bss', 0)
+    rom_start = sections.get('rom_start', 0)
+    noinit = sections.get('noinit', 0)
+    flash_total = text + rodata + data + rom_start
+    ram_total = data + bss + noinit
 
     result = {
         'file': elf,
@@ -94,9 +96,10 @@ def cmd_size(
         print(f'ELF: {elf}')
         print(f'{"Section":<16} {"Size (bytes)":>12} {"Size (KB)":>10}')
         print('-' * 40)
-        for name in ['.text', '.rodata', '.data', '.bss']:
+        for name in ['.text', 'text', 'rom_start', '.rodata', 'rodata', '.data', 'datas', '.bss', 'bss', 'noinit']:
             val = sections.get(name, 0)
-            print(f'{name:<16} {val:>12} {val/1024:>10.1f}')
+            if val > 0:
+                print(f'{name:<16} {val:>12} {val/1024:>10.1f}')
         print('-' * 40)
         print(f'{"Flash:":<16} {flash_total:>12} {flash_total/1024:>10.1f}')
         print(f'{"RAM:":<16} {ram_total:>12} {ram_total/1024:>10.1f}')

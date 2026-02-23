@@ -509,6 +509,30 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
 
+    if args.cmd == "multi":
+        from eab.cli.multi_cmd import cmd_multi
+        return cmd_multi(
+            command_args=args.multi_cmd,
+            timeout=args.timeout,
+            json_mode=args.json,
+        )
+    if args.cmd == "size":
+        from eab.cli.size_cmd import cmd_size
+        return cmd_size(
+            elf=args.elf,
+            compare_elf=args.compare,
+            json_mode=args.json,
+        )
+    if args.cmd == "defmt":
+        if args.defmt_action == "decode":
+            from eab.cli.defmt_cmd import cmd_defmt_decode
+            return cmd_defmt_decode(
+                elf=args.elf,
+                input_file=args.input_file,
+                base_dir=base_dir if getattr(args, 'from_rtt', False) else None,
+                json_mode=args.json,
+            )
+
     if args.cmd == "regression":
         from eab.cli.regression import cmd_regression
         return cmd_regression(

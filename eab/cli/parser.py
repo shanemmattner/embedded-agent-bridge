@@ -527,6 +527,24 @@ def _build_parser() -> argparse.ArgumentParser:
     p_c2000_trace.add_argument("--log-file", default=None, help="Serial log file")
     p_c2000_trace.add_argument("--process-name", default="C2000 Debug", help="Process name in trace")
 
+    # --- multi-device command ---
+    p_multi = sub.add_parser("multi", help="Run a command across all registered devices")
+    p_multi.add_argument("multi_cmd", nargs=argparse.REMAINDER, help="Command and args to run on each device")
+    p_multi.add_argument("--timeout", type=float, default=30.0, help="Per-device timeout in seconds (default: 30)")
+
+    # --- ELF size analysis ---
+    p_size = sub.add_parser("size", help="Show ELF section sizes (Flash/RAM usage)")
+    p_size.add_argument("elf", help="Path to ELF file")
+    p_size.add_argument("--compare", default=None, help="Compare against another ELF file (show deltas)")
+
+    # --- defmt decode ---
+    p_defmt = sub.add_parser("defmt", help="Decode defmt wire format")
+    defmt_sub = p_defmt.add_subparsers(dest="defmt_action", required=True)
+    p_defmt_decode = defmt_sub.add_parser("decode", help="Decode defmt-encoded RTT stream")
+    p_defmt_decode.add_argument("--elf", required=True, help="ELF file with defmt symbols")
+    p_defmt_decode.add_argument("--input", dest="input_file", default=None, help="Input file (raw RTT binary)")
+    p_defmt_decode.add_argument("--from-rtt", action="store_true", help="Read from device RTT log (uses base_dir/rtt.log)")
+
     # --- regression (hardware-in-the-loop test runner) ---
     p_regression = sub.add_parser("regression", help="Run hardware-in-the-loop regression tests")
     p_regression.add_argument("--suite", default=None,

@@ -1,0 +1,19 @@
+---
+name: nRF5340 Smoke Test
+device: nrf5340
+chip: nrf5340
+timeout: 30
+
+setup:
+  - flash:
+      firmware: examples/nrf5340-test-firmware
+      runner: jlink
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "nRF5340"
+      timeout: 10
+
+teardown:
+  - reset: {}

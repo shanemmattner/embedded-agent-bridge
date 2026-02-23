@@ -1,0 +1,18 @@
+---
+name: ESP32-C6 Smoke Test
+device: esp32c6
+chip: esp32c6
+timeout: 30
+
+setup:
+  - flash:
+      firmware: examples/esp32c6-test-firmware
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "ESP32"
+      timeout: 10
+
+teardown:
+  - reset: {}

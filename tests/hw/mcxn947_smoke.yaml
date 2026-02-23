@@ -1,0 +1,25 @@
+---
+name: MCXN947 Smoke Test
+device: mcxn947
+chip: mcxn947
+timeout: 30
+
+setup:
+  - flash:
+      firmware: examples/mcxn947-sensor-node
+      runner: openocd
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "EAB Sensor Node"
+      timeout: 10
+  - wait:
+      pattern: "ADC + GPIO configured"
+      timeout: 5
+  - wait:
+      pattern: "TX"
+      timeout: 5
+
+teardown:
+  - reset: {}

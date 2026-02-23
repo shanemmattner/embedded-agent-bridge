@@ -1,0 +1,34 @@
+---
+name: STM32N6 ML Benchmark
+device: stm32n6
+chip: stm32n6
+timeout: 120
+
+setup:
+  - flash:
+      firmware: examples/stm32n6-ml-bench
+      runner: openocd
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "=== STM32N6 ML Benchmark"
+      timeout: 10
+  - wait:
+      pattern: "DWT profiler initialized"
+      timeout: 5
+  - wait:
+      pattern: "[ML_BENCH] model=cifar10 backend=npu"
+      timeout: 30
+  - wait:
+      pattern: "[ML_BENCH] model=person_detect backend=npu"
+      timeout: 30
+  - wait:
+      pattern: "[ML_BENCH] model=micro_speech backend=npu"
+      timeout: 30
+  - wait:
+      pattern: "[ML_BENCH_DONE] board=nucleo_n657x0q models=3"
+      timeout: 10
+
+teardown:
+  - reset: {}

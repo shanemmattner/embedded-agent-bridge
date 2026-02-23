@@ -1,0 +1,22 @@
+---
+name: STM32N6 Smoke Test
+device: stm32n6
+chip: stm32n6
+timeout: 30
+
+setup:
+  - flash:
+      firmware: examples/stm32n6-stress-test
+      runner: openocd
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "STM32-N6 Stress Test Firmware"
+      timeout: 10
+  - wait:
+      pattern: "Stress Test Ready"
+      timeout: 5
+
+teardown:
+  - reset: {}

@@ -1,0 +1,34 @@
+---
+name: MCXN947 ML Benchmark
+device: mcxn947
+chip: mcxn947
+timeout: 120
+
+setup:
+  - flash:
+      firmware: examples/mcxn947-ml-bench
+      runner: openocd
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "=== MCXN947 ML Benchmark"
+      timeout: 10
+  - wait:
+      pattern: "DWT profiler initialized"
+      timeout: 5
+  - wait:
+      pattern: "[ML_BENCH] model=cifar10 backend=npu"
+      timeout: 30
+  - wait:
+      pattern: "[ML_BENCH] model=person_detect backend=npu"
+      timeout: 30
+  - wait:
+      pattern: "[ML_BENCH] model=micro_speech backend=npu"
+      timeout: 30
+  - wait:
+      pattern: "[ML_BENCH_DONE] board=frdm_mcxn947 models=3"
+      timeout: 10
+
+teardown:
+  - reset: {}

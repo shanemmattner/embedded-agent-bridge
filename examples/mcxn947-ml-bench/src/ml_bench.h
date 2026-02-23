@@ -1,6 +1,10 @@
 #ifndef ML_BENCH_H
 #define ML_BENCH_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -32,8 +36,8 @@ void ml_bench_print_header(void);
 /* Print summary table row */
 void ml_bench_print_row(const ml_bench_result_t *r);
 
-/* Run a dummy benchmark (placeholder until real TFLite models are integrated) */
-ml_bench_result_t ml_bench_run_dummy(const char *name, uint32_t input_bytes,
-                                      uint32_t model_bytes, uint32_t iterations);
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -388,6 +388,7 @@ class ESP32Profile(ChipProfile):
         firmware_path: str,
         address: str = "0x10000",
         board_cfg: str | None = None,
+        serial: str | None = None,
         **kwargs,
     ) -> FlashCommand | None:
         """Build OpenOCD program_esp command for flashing via JTAG.
@@ -400,6 +401,7 @@ class ESP32Profile(ChipProfile):
             firmware_path: Path to .bin file or ESP-IDF build directory.
             address: Flash address (default 0x10000 for app, ignored for build dirs).
             board_cfg: OpenOCD board config (default: auto-detected from variant).
+            serial: USB serial number to disambiguate multiple ESP32 boards.
 
         Returns:
             FlashCommand or None if Espressif OpenOCD is not installed.
@@ -415,6 +417,10 @@ class ESP32Profile(ChipProfile):
             board_cfg = f"board/{variant}-builtin.cfg"
 
         args = ["-f", board_cfg]
+
+        # Add adapter serial to disambiguate multiple ESP32 boards sharing VID:PID
+        if serial:
+            args.extend(["-c", f"adapter serial {serial}"])
 
         # Check if firmware_path is a build directory with flash_args
         fw_path = Path(firmware_path)
@@ -466,6 +472,7 @@ class ESP32Profile(ChipProfile):
             "esp32s3": "target/esp32s3.cfg",
             "esp32c3": "target/esp32c3.cfg",
             "esp32c6": "target/esp32c6.cfg",
+            "esp32p4": "target/esp32p4.cfg",
         }
         target_cfg = target_map.get(variant, "target/esp32s3.cfg")
 

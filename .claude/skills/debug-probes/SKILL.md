@@ -239,6 +239,28 @@ j.close()
 - BinaryReader: ~4,000 MB/s (not a bottleneck)
 - All bottleneck is USB transport from probe to host
 
+## USB Port Mapping (macOS Apple Silicon)
+
+**CRITICAL: Always check `docs/usb-port-mapping.md` before flashing.** Ports shift on re-enumeration.
+
+### Quick Board Identification
+```bash
+ioreg -p IOUSB -l -w0 | grep -E '"USB (Serial Number|Product Name)"' | paste - -
+```
+
+### ESP32 Multi-Probe Disambiguation
+ESP32-C6 and ESP32-P4 share VID:PID `303a:1001`. **Always pass serial to OpenOCD:**
+```bash
+openocd -f board/esp32c6-builtin.cfg -c "adapter serial F0:F5:BD:01:88:2C" ...
+openocd -f board/esp32p4-builtin.cfg -c "adapter serial 60:55:F9:FA:FF:19" ...
+```
+
+### ST-Link V3 Invisible on macOS
+The ST-Link V3 (`0483:3754`) is invisible to libusb on Apple Silicon due to eUSB2 repeater issue.
+Flash STM32L4 via the V2 probe: `st-flash --serial 066EFF494851877267042838 write firmware.bin 0x08000000`
+
+See `docs/macos-flash-troubleshooting.md` for full details.
+
 ## Common Pitfalls
 
 | Problem | Cause | Fix |

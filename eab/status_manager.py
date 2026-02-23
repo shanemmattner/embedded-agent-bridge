@@ -64,6 +64,7 @@ class StatusManager:
         self._bytes_minute_start: Optional[datetime] = None
         self._read_errors: int = 0
         self._usb_disconnects: int = 0
+        self._reset_statistics: dict = {}
 
     def start_session(self, session_id: str, port: str, baud: int) -> None:
         """Start tracking a new session."""
@@ -154,6 +155,10 @@ class StatusManager:
         self._usb_disconnects += 1
         self.update()
 
+    def set_reset_statistics(self, stats: dict) -> None:
+        """Store reset statistics from ResetTracker for inclusion in status.json."""
+        self._reset_statistics = stats
+
     def update(self) -> None:
         """Write current status to file using atomic write."""
         now = self._clock.now()
@@ -192,6 +197,7 @@ class StatusManager:
                 "status": self._compute_health_status(idle_seconds),
             },
             "patterns": self._pattern_counts,
+            "resets": self._reset_statistics,
             "stream": self._stream,
             "last_updated": now.isoformat(),
         }

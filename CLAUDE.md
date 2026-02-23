@@ -8,6 +8,9 @@ Background daemons bridging AI coding agents to debuggers and embedded hardware 
 2. **NEVER use pio device monitor** - Use `eabctl tail` instead
 3. **NEVER access serial ports or debug probes directly** - EAB manages all hardware interfaces
 4. **Port busy errors?** Run `eabctl flash` - it handles port release automatically
+5. **Before flashing, check `docs/usb-port-mapping.md`** - Ports shift on USB re-enumeration
+6. **ESP32 multi-probe: ALWAYS use `adapter serial`** - ESP32-C6 and P4 share VID:PID `303a:1001`
+7. **ST-Link V3 invisible on macOS** - See `docs/macos-flash-troubleshooting.md` for workarounds
 
 ## Quick Reference
 

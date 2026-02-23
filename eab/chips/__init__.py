@@ -42,6 +42,7 @@ _PROFILES: dict[str, type[ChipProfile]] = {
     "esp32s3": ESP32Profile,
     "esp32c3": ESP32Profile,
     "esp32c6": ESP32Profile,
+    "esp32p4": ESP32Profile,
     "stm32": STM32Profile,
     "stm32f4": STM32Profile,
     "stm32l4": STM32Profile,

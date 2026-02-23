@@ -66,31 +66,33 @@
       "name": "stm32l4-v3",
       "chip": "stm32l476rg",
       "family": "stm32",
-      "port": "/dev/cu.usbmodem1102",
+      "port": "NEEDS_REDETECTION",
       "vid_pid": "0483:3754",
-      "serial": "004F00463234510333353533",
+      "serial": "NEEDS_REDETECTION",
       "manufacturer": "STMicroelectronics",
       "product": "STLINK-V3",
       "debug_probe": "stlink-v3",
       "transport": "rtt",
       "firmware": "examples/stm32l4-debug-full",
       "expected_throughput_kbps": null,
-      "notes": "RTT via probe-rs transport"
+      "notes": "RTT via probe-rs transport. Port/serial was incorrectly shared with STM32N6 entry — needs re-enumeration when board is plugged in."
     },
     {
       "name": "stm32-n6",
-      "chip": "stm32n6",
+      "chip": "stm32n657xx",
       "family": "stm32",
-      "port": "/dev/cu.usbmodem83403",
-      "vid_pid": "0483:374b",
-      "serial": "066EFF494851877267042838",
+      "board": "nucleo_n657x0_q",
+      "port": "/dev/cu.usbmodem83402",
+      "vid_pid": "0483:3754",
+      "serial": "004F00463234510333353533",
       "manufacturer": "STMicroelectronics",
-      "product": "STM32 STLink",
-      "debug_probe": "stlink-v2",
+      "product": "STLINK-V3E",
+      "debug_probe": "stlink-v3",
       "transport": "rtt",
       "firmware": "examples/stm32n6-stress-test",
       "expected_throughput_kbps": null,
-      "notes": "STM32N6 Cortex-M55 - RTT via probe-rs (may need board definition)"
+      "flash_loader": "MX25UM51245G_STM32N6570-NUCLEO.stldr",
+      "notes": "NUCLEO-N657X0-Q (NOT DK!) Cortex-M55 - ST-Link V3E. Flash chip: MX25UM51245G (Nucleo), NOT MX66UW1G45G (DK). macOS eUSB2 issue: must use USB-A adapter. Flash via STM32CubeProgrammer with Nucleo external loader."
     },
     {
       "name": "c2000",
@@ -137,6 +139,27 @@
       "latency_ms"
     ],
     "parallel_streams": true,
-    "test_devices": ["esp32-c6", "esp32-p4", "nrf5340", "mcxn947", "stm32l4-v3", "c2000"]
+    "test_devices": [
+      "esp32-c6",
+      "esp32-p4",
+      "nrf5340",
+      "mcxn947",
+      "stm32l4-v3",
+      "c2000"
+    ]
+  },
+  "boards": {
+    "mcxn947": {
+      "port": "/dev/cu.usbmodemI2WZW2OTY3RUW3",
+      "vid": "1fc9",
+      "pid": "0143",
+      "serial": "I2WZW2OTY3RUW"
+    },
+    "esp32": {
+      "port": "/dev/cu.usbmodem101",
+      "vid": "303a",
+      "pid": "1001",
+      "serial": "F0:F5:BD:01:88:2C"
+    }
   }
 }

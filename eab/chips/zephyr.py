@@ -48,6 +48,7 @@ class ZephyrProfile(ChipProfile):
         "nrf52833": {"board": "nrf52833dk/nrf52833", "runner": "jlink", "arch": ChipFamily.NRF52},
         "rp2040": {"board": "rpi_pico", "runner": None, "arch": ChipFamily.RP2040},
         "mcxn947": {"board": "frdm_mcxn947/mcxn947/cpu0", "runner": "linkserver", "arch": ChipFamily.MCX},
+        "stm32n6": {"board": "nucleo_n657x0_q", "runner": "stm32cubeprogrammer", "arch": ChipFamily.STM32},
     }
 
     # Board name patterns mapped to chip families

@@ -448,6 +448,8 @@ teardown:
 | `wait` | `eabctl wait` | pattern, timeout |
 | `wait_event` | `eabctl wait-event` | event_type, contains, timeout |
 | `assert_log` | `eabctl wait` | pattern, timeout (alias for readability) |
+| `bench_capture` | `eabctl wait` | pattern, timeout, expect (cycles_gt/lt/eq, time_us_gt/lt/eq) |
+| `bench_done` | `eabctl wait` | pattern, timeout (alias — waits for ML_BENCH_DONE marker) |
 | `sleep` | `time.sleep()` | seconds |
 | `read_vars` | `eabctl read-vars` | elf, vars[] with expect_eq/gt/lt |
 | `fault_check` | `eabctl fault-analyze` | elf, device, chip, expect_clean |

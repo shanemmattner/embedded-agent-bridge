@@ -94,13 +94,17 @@ def cmd_send(
     return 0 if (not await_ack and not await_event) or acknowledged else 1
 
 
-def cmd_wait(*, base_dir: str, pattern: str, timeout_s: float, json_mode: bool) -> int:
+def cmd_wait(*, base_dir: str, pattern: str, timeout_s: float,
+             scan_all: bool = False, scan_from: int | None = None,
+             json_mode: bool) -> int:
     """Block until a regex *pattern* appears in ``latest.log`` or timeout.
 
     Args:
         base_dir: Session directory containing ``latest.log``.
         pattern: Regex pattern to match against new log lines.
         timeout_s: Maximum seconds to wait.
+        scan_all: Scan from beginning of log instead of end.
+        scan_from: Scan from this byte offset in the log file.
         json_mode: Emit machine-parseable JSON output.
 
     Returns:
@@ -113,7 +117,10 @@ def cmd_wait(*, base_dir: str, pattern: str, timeout_s: float, json_mode: bool) 
 
     try:
         with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-            f.seek(0, os.SEEK_END)
+            if scan_from is not None:
+                f.seek(scan_from)
+            elif not scan_all:
+                f.seek(0, os.SEEK_END)
             pos = f.tell()
 
             while time.time() - started < timeout_s:

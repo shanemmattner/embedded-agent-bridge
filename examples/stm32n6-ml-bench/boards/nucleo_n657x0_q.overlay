@@ -1,0 +1,9 @@
+/* Use axisram1 (1024KB) instead of axisram2 (511KB) for ML bench.
+ * person_detect model (~300KB) + 140KB arena needs more than 511KB.
+ * Flash address changes from 0x34180400 to 0x34000000.
+ */
+/ {
+	chosen {
+		zephyr,sram = &axisram1;
+	};
+};

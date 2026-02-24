@@ -68,6 +68,17 @@ def parse_test(yaml_path: str) -> TestSpec:
     )
 
 
+def _get_log_offset(device: Optional[str]) -> Optional[int]:
+    """Get current byte offset of device log file for scan-from tracking."""
+    if not device:
+        return None
+    log_path = os.path.join("/tmp/eab-devices", device, "latest.log")
+    try:
+        return os.path.getsize(log_path)
+    except OSError:
+        return None
+
+
 def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult:
     """Execute a single test: setup → steps → teardown."""
     timeout = global_timeout or spec.timeout
@@ -76,9 +87,13 @@ def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult
     error: Optional[str] = None
     passed = True
 
+    # Record log offset before test starts — wait steps scan from here
+    log_offset = _get_log_offset(spec.device)
+
     # Setup — fail fast
     for step in spec.setup:
-        result = run_step(step, device=spec.device, chip=spec.chip, timeout=timeout)
+        result = run_step(step, device=spec.device, chip=spec.chip,
+                          timeout=timeout, log_offset=log_offset)
         all_steps.append(result)
         if not result.passed:
             passed = False
@@ -88,7 +103,8 @@ def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult
     # Steps — stop on first failure (only if setup passed)
     if passed:
         for step in spec.steps:
-            result = run_step(step, device=spec.device, chip=spec.chip, timeout=timeout)
+            result = run_step(step, device=spec.device, chip=spec.chip,
+                              timeout=timeout, log_offset=log_offset)
             all_steps.append(result)
             if not result.passed:
                 passed = False
@@ -97,7 +113,8 @@ def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult
 
     # Teardown — always runs, errors logged but don't cause failure
     for step in spec.teardown:
-        result = run_step(step, device=spec.device, chip=spec.chip, timeout=timeout)
+        result = run_step(step, device=spec.device, chip=spec.chip,
+                          timeout=timeout, log_offset=log_offset)
         all_steps.append(result)
 
     ms = int((time.monotonic() - t0) * 1000)

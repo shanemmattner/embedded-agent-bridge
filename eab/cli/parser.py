@@ -126,6 +126,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_wait = sub.add_parser("wait", help="Wait for a regex to appear in latest.log")
     p_wait.add_argument("pattern")
     p_wait.add_argument("--timeout", type=float, default=30.0)
+    p_wait.add_argument('--scan-all', action='store_true', default=False, help='Scan from beginning of log instead of end')
+    p_wait.add_argument('--scan-from', type=int, default=None, help='Scan from byte offset in log file')
 
     p_events = sub.add_parser("events", help="Show last N events from events.jsonl")
     p_events.add_argument("lines_pos", type=int, nargs="?", default=None, help="Number of lines (positional)")

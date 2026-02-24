@@ -16,7 +16,9 @@ static inline void dwt_init(void) {
 }
 
 static inline void dwt_reset(void) {
+    DWT_CTRL &= ~1;           /* Disable counter */
     DWT_CYCCNT = 0;
+    DWT_CTRL |= 1;            /* Re-enable counter */
 }
 
 static inline uint32_t dwt_get_cycles(void) {

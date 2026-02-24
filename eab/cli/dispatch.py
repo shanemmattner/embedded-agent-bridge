@@ -71,7 +71,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
     if args.cmd == "wait":
-        return cli.cmd_wait(base_dir=base_dir, pattern=args.pattern, timeout_s=args.timeout, json_mode=args.json)
+        return cli.cmd_wait(base_dir=base_dir, pattern=args.pattern, timeout_s=args.timeout, scan_all=args.scan_all, scan_from=args.scan_from, json_mode=args.json)
     if args.cmd == "wait-event":
         return cli.cmd_wait_event(
             base_dir=base_dir,

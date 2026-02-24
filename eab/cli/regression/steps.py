@@ -11,7 +11,8 @@ from eab.cli.regression.models import StepResult, StepSpec
 
 
 def run_step(step: StepSpec, *, device: Optional[str] = None,
-             chip: Optional[str] = None, timeout: int = 60) -> StepResult:
+             chip: Optional[str] = None, timeout: int = 60,
+             log_offset: Optional[int] = None) -> StepResult:
     """Execute a single test step and return the result."""
     fn = _STEP_DISPATCH.get(step.step_type)
     if fn is None:
@@ -22,12 +23,17 @@ def run_step(step: StepSpec, *, device: Optional[str] = None,
             duration_ms=0,
             error=f"Unknown step type: {step.step_type}",
         )
-    return fn(step, device=device, chip=chip, timeout=timeout)
+    return fn(step, device=device, chip=chip, timeout=timeout,
+              log_offset=log_offset)
 
 
-def _run_eabctl(args: list[str], *, timeout: int = 60) -> tuple[int, dict[str, Any]]:
+def _run_eabctl(args: list[str], *, device: Optional[str] = None,
+                timeout: int = 60) -> tuple[int, dict[str, Any]]:
     """Run an eabctl command with --json, return (returncode, parsed_output)."""
-    cmd = ["eabctl"] + args + ["--json"]
+    prefix = ["eabctl"]
+    if device:
+        prefix.extend(["--device", device])
+    cmd = prefix + args + ["--json"]
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout,
@@ -44,7 +50,7 @@ def _run_eabctl(args: list[str], *, timeout: int = 60) -> tuple[int, dict[str, A
 
 
 def _run_flash(step: StepSpec, *, device: Optional[str],
-               chip: Optional[str], timeout: int) -> StepResult:
+               chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     args = ["flash"]
     p = step.params
@@ -68,7 +74,7 @@ def _run_flash(step: StepSpec, *, device: Optional[str],
 
 
 def _run_reset(step: StepSpec, *, device: Optional[str],
-               chip: Optional[str], timeout: int) -> StepResult:
+               chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     args = ["reset"]
     p = step.params
@@ -88,7 +94,7 @@ def _run_reset(step: StepSpec, *, device: Optional[str],
 
 
 def _run_send(step: StepSpec, *, device: Optional[str],
-              chip: Optional[str], timeout: int) -> StepResult:
+              chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     p = step.params
     args = ["send", p.get("text", "")]
@@ -106,13 +112,16 @@ def _run_send(step: StepSpec, *, device: Optional[str],
 
 
 def _run_wait(step: StepSpec, *, device: Optional[str],
-              chip: Optional[str], timeout: int) -> StepResult:
+              chip: Optional[str], timeout: int,
+              log_offset: Optional[int] = None, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     p = step.params
     pattern = p.get("pattern", "")
     step_timeout = p.get("timeout", timeout)
     args = ["wait", pattern, "--timeout", str(step_timeout)]
-    rc, output = _run_eabctl(args, timeout=step_timeout + 5)
+    if log_offset is not None:
+        args.extend(["--scan-from", str(log_offset)])
+    rc, output = _run_eabctl(args, device=device, timeout=step_timeout + 5)
     ms = int((time.monotonic() - t0) * 1000)
     passed = rc == 0 and output.get("matched", True)
     error = None
@@ -126,7 +135,7 @@ def _run_wait(step: StepSpec, *, device: Optional[str],
 
 
 def _run_wait_event(step: StepSpec, *, device: Optional[str],
-                    chip: Optional[str], timeout: int) -> StepResult:
+                    chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     p = step.params
     step_timeout = p.get("timeout", timeout)
@@ -145,16 +154,98 @@ def _run_wait_event(step: StepSpec, *, device: Optional[str],
 
 
 def _run_assert_log(step: StepSpec, *, device: Optional[str],
-                    chip: Optional[str], timeout: int) -> StepResult:
+                    chip: Optional[str], timeout: int,
+                    log_offset: Optional[int] = None, **_kw: Any) -> StepResult:
     """Alias for wait — readable name for asserting log output."""
     aliased = StepSpec(step_type="wait", params=step.params)
-    result = _run_wait(aliased, device=device, chip=chip, timeout=timeout)
+    result = _run_wait(aliased, device=device, chip=chip, timeout=timeout,
+                       log_offset=log_offset)
     result.step_type = "assert_log"
     return result
 
 
+def _run_bench_capture(step: StepSpec, *, device: Optional[str],
+                       chip: Optional[str], timeout: int,
+                       log_offset: Optional[int] = None, **_kw: Any) -> StepResult:
+    t0 = time.monotonic()
+    p = step.params
+    pattern = p.get('pattern', '')
+    step_timeout = p.get('timeout', timeout)
+    expect = p.get('expect', {})
+
+    # Use eabctl wait to find the line (scan from test-start offset)
+    args = ['wait', pattern, '--timeout', str(step_timeout)]
+    if log_offset is not None:
+        args.extend(['--scan-from', str(log_offset)])
+    rc, output = _run_eabctl(args, device=device, timeout=step_timeout + 5)
+    ms = int((time.monotonic() - t0) * 1000)
+    
+    if rc != 0:
+        return StepResult(
+            step_type='bench_capture', params=step.params,
+            passed=False, duration_ms=ms, output=output,
+            error=output.get('error') or f"Pattern '{pattern}' not matched within {step_timeout}s",
+        )
+    
+    # Parse key=value pairs from matched line
+    line_data = output.get('line') or output.get('matched_line') or output.get('stdout', '')
+    if isinstance(line_data, dict):
+        matched = line_data.get('raw') or line_data.get('content', '')
+    else:
+        matched = str(line_data)
+    bench = {}
+    for token in matched.split():
+        if '=' in token:
+            k, v = token.split('=', 1)
+            # Try numeric conversion
+            try:
+                bench[k] = int(v)
+            except ValueError:
+                try:
+                    bench[k] = float(v)
+                except ValueError:
+                    bench[k] = v
+    
+    # Validate expectations
+    errors = []
+    for assertion, expected_val in expect.items():
+        # Parse assertion: field_op (e.g. cycles_gt, time_us_lt)
+        parts = assertion.rsplit('_', 1)
+        if len(parts) != 2:
+            errors.append(f'Invalid assertion: {assertion}')
+            continue
+        field_name, op = parts
+        actual = bench.get(field_name)
+        if actual is None:
+            errors.append(f'{field_name}: not found in bench data')
+            continue
+        if op == 'gt' and not (actual > expected_val):
+            errors.append(f'{field_name}: expected > {expected_val}, got {actual}')
+        elif op == 'lt' and not (actual < expected_val):
+            errors.append(f'{field_name}: expected < {expected_val}, got {actual}')
+        elif op == 'eq' and actual != expected_val:
+            errors.append(f'{field_name}: expected {expected_val}, got {actual}')
+    
+    output['bench'] = bench
+    return StepResult(
+        step_type='bench_capture', params=step.params,
+        passed=(rc == 0 and len(errors) == 0), duration_ms=ms, output=output,
+        error='; '.join(errors) if errors else None,
+    )
+
+
+def _run_bench_done(step: StepSpec, *, device: Optional[str],
+                    chip: Optional[str], timeout: int,
+                    log_offset: Optional[int] = None, **_kw: Any) -> StepResult:
+    aliased = StepSpec(step_type='wait', params=step.params)
+    result = _run_wait(aliased, device=device, chip=chip, timeout=timeout,
+                       log_offset=log_offset)
+    result.step_type = 'bench_done'
+    return result
+
+
 def _run_sleep(step: StepSpec, *, device: Optional[str],
-               chip: Optional[str], timeout: int) -> StepResult:
+               chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     seconds = step.params.get("seconds", 1)
     time.sleep(seconds)
@@ -166,7 +257,7 @@ def _run_sleep(step: StepSpec, *, device: Optional[str],
 
 
 def _run_read_vars(step: StepSpec, *, device: Optional[str],
-                   chip: Optional[str], timeout: int) -> StepResult:
+                   chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     p = step.params
     elf = p.get("elf", "")
@@ -220,7 +311,7 @@ def _run_read_vars(step: StepSpec, *, device: Optional[str],
 
 
 def _run_fault_check(step: StepSpec, *, device: Optional[str],
-                     chip: Optional[str], timeout: int) -> StepResult:
+                     chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     p = step.params
     args = ["fault-analyze"]
@@ -256,6 +347,8 @@ _STEP_DISPATCH = {
     "wait": _run_wait,
     "wait_event": _run_wait_event,
     "assert_log": _run_assert_log,
+    "bench_capture": _run_bench_capture,
+    "bench_done": _run_bench_done,
     "sleep": _run_sleep,
     "read_vars": _run_read_vars,
     "fault_check": _run_fault_check,

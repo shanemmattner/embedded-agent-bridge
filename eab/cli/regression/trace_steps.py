@@ -15,7 +15,7 @@ from eab.cli.regression.steps import _run_eabctl
 
 
 def _run_trace_start(step: StepSpec, *, device: Optional[str] = None,
-                     chip: Optional[str] = None, timeout: int = 60) -> StepResult:
+                     chip: Optional[str] = None, timeout: int = 60, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     p = step.params
     args = ["trace", "start", "--source", p.get("source", "rtt")]
@@ -35,7 +35,7 @@ def _run_trace_start(step: StepSpec, *, device: Optional[str] = None,
 
 
 def _run_trace_stop(step: StepSpec, *, device: Optional[str] = None,
-                    chip: Optional[str] = None, timeout: int = 60) -> StepResult:
+                    chip: Optional[str] = None, timeout: int = 60, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     args = ["trace", "stop"]
     rc, output = _run_eabctl(args, timeout=timeout)
@@ -48,7 +48,7 @@ def _run_trace_stop(step: StepSpec, *, device: Optional[str] = None,
 
 
 def _run_trace_export(step: StepSpec, *, device: Optional[str] = None,
-                      chip: Optional[str] = None, timeout: int = 60) -> StepResult:
+                      chip: Optional[str] = None, timeout: int = 60, **_kw: Any) -> StepResult:
     t0 = time.monotonic()
     p = step.params
     args = ["trace", "export"]
@@ -67,7 +67,7 @@ def _run_trace_export(step: StepSpec, *, device: Optional[str] = None,
 
 
 def _run_trace_validate(step: StepSpec, *, device: Optional[str] = None,
-                        chip: Optional[str] = None, timeout: int = 60) -> StepResult:
+                        chip: Optional[str] = None, timeout: int = 60, **_kw: Any) -> StepResult:
     """Validate exported Perfetto JSON against expectations.
 
     No subprocess call — reads the JSON file and checks structure/content.

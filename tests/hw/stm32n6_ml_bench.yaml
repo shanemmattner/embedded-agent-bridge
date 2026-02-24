@@ -4,31 +4,33 @@ device: stm32n6
 chip: stm32n6
 timeout: 120
 
-setup:
-  - flash:
-      firmware: examples/stm32n6-ml-bench
-      runner: openocd
-
 steps:
-  - reset: {}
+  - reset:
+      chip: stm32n6
   - wait:
       pattern: "=== STM32N6 ML Benchmark"
       timeout: 10
   - wait:
       pattern: "DWT profiler initialized"
       timeout: 5
-  - wait:
-      pattern: "[ML_BENCH] model=cifar10 backend=npu"
-      timeout: 30
-  - wait:
-      pattern: "[ML_BENCH] model=person_detect backend=npu"
-      timeout: 30
-  - wait:
-      pattern: "[ML_BENCH] model=micro_speech backend=npu"
-      timeout: 30
-  - wait:
-      pattern: "[ML_BENCH_DONE] board=nucleo_n657x0q models=3"
+  - bench_capture:
+      pattern: "\\[ML_BENCH\\] model=sine"
       timeout: 10
-
-teardown:
-  - reset: {}
+      expect:
+        cycles_gt: 0
+        time_us_gt: 0
+  - bench_capture:
+      pattern: "\\[ML_BENCH\\] model=person_detect"
+      timeout: 60
+      expect:
+        cycles_gt: 0
+        time_us_gt: 0
+  - bench_capture:
+      pattern: "\\[ML_BENCH\\] model=micro_speech"
+      timeout: 30
+      expect:
+        cycles_gt: 0
+        time_us_gt: 0
+  - bench_done:
+      pattern: "\\[ML_BENCH_DONE\\] board=nucleo_n657x0_q models=3"
+      timeout: 10

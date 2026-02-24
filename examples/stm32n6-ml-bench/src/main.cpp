@@ -47,15 +47,16 @@ static void bench_sine(void) {
     input->data.int8[0] = 0;
     interpreter.Invoke();
 
-    /* Timed run */
-    dwt_reset();
+    /* Timed run — re-init DWT in case something disabled it */
+    dwt_init();
+    uint32_t t0 = dwt_start();
     for (int i = 0; i < num_inferences; i++) {
         float x = (float)i / (float)num_inferences * 6.28318f;
         int8_t x_q = (int8_t)(x / input->params.scale + input->params.zero_point);
         input->data.int8[0] = x_q;
         interpreter.Invoke();
     }
-    uint32_t total_cycles = dwt_get_cycles();
+    uint32_t total_cycles = dwt_stop(t0);
     uint32_t avg_cycles = total_cycles / num_inferences;
     uint32_t avg_time_us = dwt_cycles_to_us(avg_cycles, STM32N6_CPU_FREQ_HZ);
 
@@ -97,11 +98,12 @@ static void bench_person_detect(void) {
     interpreter.Invoke();
 
     const int num_iters = 10;
-    dwt_reset();
+    dwt_init();
+    uint32_t t0 = dwt_start();
     for (int i = 0; i < num_iters; i++) {
         interpreter.Invoke();
     }
-    uint32_t total_cycles = dwt_get_cycles();
+    uint32_t total_cycles = dwt_stop(t0);
     uint32_t avg_cycles = total_cycles / num_iters;
     uint32_t avg_time_us = dwt_cycles_to_us(avg_cycles, STM32N6_CPU_FREQ_HZ);
 
@@ -147,12 +149,13 @@ static void bench_micro_speech(void) {
     /* Warm up */
     interpreter.Invoke();
 
-    /* Timed run */
-    dwt_reset();
+    /* Timed run — re-init DWT in case something disabled it */
+    dwt_init();
+    uint32_t t0 = dwt_start();
     for (int i = 0; i < num_inferences; i++) {
         interpreter.Invoke();
     }
-    uint32_t total_cycles = dwt_get_cycles();
+    uint32_t total_cycles = dwt_stop(t0);
     uint32_t avg_cycles = total_cycles / num_inferences;
     uint32_t avg_time_us = dwt_cycles_to_us(avg_cycles, STM32N6_CPU_FREQ_HZ);
 

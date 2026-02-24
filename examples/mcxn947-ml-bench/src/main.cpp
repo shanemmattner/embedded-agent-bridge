@@ -12,20 +12,14 @@ extern "C" {
 }
 #include "ml_bench.h"
 #include "sine_model.h"
-#include "person_detect_model.h"
 #include "micro_speech_model.h"
+#include "person_detect_model.h"
+#include "exoboot_gait_model.h"
 
-/* Shared arena — sized for person_detect (largest model, needs 136KB) */
+/* Tensor arena shared across models — 140KB for person_detect */
 constexpr int kTensorArenaSize = 140 * 1024;
 static uint8_t tensor_arena[kTensorArenaSize] __attribute__((aligned(16)));
 
-static const int kNumInferences = 100;
-static int models_run = 0;
-
-/*
- * Benchmark sine model (1 op: FullyConnected)
- * ~2.5KB model, 1-byte input, ~800 byte arena
- */
 static void bench_sine(void) {
     const tflite::Model *model = tflite::GetModel(g_sine_model);
     if (model->version() != TFLITE_SCHEMA_VERSION) {
@@ -48,35 +42,33 @@ static void bench_sine(void) {
     printk("Model loaded: sine (size=%d bytes)\n", g_sine_model_len);
     printk("Arena used: %zu / %d bytes\n", interpreter.arena_used_bytes(), kTensorArenaSize);
 
+    const int num_inferences = 100;
+
     /* Warm up */
     input->data.int8[0] = 0;
     interpreter.Invoke();
 
-    /* Timed run */
-    dwt_reset();
-    for (int i = 0; i < kNumInferences; i++) {
-        float x = (float)i / (float)kNumInferences * 6.28318f;
+    /* Timed run — re-init DWT in case something disabled it */
+    dwt_init();
+    uint32_t t0 = dwt_start();
+    for (int i = 0; i < num_inferences; i++) {
+        float x = (float)i / (float)num_inferences * 6.28318f;
         int8_t x_q = (int8_t)(x / input->params.scale + input->params.zero_point);
         input->data.int8[0] = x_q;
         interpreter.Invoke();
     }
-    uint32_t total_cycles = dwt_get_cycles();
-    uint32_t avg_cycles = total_cycles / kNumInferences;
-    uint32_t avg_us = dwt_cycles_to_us(avg_cycles, MCXN947_CPU_FREQ_HZ);
+    uint32_t total_cycles = dwt_stop(t0);
+    uint32_t avg_cycles = total_cycles / num_inferences;
+    uint32_t avg_time_us = dwt_cycles_to_us(avg_cycles, MCXN947_CPU_FREQ_HZ);
 
     printk("[ML_BENCH] model=sine backend=cmsis_nn cycles=%u time_us=%u input=1 ops=INT8 inferences=%d\n",
-           avg_cycles, avg_us, kNumInferences);
+           avg_cycles, avg_time_us, num_inferences);
 
     int8_t y_q = output->data.int8[0];
     float y = (y_q - output->params.zero_point) * output->params.scale;
     printk("Last inference: sin(~6.28) = %.4f (expected ~0.0)\n\n", (double)y);
-    models_run++;
 }
 
-/*
- * Benchmark person detection model (5 ops: Conv2D, DepthwiseConv2D, AveragePool2D, Reshape, Softmax)
- * ~300KB model, 96x96x1=9216 byte input, ~136KB arena
- */
 static void bench_person_detect(void) {
     const tflite::Model *model = tflite::GetModel(g_person_detect_model);
     if (model->version() != TFLITE_SCHEMA_VERSION) {
@@ -103,37 +95,28 @@ static void bench_person_detect(void) {
     printk("Arena used: %zu / %d bytes\n", interpreter.arena_used_bytes(), kTensorArenaSize);
     printk("Input shape: %dx%dx%d\n", input->dims->data[1], input->dims->data[2], input->dims->data[3]);
 
-    /* Fill input with dummy grayscale image (mid-gray) */
     memset(input->data.int8, 0, input->bytes);
-
-    /* Warm up */
     interpreter.Invoke();
 
-    /* Timed run — fewer iterations since this model is much heavier */
     const int num_iters = 10;
-    dwt_reset();
+    dwt_init();
+    uint32_t t0 = dwt_start();
     for (int i = 0; i < num_iters; i++) {
         interpreter.Invoke();
     }
-    uint32_t total_cycles = dwt_get_cycles();
+    uint32_t total_cycles = dwt_stop(t0);
     uint32_t avg_cycles = total_cycles / num_iters;
-    uint32_t avg_us = dwt_cycles_to_us(avg_cycles, MCXN947_CPU_FREQ_HZ);
+    uint32_t avg_time_us = dwt_cycles_to_us(avg_cycles, MCXN947_CPU_FREQ_HZ);
 
     printk("[ML_BENCH] model=person_detect backend=cmsis_nn cycles=%u time_us=%u input=%u ops=INT8 inferences=%d\n",
-           avg_cycles, avg_us, (unsigned)input->bytes, num_iters);
+           avg_cycles, avg_time_us, (unsigned)input->bytes, num_iters);
 
-    /* Show classification result */
     TfLiteTensor *output = interpreter.output(0);
     int8_t person_score = output->data.int8[1];
     int8_t no_person_score = output->data.int8[0];
     printk("Scores: person=%d no_person=%d (dummy input)\n\n", person_score, no_person_score);
-    models_run++;
 }
 
-/*
- * Benchmark micro_speech model (4 ops: Reshape, FullyConnected, DepthwiseConv2D, Softmax)
- * ~18.8KB model, 49x40=1960 byte input, ~28KB arena
- */
 static void bench_micro_speech(void) {
     const tflite::Model *model = tflite::GetModel(g_micro_speech_model);
     if (model->version() != TFLITE_SCHEMA_VERSION) {
@@ -154,34 +137,99 @@ static void bench_micro_speech(void) {
     }
 
     TfLiteTensor *input = interpreter.input(0);
+    TfLiteTensor *output = interpreter.output(0);
 
     printk("Model loaded: micro_speech (size=%d bytes)\n", g_micro_speech_model_len);
     printk("Arena used: %zu / %d bytes\n", interpreter.arena_used_bytes(), kTensorArenaSize);
 
-    /* Fill input with dummy MFCC features (silence) */
+    const int num_inferences = 100;
+
+    /* Fill with dummy MFCC features */
     memset(input->data.int8, 0, input->bytes);
 
     /* Warm up */
     interpreter.Invoke();
 
-    /* Timed run */
-    dwt_reset();
-    for (int i = 0; i < kNumInferences; i++) {
+    /* Timed run — re-init DWT in case something disabled it */
+    dwt_init();
+    uint32_t t0 = dwt_start();
+    for (int i = 0; i < num_inferences; i++) {
         interpreter.Invoke();
     }
-    uint32_t total_cycles = dwt_get_cycles();
-    uint32_t avg_cycles = total_cycles / kNumInferences;
-    uint32_t avg_us = dwt_cycles_to_us(avg_cycles, MCXN947_CPU_FREQ_HZ);
+    uint32_t total_cycles = dwt_stop(t0);
+    uint32_t avg_cycles = total_cycles / num_inferences;
+    uint32_t avg_time_us = dwt_cycles_to_us(avg_cycles, MCXN947_CPU_FREQ_HZ);
 
     printk("[ML_BENCH] model=micro_speech backend=cmsis_nn cycles=%u time_us=%u input=%u ops=INT8 inferences=%d\n",
-           avg_cycles, avg_us, (unsigned)input->bytes, kNumInferences);
+           avg_cycles, avg_time_us, (unsigned)input->bytes, num_inferences);
 
-    /* Show classification result */
-    TfLiteTensor *output = interpreter.output(0);
-    printk("Scores: silence=%d unknown=%d yes=%d no=%d (dummy input)\n\n",
+    /* Print classification */
+    printk("Output scores: [0]=%d [1]=%d [2]=%d [3]=%d\n\n",
            output->data.int8[0], output->data.int8[1],
            output->data.int8[2], output->data.int8[3]);
-    models_run++;
+}
+
+static void bench_exoboot_gait(void) {
+    const tflite::Model *model = tflite::GetModel(g_exoboot_gait_model);
+    if (model->version() != TFLITE_SCHEMA_VERSION) {
+        printk("ERROR: exoboot_gait model schema mismatch\n");
+        return;
+    }
+
+    static tflite::MicroMutableOpResolver<7> resolver;
+    resolver.AddAdd();
+    resolver.AddConv2D();
+    resolver.AddExpandDims();
+    resolver.AddFullyConnected();
+    resolver.AddLogistic();
+    resolver.AddMul();
+    resolver.AddReshape();
+
+    tflite::MicroInterpreter interpreter(model, resolver, tensor_arena, kTensorArenaSize);
+    if (interpreter.AllocateTensors() != kTfLiteOk) {
+        printk("ERROR: exoboot_gait AllocateTensors() failed\n");
+        return;
+    }
+
+    TfLiteTensor *input = interpreter.input(0);
+
+    printk("Model loaded: exoboot_gait (size=%d bytes)\n", g_exoboot_gait_model_len);
+    printk("Arena used: %zu / %d bytes\n", interpreter.arena_used_bytes(), kTensorArenaSize);
+
+    const int num_inferences = 100;
+
+    /* Fill with zero input */
+    memset(input->data.int8, 0, input->bytes);
+
+    /* Warm up */
+    interpreter.Invoke();
+
+    /* Timed run — re-init DWT in case something disabled it */
+    dwt_init();
+    uint32_t t0 = dwt_start();
+    for (int i = 0; i < num_inferences; i++) {
+        interpreter.Invoke();
+    }
+    uint32_t total_cycles = dwt_stop(t0);
+    uint32_t avg_cycles = total_cycles / num_inferences;
+    uint32_t avg_time_us = dwt_cycles_to_us(avg_cycles, MCXN947_CPU_FREQ_HZ);
+
+    printk("[ML_BENCH] model=exoboot_gait backend=cmsis_nn cycles=%u time_us=%u input=%u ops=INT8 inferences=%d\n",
+           avg_cycles, avg_time_us, (unsigned)input->bytes, num_inferences);
+
+    /* Dequantize and print outputs */
+    TfLiteTensor *out_gait = interpreter.output(0);
+    TfLiteTensor *out_stance = interpreter.output(1);
+
+    float gait_phase = (out_gait->data.int8[0] - out_gait->params.zero_point) * out_gait->params.scale;
+    float stance_swing = (out_stance->data.int8[0] - out_stance->params.zero_point) * out_stance->params.scale;
+
+    printk("Gait phase: %.1f%% (scale=%.5f, zp=%d)\n",
+           (double)(gait_phase * 100.0f),
+           (double)out_gait->params.scale, out_gait->params.zero_point);
+    printk("Stance/swing: %.3f (scale=%.5f, zp=%d)\n\n",
+           (double)stance_swing,
+           (double)out_stance->params.scale, out_stance->params.zero_point);
 }
 
 int main(void) {
@@ -196,8 +244,9 @@ int main(void) {
     bench_sine();
     bench_person_detect();
     bench_micro_speech();
+    bench_exoboot_gait();
 
-    printk("[ML_BENCH_DONE] board=frdm_mcxn947 models=%d\n", models_run);
+    printk("[ML_BENCH_DONE] board=frdm_mcxn947 models=4\n");
 
     while (1) {
         k_msleep(1000);

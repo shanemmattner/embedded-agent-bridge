@@ -10,7 +10,8 @@ target_sources(app PRIVATE
     src/ml_bench.cpp
     src/dwt_profiler.c
     src/models/sine_model.cpp
-    src/models/person_detect_model.cpp
     src/models/micro_speech_model.cpp
+    src/models/person_detect_model.cpp
+    src/models/exoboot_gait_model.cpp
 )
 target_include_directories(app PRIVATE src src/models)

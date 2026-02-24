@@ -473,9 +473,9 @@ compatible with line‑based logs.
 
 ## Known Issues (STM32N6)
 
-- **SRAM boot requires GDB** — CubeProgrammer-only approaches do not work. See [docs/stm32n6-sram-boot.md](docs/stm32n6-sram-boot.md) for the working procedure.
-- **Serial output works but timing-sensitive** — USART1 on PE5/PE6 at 115200 confirmed working. EAB daemon must be stopped before probe-rs SRAM boot, then restarted for capture. The `sram_boot` step needs daemon lifecycle management.
-- **probe-rs corrupts USB on macOS** — Always stop probe-rs with SIGTERM + 2s wait, never SIGKILL. See [docs/stm32n6-sram-boot.md](docs/stm32n6-sram-boot.md#macos-usb-issues).
+- **SRAM boot requires GDB** — CubeProgrammer-only approaches do not work. The `sram_boot` regression step automates the full procedure. See [docs/stm32n6-sram-boot.md](docs/stm32n6-sram-boot.md).
+- **Serial output works** — USART1 on PE5/PE6 at 115200. Use `exclusive_usb: true` in YAML to auto-pause/resume daemon. Firmware needs `k_msleep(5000)` at start of `main()` for daemon reconnection.
+- **USB corruption recoverable** — `eabctl usb-reset --probe stlink-v3` resets via pyusb without physical re-plug. The `sram_boot` step auto-retries with USB reset on failure. Always use SIGTERM (never SIGKILL) for probe-rs.
 - **Wrong external flash loader wastes hours** — Board is NUCLEO (MX25UM51245G), NOT DK (MX66UW1G45G). See [docs/stm32n6-flash-debug.md](docs/stm32n6-flash-debug.md).
 
 ## Hardware Reference Docs

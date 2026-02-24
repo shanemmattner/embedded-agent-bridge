@@ -91,12 +91,14 @@ eabctl tail 50
 - **Symptom**: After killing probe-rs, ST-Link enters `DEV_USB_COMM_ERR` state
 - **Cause**: macOS eUSB2 timing + ungraceful disconnect
 - **Prevention**: Always SIGTERM + wait + 2s delay (never SIGKILL)
-- **Recovery**: Physical USB re-plug is the ONLY fix
+- **Software recovery**: `eabctl usb-reset --probe stlink-v3` — sends USB bus reset via pyusb, forces re-enumeration without physical re-plug
+- **Hardware recovery**: Physical USB re-plug (fallback if software reset fails)
 
 ### EAB Daemon Port Holding
 - EAB daemon holds /dev/cu.usbmodem83402 (ST-Link VCP)
 - This blocks probe-rs from claiming USB interfaces
-- **Solution**: Stop EAB daemon before probe-rs operations, restart after
+- **Solution**: `exclusive_usb: true` in YAML steps auto-pauses/resumes daemon
+- **Manual**: `eabctl pause` before probe-rs, `eabctl resume` after
 
 ## Clock Configuration (Zephyr)
 - HSI 64MHz — CKPER — USART1
@@ -121,16 +123,30 @@ Run Step 1 (-hardRst -halt) to recover.
 2. Check USB: system_profiler SPUSBDataType | grep -A5 ST-Link
 3. Try CubeProgrammer connection test: $CUBE_CLI -c port=SWD mode=HOTPLUG
 
-## Automated Regression
+## Automated Regression (Preferred Method)
 
-The sram_boot step in regression tests automates this procedure:
+The `sram_boot` regression step automates the full procedure including daemon lifecycle:
 ```yaml
 steps:
   - sram_boot:
       binary: build/zephyr/zephyr.bin
       load_address: "0x34000000"
-      cubeprogrammer: /path/to/STM32_Programmer_CLI
+      exclusive_usb: true
+      probe_chip: STM32N657
+      probe_selector: "0483:3754"
+      gdb_path: /Users/shane/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb
+      cubeprogrammer: /Applications/STMicroelectronics/STM32Cube/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/Resources/bin/STM32_Programmer_CLI
 ```
+
+Key features:
+- `exclusive_usb: true` — auto-pauses/resumes EAB daemon around SWD operations
+- Auto-retries with USB reset if CubeProgrammer hits `DEV_USB_COMM_ERR`
+- Extracts vector table from binary, sets SP/MSP/PC via GDB batch
+- Graceful probe-rs cleanup (SIGTERM + 2s USB recovery delay)
+
+**Firmware requirement**: Add `k_msleep(5000)` at start of `main()` — gives daemon time to reclaim serial after probe-rs releases it.
+
+Run: `eabctl regression --test tests/hw/stm32n6_ml_bench.yaml --json`
 
 See [EAB regression docs](../CLAUDE.md#regression-testing-hardware-in-the-loop).
 

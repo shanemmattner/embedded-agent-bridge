@@ -10,6 +10,7 @@ import time
 from typing import Any, Optional
 
 from eab.cli.regression.models import StepResult, StepSpec
+from eab.cli.usb_reset import reset_usb_device
 
 
 def _graceful_kill(proc: subprocess.Popen, timeout: int = 5, usb_delay: float = 2.0):
@@ -21,6 +22,38 @@ def _graceful_kill(proc: subprocess.Popen, timeout: int = 5, usb_delay: float = 
         proc.kill()
         proc.wait()
     time.sleep(usb_delay)
+
+
+_USB_ERRORS = ["timed out", "dev_usb_comm_err", "usb_comm", "no stlink detected"]
+
+
+def _is_usb_error(stderr: str) -> bool:
+    """Check if an error message indicates USB communication failure."""
+    lower = stderr.lower()
+    return any(err in lower for err in _USB_ERRORS)
+
+
+def _try_usb_reset_recovery(probe_selector: Optional[str]) -> bool:
+    """Attempt USB device reset to recover from corrupted state.
+
+    Uses pyusb to send a USB bus reset, which can recover ST-Link V3
+    (and other probes) from libusb timeout corruption without physical re-plug.
+
+    Returns True if reset succeeded and device re-enumerated.
+    """
+    if not probe_selector:
+        return False
+    try:
+        parts = probe_selector.split(":")
+        if len(parts) != 2:
+            return False
+        vid = int(parts[0], 16)
+        pid = int(parts[1], 16)
+    except (ValueError, IndexError):
+        return False
+
+    result = reset_usb_device(vid, pid, wait_seconds=5.0)
+    return result.get("success", False)
 
 
 def _elf_load_address(binary_path: str) -> Optional[str]:
@@ -406,8 +439,11 @@ def _run_sram_boot(step: StepSpec, *, device: Optional[str],
         halt_cmd.insert(3, f"serial={probe_selector}")
         load_cmd.insert(3, f"serial={probe_selector}")
 
-    # Step a: CubeProgrammer halt
+    # Step a: CubeProgrammer halt (with USB reset recovery on failure)
     result = subprocess.run(halt_cmd, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0 and _is_usb_error(result.stderr):
+        if _try_usb_reset_recovery(probe_selector):
+            result = subprocess.run(halt_cmd, capture_output=True, text=True, timeout=timeout)
     if result.returncode != 0:
         return StepResult(
             step_type="sram_boot", params=step.params,
@@ -415,8 +451,11 @@ def _run_sram_boot(step: StepSpec, *, device: Optional[str],
             error=f"CubeProgrammer halt failed: {result.stderr}",
         )
 
-    # Step b: CubeProgrammer load
+    # Step b: CubeProgrammer load (with USB reset recovery on failure)
     result = subprocess.run(load_cmd, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0 and _is_usb_error(result.stderr):
+        if _try_usb_reset_recovery(probe_selector):
+            result = subprocess.run(load_cmd, capture_output=True, text=True, timeout=timeout)
     if result.returncode != 0:
         return StepResult(
             step_type="sram_boot", params=step.params,

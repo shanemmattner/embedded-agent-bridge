@@ -494,6 +494,15 @@ def _build_parser() -> argparse.ArgumentParser:
                                  choices=["auto", "perfetto", "tband", "systemview", "ctf"],
                                  help="Input format (default: auto)")
 
+    # USB device reset
+    p_usb_reset = sub.add_parser("usb-reset", help="Reset USB debug probe (recover from corruption)")
+    p_usb_reset.add_argument("--probe", default=None,
+                             help="Known probe name (stlink-v3, stlink-v2, jlink, cmsis-dap, esp-usb-jtag)")
+    p_usb_reset.add_argument("--vid", default=None, help="USB Vendor ID (hex, e.g., 0483)")
+    p_usb_reset.add_argument("--pid", default=None, help="USB Product ID (hex, e.g., 3754)")
+    p_usb_reset.add_argument("--wait", type=float, default=5.0,
+                             help="Seconds to wait for re-enumeration (default: 5.0)")
+
     # --- C2000-specific commands ---
     p_reg_read = sub.add_parser("reg-read", help="Read and decode a C2000 register or register group")
     p_reg_read.add_argument("--chip", default="f28003x", help="Chip name for register map (default: f28003x)")

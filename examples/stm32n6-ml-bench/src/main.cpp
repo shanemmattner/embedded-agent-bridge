@@ -166,6 +166,11 @@ static void bench_micro_speech(void) {
 }
 
 int main(void) {
+    /* Delay to allow serial reader to connect after SRAM boot.
+     * probe-rs holds the USB device during GDB boot — serial reader
+     * can only open after probe-rs releases it (~2-3s). */
+    k_msleep(5000);
+
     printk("=== STM32N6 ML Benchmark (NUCLEO-N657X0-Q) ===\n");
     printk("Board: NUCLEO-N657X0-Q\n");
     printk("CPU Frequency: %u Hz\n", STM32N6_CPU_FREQ_HZ);

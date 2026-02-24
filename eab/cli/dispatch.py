@@ -533,6 +533,16 @@ def main(argv: Optional[list[str]] = None) -> int:
                 json_mode=args.json,
             )
 
+    if args.cmd == "usb-reset":
+        from eab.cli.usb_reset import cmd_usb_reset
+        return cmd_usb_reset(
+            vid=args.vid,
+            pid=args.pid,
+            probe=args.probe,
+            wait=args.wait,
+            json_mode=args.json,
+        )
+
     if args.cmd == "regression":
         from eab.cli.regression import cmd_regression
         return cmd_regression(

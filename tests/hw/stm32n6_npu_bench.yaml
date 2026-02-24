@@ -8,6 +8,7 @@ steps:
   - sram_boot:
       binary: ~/ST/stedgeai/4.0/Projects/STM32N6570-DK/Applications/NPU_Validation/armgcc/build/N6-Nucleo/Project.bin
       load_address: "0x34000000"
+      exclusive_usb: true
       probe_chip: STM32N657
       probe_selector: "0483:3754"
       gdb_path: /Users/shane/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb

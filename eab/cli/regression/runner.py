@@ -11,6 +11,7 @@ from typing import Optional
 
 import yaml
 
+from eab.cli.daemon.lifecycle_cmds import cmd_pause, cmd_resume
 from eab.cli.helpers import _print
 from eab.cli.regression.models import (
     StepSpec, TestSpec, TestResult, StepResult, SuiteResult,
@@ -79,6 +80,29 @@ def _get_log_offset(device: Optional[str]) -> Optional[int]:
         return None
 
 
+def _run_step_with_usb_guard(
+    step: StepSpec,
+    *,
+    device: Optional[str],
+    chip: Optional[str],
+    timeout: int,
+    log_offset: Optional[int],
+    base_dir: str,
+) -> StepResult:
+    """Run a step, pausing/resuming the daemon when exclusive_usb is set."""
+    exclusive_usb = step.params.get("exclusive_usb")
+    if exclusive_usb:
+        cmd_pause(base_dir=base_dir, seconds=timeout + 30, json_mode=True)
+        time.sleep(1)
+    try:
+        return run_step(step, device=device, chip=chip,
+                        timeout=timeout, log_offset=log_offset)
+    finally:
+        if exclusive_usb:
+            cmd_resume(base_dir=base_dir, json_mode=True)
+            time.sleep(2)
+
+
 def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult:
     """Execute a single test: setup → steps → teardown."""
     timeout = global_timeout or spec.timeout
@@ -87,13 +111,16 @@ def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult
     error: Optional[str] = None
     passed = True
 
+    base_dir = os.path.join("/tmp/eab-devices", spec.device) if spec.device else "/tmp/eab-devices/_unknown"
+
     # Record log offset before test starts — wait steps scan from here
     log_offset = _get_log_offset(spec.device)
 
     # Setup — fail fast
     for step in spec.setup:
-        result = run_step(step, device=spec.device, chip=spec.chip,
-                          timeout=timeout, log_offset=log_offset)
+        result = _run_step_with_usb_guard(
+            step, device=spec.device, chip=spec.chip,
+            timeout=timeout, log_offset=log_offset, base_dir=base_dir)
         all_steps.append(result)
         if not result.passed:
             passed = False
@@ -103,8 +130,9 @@ def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult
     # Steps — stop on first failure (only if setup passed)
     if passed:
         for step in spec.steps:
-            result = run_step(step, device=spec.device, chip=spec.chip,
-                              timeout=timeout, log_offset=log_offset)
+            result = _run_step_with_usb_guard(
+                step, device=spec.device, chip=spec.chip,
+                timeout=timeout, log_offset=log_offset, base_dir=base_dir)
             all_steps.append(result)
             if not result.passed:
                 passed = False
@@ -113,8 +141,9 @@ def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult
 
     # Teardown — always runs, errors logged but don't cause failure
     for step in spec.teardown:
-        result = run_step(step, device=spec.device, chip=spec.chip,
-                          timeout=timeout, log_offset=log_offset)
+        result = _run_step_with_usb_guard(
+            step, device=spec.device, chip=spec.chip,
+            timeout=timeout, log_offset=log_offset, base_dir=base_dir)
         all_steps.append(result)
 
     ms = int((time.monotonic() - t0) * 1000)

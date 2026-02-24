@@ -3,12 +3,44 @@
 from __future__ import annotations
 
 import json
+import os
 import struct
 import subprocess
 import time
 from typing import Any, Optional
 
 from eab.cli.regression.models import StepResult, StepSpec
+
+
+def _graceful_kill(proc: subprocess.Popen, timeout: int = 5, usb_delay: float = 2.0):
+    """Stop a process gracefully (SIGTERM first), with USB recovery delay."""
+    proc.terminate()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+    time.sleep(usb_delay)
+
+
+def _elf_load_address(binary_path: str) -> Optional[str]:
+    """Extract load address from ELF program headers. Returns hex string or None."""
+    elf_path = binary_path.replace('.bin', '.elf')
+    if not os.path.exists(elf_path):
+        return None
+    try:
+        result = subprocess.run(
+            ['arm-none-eabi-readelf', '-l', elf_path],
+            capture_output=True, text=True, timeout=10
+        )
+        for line in result.stdout.splitlines():
+            if line.strip().startswith('LOAD'):
+                parts = line.split()
+                if len(parts) >= 4:
+                    return parts[3]  # PhysAddr column
+    except Exception:
+        pass
+    return None
 
 
 def run_step(step: StepSpec, *, device: Optional[str] = None,
@@ -358,6 +390,11 @@ def _run_sram_boot(step: StepSpec, *, device: Optional[str],
     gdb_path = p.get("gdb_path", "arm-none-eabi-gdb")
     cubeprogrammer = p.get("cubeprogrammer", "STM32_Programmer_CLI")
 
+    if load_address == '0x34000000':  # default — try ELF auto-detect
+        detected = _elf_load_address(binary_path)
+        if detected:
+            load_address = detected
+
     # Build CubeProgrammer halt command
     halt_cmd = [cubeprogrammer, "-c", "port=SWD", "mode=HOTPLUG", "-hardRst", "-halt"]
 
@@ -417,7 +454,7 @@ def _run_sram_boot(step: StepSpec, *, device: Optional[str],
         gdb_server = subprocess.Popen(
             gdb_server_cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
     except Exception as e:
         return StepResult(
@@ -429,67 +466,40 @@ def _run_sram_boot(step: StepSpec, *, device: Optional[str],
     # Step f: Sleep 0.5 second
     time.sleep(0.5)
 
-    # Step g: Connect GDB, set registers, issue continue, then kill GDB
-    # Use --batch for register setup, then launch continue in a separate
-    # short-lived GDB that we kill after 1s (target keeps running).
-    gdb_setup_cmds = [
-        "target remote localhost:1337",
-        f"set $sp = {sp_value}",
-        f"set $pc = {reset_handler}",
-        f"set $msp = {sp_value}",
+    # Step g: Connect GDB, set registers, issue continue & disconnect
+    gdb_cmds = [
+        'target remote localhost:1337',
+        'monitor halt',
+        f'set $sp = 0x{sp_value:08X}',
+        f'set $msp = 0x{sp_value:08X}',
+        f'set $pc = 0x{reset_handler:08X}',
+        'continue &',
+        'shell sleep 2',
+        'disconnect',
     ]
-    gdb_setup = [gdb_path, "--batch"]
-    for cmd in gdb_setup_cmds:
-        gdb_setup.extend(["-ex", cmd])
-    # Add detach at end so GDB exits cleanly after setting registers
-    gdb_setup.extend(["-ex", "detach"])
+    gdb_cmd = [gdb_path, '--batch']
+    for cmd in gdb_cmds:
+        gdb_cmd.extend(['-ex', cmd])
 
     try:
-        result = subprocess.run(gdb_setup, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(gdb_cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
-            gdb_server.terminate()
-            try:
-                gdb_server.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                gdb_server.kill()
+            _graceful_kill(gdb_server)
             return StepResult(
                 step_type="sram_boot", params=step.params,
                 passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
                 error=f"GDB register setup failed: {result.stderr}",
             )
     except Exception as e:
-        gdb_server.terminate()
-        try:
-            gdb_server.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            gdb_server.kill()
+        _graceful_kill(gdb_server)
         return StepResult(
             step_type="sram_boot", params=step.params,
             passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
             error=f"GDB execution failed: {e}",
         )
 
-    # Now launch continue — GDB will hang, so we kill it after 2s.
-    # The target keeps running after probe-rs GDB server is killed.
-    gdb_continue = [gdb_path, "--batch",
-                    "-ex", "target remote localhost:1337",
-                    "-ex", "continue"]
-    try:
-        gdb_proc = subprocess.Popen(gdb_continue, stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL)
-        time.sleep(2)
-        gdb_proc.kill()
-        gdb_proc.wait(timeout=5)
-    except Exception:
-        pass  # Best-effort — target may already be running
-
-    # Step h: Kill the probe-rs GDB server
-    gdb_server.terminate()
-    try:
-        gdb_server.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        gdb_server.kill()
-        gdb_server.wait()
+    # Step h: Kill the probe-rs GDB server gracefully
+    _graceful_kill(gdb_server)
 
     ms = int((time.monotonic() - t0) * 1000)
     return StepResult(

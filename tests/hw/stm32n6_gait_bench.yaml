@@ -8,6 +8,7 @@ steps:
   - sram_boot:
       binary: build-stm32n6-gait/zephyr/zephyr.bin
       load_address: "0x34180400"
+      exclusive_usb: true
       probe_chip: STM32N657
       probe_selector: "0483:3754"
       gdb_path: /Users/shane/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb

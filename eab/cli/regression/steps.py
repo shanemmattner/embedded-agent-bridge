@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import struct
 import subprocess
 import time
 from typing import Any, Optional
@@ -336,6 +337,173 @@ def _run_fault_check(step: StepSpec, *, device: Optional[str],
     )
 
 
+def _run_sram_boot(step: StepSpec, *, device: Optional[str],
+                   chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
+    """Run SRAM boot: load firmware to SRAM via CubeProgrammer, start with GDB."""
+    t0 = time.monotonic()
+    p = step.params
+
+    # Get parameters with defaults
+    binary_path = p.get("binary")
+    if not binary_path:
+        return StepResult(
+            step_type="sram_boot", params=step.params,
+            passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+            error="binary parameter is required",
+        )
+
+    load_address = p.get("load_address", "0x34000000")
+    probe_chip = p.get("probe_chip", "STM32N657")
+    probe_selector = p.get("probe_selector")
+    gdb_path = p.get("gdb_path", "arm-none-eabi-gdb")
+    cubeprogrammer = p.get("cubeprogrammer", "STM32_Programmer_CLI")
+
+    # Build CubeProgrammer halt command
+    halt_cmd = [cubeprogrammer, "-c", "port=SWD", "mode=HOTPLUG", "-hardRst", "-halt"]
+
+    # Build CubeProgrammer load command
+    load_cmd = [cubeprogrammer, "-c", "port=SWD", "mode=HOTPLUG", "-w", binary_path, load_address]
+
+    # Add probe_selector if provided
+    if probe_selector:
+        halt_cmd.insert(3, f"serial={probe_selector}")
+        load_cmd.insert(3, f"serial={probe_selector}")
+
+    # Step a: CubeProgrammer halt
+    result = subprocess.run(halt_cmd, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0:
+        return StepResult(
+            step_type="sram_boot", params=step.params,
+            passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+            error=f"CubeProgrammer halt failed: {result.stderr}",
+        )
+
+    # Step b: CubeProgrammer load
+    result = subprocess.run(load_cmd, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0:
+        return StepResult(
+            step_type="sram_boot", params=step.params,
+            passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+            error=f"CubeProgrammer load failed: {result.stderr}",
+        )
+
+    # Step c: Sleep 1 second
+    time.sleep(1)
+
+    # Step d: Extract vector table from binary
+    try:
+        with open(binary_path, "rb") as f:
+            vector_bytes = f.read(8)
+        if len(vector_bytes) < 8:
+            return StepResult(
+                step_type="sram_boot", params=step.params,
+                passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+                error="Binary file too small to contain vector table",
+            )
+        sp_value, reset_handler = struct.unpack("<II", vector_bytes)
+    except Exception as e:
+        return StepResult(
+            step_type="sram_boot", params=step.params,
+            passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+            error=f"Failed to parse vector table: {e}",
+        )
+
+    # Step e: Start probe-rs GDB server in background
+    gdb_server_cmd = ["probe-rs", "gdb", "--chip", probe_chip]
+    if probe_selector:
+        gdb_server_cmd.extend(["--probe", probe_selector])
+
+    try:
+        gdb_server = subprocess.Popen(
+            gdb_server_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as e:
+        return StepResult(
+            step_type="sram_boot", params=step.params,
+            passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+            error=f"Failed to start probe-rs GDB server: {e}",
+        )
+
+    # Step f: Sleep 0.5 second
+    time.sleep(0.5)
+
+    # Step g: Connect GDB, set registers, issue continue, then kill GDB
+    # Use --batch for register setup, then launch continue in a separate
+    # short-lived GDB that we kill after 1s (target keeps running).
+    gdb_setup_cmds = [
+        "target remote localhost:1337",
+        f"set $sp = {sp_value}",
+        f"set $pc = {reset_handler}",
+        f"set $msp = {sp_value}",
+    ]
+    gdb_setup = [gdb_path, "--batch"]
+    for cmd in gdb_setup_cmds:
+        gdb_setup.extend(["-ex", cmd])
+    # Add detach at end so GDB exits cleanly after setting registers
+    gdb_setup.extend(["-ex", "detach"])
+
+    try:
+        result = subprocess.run(gdb_setup, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            gdb_server.terminate()
+            try:
+                gdb_server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                gdb_server.kill()
+            return StepResult(
+                step_type="sram_boot", params=step.params,
+                passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+                error=f"GDB register setup failed: {result.stderr}",
+            )
+    except Exception as e:
+        gdb_server.terminate()
+        try:
+            gdb_server.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            gdb_server.kill()
+        return StepResult(
+            step_type="sram_boot", params=step.params,
+            passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+            error=f"GDB execution failed: {e}",
+        )
+
+    # Now launch continue — GDB will hang, so we kill it after 2s.
+    # The target keeps running after probe-rs GDB server is killed.
+    gdb_continue = [gdb_path, "--batch",
+                    "-ex", "target remote localhost:1337",
+                    "-ex", "continue"]
+    try:
+        gdb_proc = subprocess.Popen(gdb_continue, stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL)
+        time.sleep(2)
+        gdb_proc.kill()
+        gdb_proc.wait(timeout=5)
+    except Exception:
+        pass  # Best-effort — target may already be running
+
+    # Step h: Kill the probe-rs GDB server
+    gdb_server.terminate()
+    try:
+        gdb_server.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        gdb_server.kill()
+        gdb_server.wait()
+
+    ms = int((time.monotonic() - t0) * 1000)
+    return StepResult(
+        step_type="sram_boot", params=step.params,
+        passed=True, duration_ms=ms,
+        output={
+            "binary": binary_path,
+            "load_address": load_address,
+            "sp": f"0x{sp_value:08X}",
+            "reset_handler": f"0x{reset_handler:08X}",
+        },
+    )
+
+
 from eab.cli.regression.trace_steps import (
     _run_trace_start, _run_trace_stop, _run_trace_export, _run_trace_validate,
 )
@@ -352,6 +520,7 @@ _STEP_DISPATCH = {
     "sleep": _run_sleep,
     "read_vars": _run_read_vars,
     "fault_check": _run_fault_check,
+    "sram_boot": _run_sram_boot,
     "trace_start": _run_trace_start,
     "trace_stop": _run_trace_stop,
     "trace_export": _run_trace_export,

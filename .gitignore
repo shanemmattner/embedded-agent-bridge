@@ -53,8 +53,12 @@ sdkconfig.old
 managed_components/
 dependencies.lock
 
+# Zephyr build artifacts
+build-*/
+
 # Temp files
 tmp/
+OVERNIGHT_IDEAS.md
 
 # Research artifacts
 results/

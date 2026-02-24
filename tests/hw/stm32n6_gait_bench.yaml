@@ -1,0 +1,29 @@
+---
+name: STM32N6 Gait Phase Benchmark
+device: stm32n6
+chip: stm32n6
+timeout: 120
+
+steps:
+  - sram_boot:
+      binary: build-stm32n6-gait/zephyr/zephyr.bin
+      load_address: "0x34180400"
+      probe_chip: STM32N657
+      probe_selector: "0483:3754"
+      gdb_path: /Users/shane/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb
+      cubeprogrammer: /Applications/STMicroelectronics/STM32Cube/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/Resources/bin/STM32_Programmer_CLI
+  - wait:
+      pattern: "=== STM32N6 Gait Phase Benchmark"
+      timeout: 10
+  - wait:
+      pattern: "DWT profiler initialized"
+      timeout: 5
+  - bench_capture:
+      pattern: "\\[ML_BENCH\\] model=exoboot_gait"
+      timeout: 60
+      expect:
+        cycles_gt: 0
+        time_us_gt: 0
+  - bench_done:
+      pattern: "\\[ML_BENCH_DONE\\] board=nucleo_n657x0_q models=1"
+      timeout: 10

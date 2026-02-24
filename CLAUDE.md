@@ -471,6 +471,22 @@ If you can deploy custom firmware, you can use the proposed binary framing
 defaults in `PROTOCOL.md` to reach high throughput. Stock firmware remains
 compatible with line‑based logs.
 
+## Known Issues (STM32N6)
+
+- **SRAM boot requires GDB** — CubeProgrammer-only approaches do not work. See [docs/stm32n6-sram-boot.md](docs/stm32n6-sram-boot.md) for the working procedure.
+- **Serial output works but timing-sensitive** — USART1 on PE5/PE6 at 115200 confirmed working. EAB daemon must be stopped before probe-rs SRAM boot, then restarted for capture. The `sram_boot` step needs daemon lifecycle management.
+- **probe-rs corrupts USB on macOS** — Always stop probe-rs with SIGTERM + 2s wait, never SIGKILL. See [docs/stm32n6-sram-boot.md](docs/stm32n6-sram-boot.md#macos-usb-issues).
+- **Wrong external flash loader wastes hours** — Board is NUCLEO (MX25UM51245G), NOT DK (MX66UW1G45G). See [docs/stm32n6-flash-debug.md](docs/stm32n6-flash-debug.md).
+
+## Hardware Reference Docs
+
+| Topic | Location |
+|-------|----------|
+| STM32N6 SRAM boot procedure | [docs/stm32n6-sram-boot.md](docs/stm32n6-sram-boot.md) |
+| STM32N6 external flash debug | [docs/stm32n6-flash-debug.md](docs/stm32n6-flash-debug.md) |
+| USB port mapping | [docs/usb-port-mapping.md](docs/usb-port-mapping.md) |
+| macOS flash troubleshooting | [docs/macos-flash-troubleshooting.md](docs/macos-flash-troubleshooting.md) |
+
 ## Troubleshooting
 
 | Problem | Solution |

@@ -1,0 +1,27 @@
+name: nRF5340 BLE Peripheral Smoke Test
+device: nrf5340
+chip: nrf5340
+timeout: 60
+
+setup:
+  - flash:
+      firmware: examples/nrf5340-ble-peripheral
+      runner: jlink
+
+steps:
+  - reset: {}
+  - wait:
+      pattern: "EAB BLE Peripheral"
+      timeout: 10
+  - wait:
+      pattern: "BLE initialized"
+      timeout: 5
+  - wait:
+      pattern: "Advertising as: EAB-Peripheral"
+      timeout: 5
+  - fault_check:
+      device: NRF5340_XXAA_APP
+      expect_clean: true
+
+teardown:
+  - reset: {}

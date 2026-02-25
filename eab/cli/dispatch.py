@@ -509,6 +509,17 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
 
+    if args.cmd == "c2000-telemetry-decode":
+        from eab.cli.c2000 import cmd_c2000_telemetry_decode
+        return cmd_c2000_telemetry_decode(
+            input_path=args.input,
+            output=args.output,
+            format=args.output_format,
+            max_packets=args.max_packets,
+            summary_only=args.summary,
+            json_mode=args.json,
+        )
+
     if args.cmd == "multi":
         from eab.cli.multi_cmd import cmd_multi
         return cmd_multi(

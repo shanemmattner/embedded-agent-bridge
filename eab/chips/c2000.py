@@ -10,7 +10,9 @@ Requires TI Code Composer Studio (CCS) installed for dslite and CCXML configs.
 
 from __future__ import annotations
 
+import platform
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -37,6 +39,66 @@ _CCS_SEARCH_PATHS = [
     Path.home() / "ti/ccs1280/ccs",
     Path.home() / "ti/ccs1271/ccs",
 ]
+
+
+def _find_ccs_root() -> Optional[Path]:
+    """Return the first CCS installation directory that exists on disk.
+
+    Checks ``_CCS_SEARCH_PATHS`` in order and returns the first entry whose
+    path is an existing directory.
+
+    Returns:
+        Path to CCS root (e.g. ``/Applications/ti/ccs2041/ccs``), or None.
+    """
+    for p in _CCS_SEARCH_PATHS:
+        if p.exists():
+            return p
+    return None
+
+
+def _find_ccs_java(ccs_root: Path) -> Optional[Path]:
+    """Find the bundled JRE ``java`` binary inside a CCS installation.
+
+    Checks the macOS app-bundle JRE first, then common Linux locations.
+
+    Args:
+        ccs_root: CCS installation root (e.g. ``/Applications/ti/ccs2041/ccs``).
+
+    Returns:
+        Path to ``java`` binary, or None if not found.
+    """
+    candidates = [
+        # macOS CCS 20.x bundled JRE (x86_64 app bundle)
+        ccs_root / "ccs-server.app" / "jre" / "Contents" / "Home" / "bin" / "java",
+        # Linux CCS common location
+        ccs_root / "jre" / "bin" / "java",
+        # Older CCS on Linux (Eclipse-based)
+        ccs_root / "eclipse" / "jre" / "bin" / "java",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+# JavaScript template for DSS-based flashing.
+# Placeholders ``{firmware_path}`` and ``{ccxml_path}`` are substituted at
+# runtime before writing to a temporary file.
+_DSS_JS_TEMPLATE = """\
+var outFile = "{firmware_path}";
+var ccxmlFile = "{ccxml_path}";
+var script = Packages.com.ti.ccstudio.scripting.environment.ScriptingEnvironment.instance();
+var ds = script.getServer("DebugServer.1");
+ds.setConfig(ccxmlFile);
+var session = ds.openSession("*", "*");
+session.target.connect();
+session.target.reset();
+session.memory.loadProgram(outFile);
+session.target.runAsynch();
+java.lang.Thread.sleep(2000);
+session.target.disconnect();
+ds.stop();
+"""
 
 
 def _find_dslite() -> Optional[str]:
@@ -278,6 +340,114 @@ class C2000Profile(ChipProfile):
         return FlashCommand(
             tool=self.dslite,
             args=args,
+            timeout=120.0,
+        )
+
+    def get_dss_flash_command(
+        self,
+        firmware_path: str,
+        **kwargs,
+    ) -> FlashCommand:
+        """Build a DSS (Debug Server Scripting) flash command for C2000.
+
+        Uses TI's Java-based DSS runtime shipped with CCS to flash the target
+        over JTAG (XDS110).  This mirrors the ``make flash`` workflow used by
+        the FOC firmware project.
+
+        The method:
+        1. Locates the CCS installation and its bundled JRE.
+        2. Writes a temporary JavaScript flash script with the firmware and
+           CCXML paths substituted in.
+        3. Builds the Java command with the correct classpath and library path.
+        4. On Apple Silicon (arm64 macOS) prefixes the command with
+           ``arch -x86_64`` because the CCS JRE is x86_64-only.
+
+        The path of the temporary JS file is stored in
+        ``FlashCommand.env["_TEMP_JS"]`` so that callers can clean it up after
+        the flash operation completes.
+
+        Args:
+            firmware_path: Path to the firmware ``.out`` (ELF/COFF) file.
+            **kwargs: Optional ``ccxml`` override.
+
+        Returns:
+            FlashCommand configured for DSS Java flash.
+
+        Raises:
+            RuntimeError: If CCS, the JRE, or the CCXML file cannot be found.
+        """
+        ccs_root = _find_ccs_root()
+        if ccs_root is None:
+            raise RuntimeError(
+                "CCS installation not found. Install TI Code Composer Studio "
+                "and ensure it is in one of the expected locations."
+            )
+
+        java_path = _find_ccs_java(ccs_root)
+        if java_path is None:
+            raise RuntimeError(
+                f"CCS JRE not found under {ccs_root}. "
+                "Ensure CCS is fully installed (ccs-server.app/jre must exist)."
+            )
+
+        ccxml = kwargs.get("ccxml") or self.ccxml
+        if ccxml is None:
+            raise RuntimeError(
+                "No CCXML configuration file found. "
+                "Place a .ccxml file in the current directory or "
+                "targetConfigs/, or pass --ccxml explicitly."
+            )
+
+        # --- Build Java classpath ---
+        debug_server_pkgs = ccs_root / "ccs_base" / "DebugServer" / "packages"
+        cp_jars = [
+            str(debug_server_pkgs / "ti" / "dss" / "java" / "js.jar"),
+            str(debug_server_pkgs / "ti" / "dss" / "java" / "dss.jar"),
+            str(ccs_root / "ccs_base" / "dvt" / "scripting" / "dvt_scripting.jar"),
+        ]
+        # Use OS-appropriate classpath separator
+        import os as _os
+        classpath = _os.pathsep.join(cp_jars)
+        lib_path = str(ccs_root / "ccs_base" / "DebugServer" / "bin")
+
+        # --- Write temporary JS flash script ---
+        js_content = _DSS_JS_TEMPLATE.format(
+            # Forward slashes are safe for both macOS/Linux and Java on Windows
+            firmware_path=firmware_path.replace("\\", "/"),
+            ccxml_path=ccxml.replace("\\", "/"),
+        )
+        tmp_js = tempfile.NamedTemporaryFile(
+            suffix=".js", delete=False, mode="w", encoding="utf-8"
+        )
+        tmp_js.write(js_content)
+        tmp_js.flush()
+        tmp_js.close()
+        tmp_js_path = tmp_js.name
+
+        # --- Build Java argument list ---
+        java_args = [
+            f"-Djava.library.path={lib_path}",
+            "-cp", classpath,
+            "org.mozilla.javascript.tools.shell.Main",
+            tmp_js_path,
+        ]
+
+        # --- Handle Apple Silicon (arm64 macOS) ---
+        # The CCS JRE is x86_64-only; run it via Rosetta 2 on ARM Macs.
+        is_arm64_mac = (
+            platform.machine() == "arm64" and platform.system() == "Darwin"
+        )
+        if is_arm64_mac:
+            tool = "arch"
+            args = ["-x86_64", str(java_path)] + java_args
+        else:
+            tool = str(java_path)
+            args = java_args
+
+        return FlashCommand(
+            tool=tool,
+            args=args,
+            env={"_TEMP_JS": tmp_js_path},
             timeout=120.0,
         )
 

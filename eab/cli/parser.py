@@ -538,6 +538,38 @@ def _build_parser() -> argparse.ArgumentParser:
     p_c2000_trace.add_argument("--log-file", default=None, help="Serial log file")
     p_c2000_trace.add_argument("--process-name", default="C2000 Debug", help="Process name in trace")
 
+    p_c2000_tel = sub.add_parser(
+        "c2000-telemetry-decode",
+        help="Decode C2000 FOC telemetry packets from a raw binary capture file",
+    )
+    p_c2000_tel.add_argument(
+        "input",
+        help="Path to binary data file (e.g. /tmp/eab-devices/ftdi/data.bin)",
+    )
+    p_c2000_tel.add_argument(
+        "--format",
+        dest="output_format",
+        default="table",
+        choices=["table", "json", "csv"],
+        help="Output format: table (default), json, or csv",
+    )
+    p_c2000_tel.add_argument(
+        "--max-packets",
+        type=int,
+        default=0,
+        help="Limit number of packets in output (0 = all)",
+    )
+    p_c2000_tel.add_argument(
+        "--summary",
+        action="store_true",
+        help="Print summary statistics only (JSON)",
+    )
+    p_c2000_tel.add_argument(
+        "--output", "-o",
+        default=None,
+        help="Write output to file instead of stdout",
+    )
+
     # --- multi-device command ---
     p_multi = sub.add_parser("multi", help="Run a command across all registered devices")
     p_multi.add_argument("multi_cmd", nargs=argparse.REMAINDER, help="Command and args to run on each device")

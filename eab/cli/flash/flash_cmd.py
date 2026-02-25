@@ -9,6 +9,7 @@ import time
 from typing import Optional
 
 from eab.chips import get_chip_profile
+from eab.chips.c2000 import C2000Profile
 from eab.chips.zephyr import ZephyrProfile
 from eab.cli.helpers import _now_iso, _print
 
@@ -277,6 +278,24 @@ def _build_flash_command(
     jlink_script_path = None
     esptool_cfg_path = None
     flash_cmd = None
+
+    # DSS (TI Debug Server Scripting) flash — C2000 only
+    if tool == "dss":
+        if not isinstance(profile, C2000Profile):
+            _print(
+                {"error": "--tool dss only supported for C2000 targets"},
+                json_mode=json_mode,
+            )
+            return None, False, False, None, None, 2
+        try:
+            flash_cmd = profile.get_dss_flash_command(firmware_path=firmware)
+        except RuntimeError as e:
+            _print({"error": str(e)}, json_mode=json_mode)
+            return None, False, False, None, None, 1
+        # Stash the temp JS path in the jlink_script_path slot so it gets
+        # cleaned up by _cleanup_temp_files() after the flash completes.
+        dss_js_path = flash_cmd.env.get("_TEMP_JS")
+        return flash_cmd, False, False, dss_js_path, None, None
 
     # Check if J-Link direct flash is requested for Zephyr targets
     if tool == "jlink":

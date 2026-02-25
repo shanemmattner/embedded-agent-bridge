@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - C2000 register decode (`eabctl reg-read`), ERAD profiler status, DLOG buffer capture
 - C2000 variable streaming from live targets (`eabctl stream-vars`)
 - Perfetto trace export for C2000 debug data (ERAD spans, DLOG tracks, log events)
+- ML inference benchmarking with DWT cycle counting (TFLite Micro + CMSIS-NN)
+- Cross-board ML comparison: STM32N6 (Cortex-M55/Helium) vs MCXN947 (Cortex-M33)
+- STM32N6 SRAM boot automation via GDB for boards without on-chip flash
+- `bench_capture` and `sram_boot` regression test step types
+- Example firmware for 8 board families (25+ projects)
 
 ### Fixed
 - DSS transport tests rewritten to match CCS scripting API (was testing removed subprocess interface)

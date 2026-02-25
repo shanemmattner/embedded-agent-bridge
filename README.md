@@ -87,15 +87,25 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 - Trace export to Perfetto JSON (ERAD spans, DLOG tracks, log events)
 - Variable streaming from live C2000 targets
 
+**ML Inference Benchmarking**
+- INT8 TFLite Micro with CMSIS-NN backend on Cortex-M33 and Cortex-M55
+- DWT hardware cycle counter profiling (zero-overhead, exact cycle counts)
+- Automated `bench_capture` regression step parses `[ML_BENCH]` output lines
+- Cross-board comparison: sine, person_detect, micro_speech, exoboot_gait models
+- STM32N6 SRAM boot automation (GDB load for boards without on-chip flash)
+- Example firmware: `mcxn947-ml-bench/`, `stm32n6-ml-bench/`, `stm32n6-npu-bench/`, `stm32n6-gait-bench/`
+
 **Zephyr RTOS Support**
 - `west flash` integration for Zephyr targets
-- Chip profiles for nRF5340, MCXN947, RP2040
+- Chip profiles for nRF5340, MCXN947, RP2040, STM32N6
 - Board detection from CMakeCache.txt
+- STM32N6 SRAM boot via `sram_boot` regression step
 
 **Hardware-in-the-Loop Regression Testing**
 - Define tests in YAML — flash, reset, send commands, assert log output, check variables
 - `eabctl regression --suite tests/hw/ --json` runs a full suite with pass/fail JSON output
 - Setup/teardown phases, variable assertions (expect_eq/gt/lt), fault checking
+- ML benchmark steps: `bench_capture` (parse inference metrics), `sram_boot` (STM32N6 SRAM load)
 - CI-friendly: exit code 0 = all pass, 1 = any fail
 - Steps shell out to `eabctl --json` for full isolation
 
@@ -163,12 +173,13 @@ eabctl openocd stop
 
 ## Supported Hardware
 
-- **ESP32** family (S3, C3, C6) — serial + USB-JTAG + ESP-IDF flash
-- **STM32** family (H7, F4, G4, L4, MP1) — serial + ST-Link + OpenOCD
+- **ESP32** family (S3, C3, C6, P4) — serial + USB-JTAG + ESP-IDF flash
+- **STM32** family (H7, F4, G4, L4, N6) — serial + ST-Link + OpenOCD
+- **STM32N6** (Cortex-M55, Helium MVE) — SRAM boot via GDB, ML benchmarking, Neural-ART NPU evaluation
 - **nRF5340** (Zephyr) — J-Link SWD + RTT + fault analysis
-- **FRDM-MCXN947** (Zephyr) — OpenOCD CMSIS-DAP + fault analysis
-- **Zephyr RTOS targets** — any board with J-Link or OpenOCD support
+- **FRDM-MCXN947** (Cortex-M33, Zephyr) — OpenOCD CMSIS-DAP + fault analysis + ML benchmarking
 - **TI C2000** (F28003x, F28004x) — XDS110 JTAG + CCS DSS transport
+- **Zephyr RTOS targets** — any board with J-Link or OpenOCD support
 - **Any UART device** — the serial daemon works with anything that shows up as `/dev/tty*` or `/dev/cu.*`
 
 ## Roadmap
@@ -189,6 +200,10 @@ eabctl openocd stop
 - [x] Hardware-in-the-loop regression testing ([#28](https://github.com/shanemmattner/embedded-agent-bridge/issues/28))
 - [x] C2000 DSS transport (persistent JTAG via CCS scripting)
 - [x] C2000 trace export (ERAD + DLOG → Perfetto JSON)
+- [x] ML inference benchmarking (TFLite Micro + CMSIS-NN, DWT profiling)
+- [x] Cross-board ML comparison (STM32N6 Cortex-M55 vs MCXN947 Cortex-M33)
+- [x] STM32N6 SRAM boot automation
+- [ ] NPU acceleration benchmarks (Neural-ART, eIQ Neutron)
 - [ ] Multiple simultaneous port support
 - [ ] GDB MI protocol wrapper (persistent debugging sessions)
 - [ ] MCP server (for agents that support it)
@@ -199,6 +214,7 @@ eabctl openocd stop
 
 - [Agent Skill](.claude/skills/eab/SKILL.md) — Drop-in skill for Claude Code (follows [Agent Skills](https://agentskills.io) standard)
 - [Agent Guide](AGENT_GUIDE.md) — Detailed instructions for LLM agents (also serves as `llms.txt`)
+- [ML Benchmark Comparison](docs/ml-benchmark-comparison.md) — STM32N6 vs MCXN947 inference benchmarks
 - [Regression Testing](docs/regression.md) — YAML-based hardware-in-the-loop test runner
 - [Protocol](PROTOCOL.md) — Binary framing format for high-speed streaming
 - [Plotter Guide](docs/plotter.md) — Real-time data visualization

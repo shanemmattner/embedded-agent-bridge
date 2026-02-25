@@ -12,7 +12,9 @@ Agent ──eabctl──► Serial Daemon ──UART──► ESP32 / STM32
   │
   ├──Python API──► JLinkBridge ──SWD/RTT──► nRF5340 / Zephyr targets
   │
-  └──eabctl──► fault-analyze ──GDB──► Cortex-M registers (any probe)
+  ├──eabctl──► fault-analyze ──GDB──► Cortex-M registers (any probe)
+  │
+  └──eabctl──► DSS Transport ──JTAG/XDS110──► TI C2000
 ```
 
 ## Quick Start
@@ -77,6 +79,13 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 - Pluggable probe backends: J-Link (via JLinkGDBServer), OpenOCD (CMSIS-DAP, ST-Link)
 - Probe registry with auto-detection
 - Backward-compatible with legacy JLinkBridge API
+
+**C2000 DSS Transport**
+- Persistent JTAG session via TI CCS scripting (Python API)
+- Fast memory read/write (~1-5ms per read vs ~50ms with DSLite)
+- ERAD profiler, DLOG buffer capture, register decode
+- Trace export to Perfetto JSON (ERAD spans, DLOG tracks, log events)
+- Variable streaming from live C2000 targets
 
 **Zephyr RTOS Support**
 - `west flash` integration for Zephyr targets
@@ -159,6 +168,7 @@ eabctl openocd stop
 - **nRF5340** (Zephyr) — J-Link SWD + RTT + fault analysis
 - **FRDM-MCXN947** (Zephyr) — OpenOCD CMSIS-DAP + fault analysis
 - **Zephyr RTOS targets** — any board with J-Link or OpenOCD support
+- **TI C2000** (F28003x, F28004x) — XDS110 JTAG + CCS DSS transport
 - **Any UART device** — the serial daemon works with anything that shows up as `/dev/tty*` or `/dev/cu.*`
 
 ## Roadmap
@@ -177,6 +187,8 @@ eabctl openocd stop
 - [x] Debug probe abstraction ([#69](https://github.com/shanemmattner/embedded-agent-bridge/issues/69))
 - [x] Windows compatibility — portalocker ([#61](https://github.com/shanemmattner/embedded-agent-bridge/issues/61))
 - [x] Hardware-in-the-loop regression testing ([#28](https://github.com/shanemmattner/embedded-agent-bridge/issues/28))
+- [x] C2000 DSS transport (persistent JTAG via CCS scripting)
+- [x] C2000 trace export (ERAD + DLOG → Perfetto JSON)
 - [ ] Multiple simultaneous port support
 - [ ] GDB MI protocol wrapper (persistent debugging sessions)
 - [ ] MCP server (for agents that support it)
@@ -239,6 +251,13 @@ eabctl rtt stop; eabctl rtt status --json; eabctl rtt tail 100
 # probe-rs transport (native Rust extension, all probe types)
 eabctl rtt start --device STM32L476RG --transport probe-rs
 eabctl rtt start --device STM32L476RG --transport probe-rs --probe-selector "0483:374b"
+
+# C2000 debug (requires CCS 2041+)
+eabctl reg-read --reg IER --ccxml target.ccxml   # Read/decode C2000 register
+eabctl erad-status --ccxml target.ccxml          # ERAD profiler status
+eabctl stream-vars --vars error_count,heap_free --ccxml target.ccxml
+eabctl dlog-capture --ccxml target.ccxml -o dlog.json  # Capture DLOG buffers
+eabctl c2000-trace-export -o trace.json --erad erad.json --dlog dlog.json
 
 # Regression testing (hardware-in-the-loop)
 eabctl regression --suite tests/hw/ --json       # Run all tests in directory

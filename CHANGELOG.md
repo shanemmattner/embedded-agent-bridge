@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- C2000 DSS transport — persistent JTAG session via TI CCS Python scripting API
+- C2000 register decode (`eabctl reg-read`), ERAD profiler status, DLOG buffer capture
+- C2000 variable streaming from live targets (`eabctl stream-vars`)
+- Perfetto trace export for C2000 debug data (ERAD spans, DLOG tracks, log events)
+
+### Fixed
+- DSS transport tests rewritten to match CCS scripting API (was testing removed subprocess interface)
+
+### Changed
+- Removed internal planning/session docs from repository
+- Updated .gitignore with session artifact patterns
+
 ## [1.0.0] - 2026-02-14
 
 ### Added

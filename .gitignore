@@ -67,3 +67,16 @@ results/
 *.out
 *.obj
 *.map
+
+# Session/planning artifacts
+.plan.md
+SESSION_SUMMARY.md
+C2000-BUILD-SUMMARY.md
+stress_test_results.json
+devices.json
+OVERNIGHT_*.md
+docs/*PLAN*.md
+
+# ST AI workspace artifacts
+st_ai_output/
+st_ai_ws/

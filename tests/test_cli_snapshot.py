@@ -17,12 +17,17 @@ class TestSnapshotParser:
 
         parser = _build_parser()
         # Verify snapshot is a known subcommand by parsing valid args
-        args = parser.parse_args([
-            "snapshot",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/path/to/fw.elf",
-            "--output", "/tmp/snap.core",
-        ])
+        args = parser.parse_args(
+            [
+                "snapshot",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/path/to/fw.elf",
+                "--output",
+                "/tmp/snap.core",
+            ]
+        )
         assert args.cmd == "snapshot"
 
     def test_snapshot_device_parsed(self):
@@ -30,12 +35,17 @@ class TestSnapshotParser:
         from eab.cli.parser import _build_parser
 
         parser = _build_parser()
-        args = parser.parse_args([
-            "snapshot",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "fw.elf",
-            "--output", "out.core",
-        ])
+        args = parser.parse_args(
+            [
+                "snapshot",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "fw.elf",
+                "--output",
+                "out.core",
+            ]
+        )
         assert args.device == "NRF5340_XXAA_APP"
 
     def test_snapshot_elf_parsed(self):
@@ -43,12 +53,17 @@ class TestSnapshotParser:
         from eab.cli.parser import _build_parser
 
         parser = _build_parser()
-        args = parser.parse_args([
-            "snapshot",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/build/zephyr.elf",
-            "--output", "out.core",
-        ])
+        args = parser.parse_args(
+            [
+                "snapshot",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/build/zephyr.elf",
+                "--output",
+                "out.core",
+            ]
+        )
         assert args.elf == "/build/zephyr.elf"
 
     def test_snapshot_output_parsed(self):
@@ -56,12 +71,17 @@ class TestSnapshotParser:
         from eab.cli.parser import _build_parser
 
         parser = _build_parser()
-        args = parser.parse_args([
-            "snapshot",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "fw.elf",
-            "--output", "/tmp/my.core",
-        ])
+        args = parser.parse_args(
+            [
+                "snapshot",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "fw.elf",
+                "--output",
+                "/tmp/my.core",
+            ]
+        )
         assert args.output == "/tmp/my.core"
 
     def test_snapshot_missing_device_raises(self):
@@ -70,11 +90,15 @@ class TestSnapshotParser:
 
         parser = _build_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args([
-                "snapshot",
-                "--elf", "fw.elf",
-                "--output", "out.core",
-            ])
+            parser.parse_args(
+                [
+                    "snapshot",
+                    "--elf",
+                    "fw.elf",
+                    "--output",
+                    "out.core",
+                ]
+            )
 
     def test_snapshot_missing_elf_raises(self):
         """Missing --elf should cause SystemExit."""
@@ -82,11 +106,15 @@ class TestSnapshotParser:
 
         parser = _build_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args([
-                "snapshot",
-                "--device", "NRF5340_XXAA_APP",
-                "--output", "out.core",
-            ])
+            parser.parse_args(
+                [
+                    "snapshot",
+                    "--device",
+                    "NRF5340_XXAA_APP",
+                    "--output",
+                    "out.core",
+                ]
+            )
 
     def test_snapshot_missing_output_raises(self):
         """Missing --output should cause SystemExit."""
@@ -94,23 +122,32 @@ class TestSnapshotParser:
 
         parser = _build_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args([
-                "snapshot",
-                "--device", "NRF5340_XXAA_APP",
-                "--elf", "fw.elf",
-            ])
+            parser.parse_args(
+                [
+                    "snapshot",
+                    "--device",
+                    "NRF5340_XXAA_APP",
+                    "--elf",
+                    "fw.elf",
+                ]
+            )
 
     def test_global_json_flag_parsed(self):
         """--json flag (global) should be available when using snapshot."""
         from eab.cli.parser import _build_parser, _preprocess_argv
 
-        argv = _preprocess_argv([
-            "--json",
-            "snapshot",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "fw.elf",
-            "--output", "out.core",
-        ])
+        argv = _preprocess_argv(
+            [
+                "--json",
+                "snapshot",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "fw.elf",
+                "--output",
+                "out.core",
+            ]
+        )
         parser = _build_parser()
         args = parser.parse_args(argv)
         assert args.json is True
@@ -136,12 +173,17 @@ class TestSnapshotDispatch:
 
         mock_cmd = MagicMock(return_value=0)
         with patch("eab.cli.snapshot_cmd.cmd_snapshot", mock_cmd):
-            result = main([
-                "snapshot",
-                "--device", "NRF5340_XXAA_APP",
-                "--elf", str(tmp_path / "fw.elf"),
-                "--output", str(tmp_path / "snap.core"),
-            ])
+            result = main(
+                [
+                    "snapshot",
+                    "--device",
+                    "NRF5340_XXAA_APP",
+                    "--elf",
+                    str(tmp_path / "fw.elf"),
+                    "--output",
+                    str(tmp_path / "snap.core"),
+                ]
+            )
         assert result == 0
         mock_cmd.assert_called_once()
         kwargs = mock_cmd.call_args.kwargs
@@ -156,13 +198,18 @@ class TestSnapshotDispatch:
 
         mock_cmd = MagicMock(return_value=0)
         with patch("eab.cli.snapshot_cmd.cmd_snapshot", mock_cmd):
-            result = main([
-                "--json",
-                "snapshot",
-                "--device", "NRF5340_XXAA_APP",
-                "--elf", "fw.elf",
-                "--output", "snap.core",
-            ])
+            result = main(
+                [
+                    "--json",
+                    "snapshot",
+                    "--device",
+                    "NRF5340_XXAA_APP",
+                    "--elf",
+                    "fw.elf",
+                    "--output",
+                    "snap.core",
+                ]
+            )
         assert result == 0
         kwargs = mock_cmd.call_args.kwargs
         assert kwargs["json_mode"] is True
@@ -173,12 +220,17 @@ class TestSnapshotDispatch:
 
         mock_cmd = MagicMock(return_value=1)
         with patch("eab.cli.snapshot_cmd.cmd_snapshot", mock_cmd):
-            result = main([
-                "snapshot",
-                "--device", "NRF5340_XXAA_APP",
-                "--elf", "fw.elf",
-                "--output", "snap.core",
-            ])
+            result = main(
+                [
+                    "snapshot",
+                    "--device",
+                    "NRF5340_XXAA_APP",
+                    "--elf",
+                    "fw.elf",
+                    "--output",
+                    "snap.core",
+                ]
+            )
         assert result == 1
 
 

@@ -57,26 +57,22 @@ def _make_minimal_elf(tmp_path: Path, regions: list[tuple[int, int]]) -> Path:
     elf_hdr_size = 52
     phdr_size = 32
 
-    e_ident = (
-        _ELFMAG
-        + bytes([_ELFCLASS32, _ELFDATA2LSB, 1, 0])
-        + b"\x00" * 8
-    )
+    e_ident = _ELFMAG + bytes([_ELFCLASS32, _ELFDATA2LSB, 1, 0]) + b"\x00" * 8
     elf_header = e_ident + struct.pack(
         "<HHIIIIIHHHHHH",
-        _ET_EXEC,        # e_type
-        _EM_ARM,         # e_machine
-        1,               # e_version
-        0,               # e_entry
-        elf_hdr_size,    # e_phoff
-        0,               # e_shoff
-        0,               # e_flags
-        elf_hdr_size,    # e_ehsize
-        phdr_size,       # e_phentsize
-        n_phdrs,         # e_phnum
-        40,              # e_shentsize
-        0,               # e_shnum
-        0,               # e_shstrndx
+        _ET_EXEC,  # e_type
+        _EM_ARM,  # e_machine
+        1,  # e_version
+        0,  # e_entry
+        elf_hdr_size,  # e_phoff
+        0,  # e_shoff
+        0,  # e_flags
+        elf_hdr_size,  # e_ehsize
+        phdr_size,  # e_phentsize
+        n_phdrs,  # e_phnum
+        40,  # e_shentsize
+        0,  # e_shnum
+        0,  # e_shstrndx
     )
     assert len(elf_header) == elf_hdr_size
 
@@ -86,14 +82,14 @@ def _make_minimal_elf(tmp_path: Path, regions: list[tuple[int, int]]) -> Path:
     for vaddr, memsz in regions:
         phdrs += struct.pack(
             "<IIIIIIII",
-            _PT_LOAD,       # p_type
-            data_offset,    # p_offset
-            vaddr,          # p_vaddr
-            vaddr,          # p_paddr
-            memsz,          # p_filesz
-            memsz,          # p_memsz
-            0x6,            # p_flags (RW)
-            4,              # p_align
+            _PT_LOAD,  # p_type
+            data_offset,  # p_offset
+            vaddr,  # p_vaddr
+            vaddr,  # p_paddr
+            memsz,  # p_filesz
+            memsz,  # p_memsz
+            0x6,  # p_flags (RW)
+            4,  # p_align
         )
         data_offset += memsz
 
@@ -110,8 +106,23 @@ def _make_gdb_reg_output(regs: dict[str, int]) -> str:
     lines: list[str] = []
     # info registers format: "name   0xVALUE   decimal"
     info_reg_names = [
-        "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
-        "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "xpsr",
+        "r0",
+        "r1",
+        "r2",
+        "r3",
+        "r4",
+        "r5",
+        "r6",
+        "r7",
+        "r8",
+        "r9",
+        "r10",
+        "r11",
+        "r12",
+        "sp",
+        "lr",
+        "pc",
+        "xpsr",
     ]
     for name in info_reg_names:
         val = regs.get(name, 0)
@@ -147,6 +158,7 @@ def _make_failure_gdb_result() -> GDBResult:
 # ---------------------------------------------------------------------------
 # Helper for mocking memory region reads
 # ---------------------------------------------------------------------------
+
 
 class _MemoryDumpMocker:
     """Captures dump_path from generate_memory_dump_script and writes test data.
@@ -223,14 +235,22 @@ class TestRegisterReading:
     """Verify all expected Cortex-M registers are captured via mocked GDB."""
 
     _ALL_REGS = {
-        "r0": 0x00000001, "r1": 0x00000002, "r2": 0x00000003,
-        "r3": 0x00000004, "r4": 0x00000005, "r5": 0x00000006,
-        "r6": 0x00000007, "r7": 0x00000008, "r8": 0x00000009,
-        "r9": 0x0000000A, "r10": 0x0000000B, "r11": 0x0000000C,
+        "r0": 0x00000001,
+        "r1": 0x00000002,
+        "r2": 0x00000003,
+        "r3": 0x00000004,
+        "r4": 0x00000005,
+        "r5": 0x00000006,
+        "r6": 0x00000007,
+        "r7": 0x00000008,
+        "r8": 0x00000009,
+        "r9": 0x0000000A,
+        "r10": 0x0000000B,
+        "r11": 0x0000000C,
         "r12": 0x0000000D,
-        "sp": 0x20008000,   # r13
-        "lr": 0xFFFFFFFF,   # r14
-        "pc": 0x00080042,   # r15
+        "sp": 0x20008000,  # r13
+        "lr": 0xFFFFFFFF,  # r14
+        "pc": 0x00080042,  # r15
         "xpsr": 0x61000000,
         "msp": 0x20008000,
         "psp": 0x20006000,
@@ -248,9 +268,25 @@ class TestRegisterReading:
             regs = _read_registers("nrf5340", "localhost:3333", None)
 
         expected_names = {
-            "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
-            "r8", "r9", "r10", "r11", "r12",
-            "msp", "psp", "control", "faultmask", "basepri", "primask",
+            "r0",
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8",
+            "r9",
+            "r10",
+            "r11",
+            "r12",
+            "msp",
+            "psp",
+            "control",
+            "faultmask",
+            "basepri",
+            "primask",
         }
         for name in expected_names:
             assert name in regs, f"Register '{name}' missing from result"
@@ -282,17 +318,16 @@ class TestMemoryReading:
 
     def test_single_region_data_matches(self, tmp_path: Path) -> None:
         elf_path = _make_minimal_elf(tmp_path, [(0x20000000, 256)])
-        expected = b"\xAB" * 256
+        expected = b"\xab" * 256
         memory_map = {0x20000000: expected}
         mocker = _MemoryDumpMocker(memory_map)
         reg_stdout = _make_gdb_reg_output({})
 
-        with patch("eab.snapshot.run_gdb_batch",
-                   return_value=_make_success_gdb_result(reg_stdout)), \
-             patch("eab.snapshot.generate_memory_dump_script",
-                   side_effect=mocker.gen_script), \
-             patch("eab.snapshot.run_gdb_python",
-                   side_effect=mocker.run_python):
+        with (
+            patch("eab.snapshot.run_gdb_batch", return_value=_make_success_gdb_result(reg_stdout)),
+            patch("eab.snapshot.generate_memory_dump_script", side_effect=mocker.gen_script),
+            patch("eab.snapshot.run_gdb_python", side_effect=mocker.run_python),
+        ):
             capture_snapshot(
                 device="test-dev",
                 elf_path=str(elf_path),
@@ -301,6 +336,7 @@ class TestMemoryReading:
 
         # Parse the written core file and check PT_LOAD data
         from elftools.elf.elffile import ELFFile
+
         with open(tmp_path / "out.core", "rb") as f:
             core = ELFFile(f)
             load_segs = [s for s in core.iter_segments() if s["p_type"] == "PT_LOAD"]
@@ -317,12 +353,11 @@ class TestMemoryReading:
         mocker = _MemoryDumpMocker(mem)
         reg_stdout = _make_gdb_reg_output({})
 
-        with patch("eab.snapshot.run_gdb_batch",
-                   return_value=_make_success_gdb_result(reg_stdout)), \
-             patch("eab.snapshot.generate_memory_dump_script",
-                   side_effect=mocker.gen_script), \
-             patch("eab.snapshot.run_gdb_python",
-                   side_effect=mocker.run_python):
+        with (
+            patch("eab.snapshot.run_gdb_batch", return_value=_make_success_gdb_result(reg_stdout)),
+            patch("eab.snapshot.generate_memory_dump_script", side_effect=mocker.gen_script),
+            patch("eab.snapshot.run_gdb_python", side_effect=mocker.run_python),
+        ):
             capture_snapshot(
                 device="test-dev",
                 elf_path=str(elf_path),
@@ -330,6 +365,7 @@ class TestMemoryReading:
             )
 
         from elftools.elf.elffile import ELFFile
+
         with open(tmp_path / "out.core", "rb") as f:
             core = ELFFile(f)
             load_segs = sorted(
@@ -348,12 +384,11 @@ class TestMemoryReading:
         mocker = _MemoryDumpMocker(mem)
         reg_stdout = _make_gdb_reg_output({})
 
-        with patch("eab.snapshot.run_gdb_batch",
-                   return_value=_make_success_gdb_result(reg_stdout)), \
-             patch("eab.snapshot.generate_memory_dump_script",
-                   side_effect=mocker.gen_script), \
-             patch("eab.snapshot.run_gdb_python",
-                   side_effect=mocker.run_python):
+        with (
+            patch("eab.snapshot.run_gdb_batch", return_value=_make_success_gdb_result(reg_stdout)),
+            patch("eab.snapshot.generate_memory_dump_script", side_effect=mocker.gen_script),
+            patch("eab.snapshot.run_gdb_python", side_effect=mocker.run_python),
+        ):
             capture_snapshot(
                 device="test-dev",
                 elf_path=str(elf_path),
@@ -361,13 +396,10 @@ class TestMemoryReading:
             )
 
         from elftools.elf.elffile import ELFFile
+
         with open(tmp_path / "out.core", "rb") as f:
             core = ELFFile(f)
-            vaddrs = sorted(
-                s["p_vaddr"]
-                for s in core.iter_segments()
-                if s["p_type"] == "PT_LOAD"
-            )
+            vaddrs = sorted(s["p_vaddr"] for s in core.iter_segments() if s["p_type"] == "PT_LOAD")
         assert vaddrs == [0x20000000, 0x20020000]
 
 
@@ -386,12 +418,11 @@ class TestCoreFileFormat:
         reg_stdout = _make_gdb_reg_output(regs or {})
         core_path = tmp_path / "snapshot.core"
 
-        with patch("eab.snapshot.run_gdb_batch",
-                   return_value=_make_success_gdb_result(reg_stdout)), \
-             patch("eab.snapshot.generate_memory_dump_script",
-                   side_effect=mocker.gen_script), \
-             patch("eab.snapshot.run_gdb_python",
-                   side_effect=mocker.run_python):
+        with (
+            patch("eab.snapshot.run_gdb_batch", return_value=_make_success_gdb_result(reg_stdout)),
+            patch("eab.snapshot.generate_memory_dump_script", side_effect=mocker.gen_script),
+            patch("eab.snapshot.run_gdb_python", side_effect=mocker.run_python),
+        ):
             capture_snapshot(
                 device="test-dev",
                 elf_path=str(elf_path),
@@ -401,6 +432,7 @@ class TestCoreFileFormat:
 
     def test_elf_type_is_et_core(self, tmp_path: Path) -> None:
         from elftools.elf.elffile import ELFFile
+
         core_path = self._run_capture(tmp_path, [(0x20000000, 64)])
         with open(core_path, "rb") as f:
             core = ELFFile(f)
@@ -408,6 +440,7 @@ class TestCoreFileFormat:
 
     def test_pt_load_count_matches_regions(self, tmp_path: Path) -> None:
         from elftools.elf.elffile import ELFFile
+
         core_path = self._run_capture(tmp_path, [(0x20000000, 64), (0x20010000, 32)])
         with open(core_path, "rb") as f:
             core = ELFFile(f)
@@ -416,6 +449,7 @@ class TestCoreFileFormat:
 
     def test_pt_note_segment_present(self, tmp_path: Path) -> None:
         from elftools.elf.elffile import ELFFile
+
         core_path = self._run_capture(tmp_path, [(0x20000000, 64)])
         with open(core_path, "rb") as f:
             core = ELFFile(f)
@@ -424,19 +458,17 @@ class TestCoreFileFormat:
 
     def test_pt_load_vaddrs_match_elf_segments(self, tmp_path: Path) -> None:
         from elftools.elf.elffile import ELFFile
+
         spec = [(0x20000000, 64), (0x20008000, 128)]
         core_path = self._run_capture(tmp_path, spec)
         with open(core_path, "rb") as f:
             core = ELFFile(f)
-            vaddrs = sorted(
-                s["p_vaddr"]
-                for s in core.iter_segments()
-                if s["p_type"] == "PT_LOAD"
-            )
+            vaddrs = sorted(s["p_vaddr"] for s in core.iter_segments() if s["p_type"] == "PT_LOAD")
         assert vaddrs == [0x20000000, 0x20008000]
 
     def test_pt_load_sizes_match(self, tmp_path: Path) -> None:
         from elftools.elf.elffile import ELFFile
+
         spec = [(0x20000000, 64), (0x20008000, 128)]
         core_path = self._run_capture(tmp_path, spec)
         with open(core_path, "rb") as f:
@@ -451,19 +483,19 @@ class TestCoreFileFormat:
     def test_pt_note_contains_register_data(self, tmp_path: Path) -> None:
         """PT_NOTE segment should contain non-zero register data."""
         from elftools.elf.elffile import ELFFile
+
         regs = {"r0": 0xDEADBEEF, "pc": 0x00080042, "xpsr": 0x61000000}
         core_path = self._run_capture(tmp_path, [(0x20000000, 64)], regs)
         with open(core_path, "rb") as f:
             core = ELFFile(f)
-            note_seg = next(
-                s for s in core.iter_segments() if s["p_type"] == "PT_NOTE"
-            )
+            note_seg = next(s for s in core.iter_segments() if s["p_type"] == "PT_NOTE")
             note_data = note_seg.data()
         # The note should contain the packed register value 0xDEADBEEF
         assert struct.pack("<I", 0xDEADBEEF) in note_data
 
     def test_elf_machine_is_arm(self, tmp_path: Path) -> None:
         from elftools.elf.elffile import ELFFile
+
         core_path = self._run_capture(tmp_path, [(0x20000000, 64)])
         with open(core_path, "rb") as f:
             core = ELFFile(f)
@@ -480,12 +512,11 @@ class TestSnapshotResult:
         mocker = _MemoryDumpMocker(mem)
         reg_stdout = _make_gdb_reg_output({"r0": 1, "pc": 2})
 
-        with patch("eab.snapshot.run_gdb_batch",
-                   return_value=_make_success_gdb_result(reg_stdout)), \
-             patch("eab.snapshot.generate_memory_dump_script",
-                   side_effect=mocker.gen_script), \
-             patch("eab.snapshot.run_gdb_python",
-                   side_effect=mocker.run_python):
+        with (
+            patch("eab.snapshot.run_gdb_batch", return_value=_make_success_gdb_result(reg_stdout)),
+            patch("eab.snapshot.generate_memory_dump_script", side_effect=mocker.gen_script),
+            patch("eab.snapshot.run_gdb_python", side_effect=mocker.run_python),
+        ):
             return capture_snapshot(
                 device="test-dev",
                 elf_path=str(elf_path),
@@ -548,8 +579,7 @@ class TestEdgeCases:
     def test_gdb_register_failure_propagates(self, tmp_path: Path) -> None:
         """RuntimeError from run_gdb_batch should propagate out of capture_snapshot."""
         elf_path = _make_minimal_elf(tmp_path, [(0x20000000, 64)])
-        with patch("eab.snapshot.run_gdb_batch",
-                   side_effect=RuntimeError("GDB connection refused")):
+        with patch("eab.snapshot.run_gdb_batch", side_effect=RuntimeError("GDB connection refused")):
             with pytest.raises(RuntimeError, match="GDB connection refused"):
                 capture_snapshot(
                     device="test-dev",
@@ -684,38 +714,47 @@ class TestSnapshotStepTriggerConditions:
 
     def _manual_step(self):
         from eab.cli.regression.models import StepSpec
-        return StepSpec("snapshot", {
-            "output": "results/state.core",
-            "elf": "build/zephyr/zephyr.elf",
-            "trigger": "manual",
-        })
+
+        return StepSpec(
+            "snapshot",
+            {
+                "output": "results/state.core",
+                "elf": "build/zephyr/zephyr.elf",
+                "trigger": "manual",
+            },
+        )
 
     def _on_fault_step(self):
         from eab.cli.regression.models import StepSpec
-        return StepSpec("snapshot", {
-            "output": "results/state.core",
-            "elf": "build/zephyr/zephyr.elf",
-            "trigger": "on_fault",
-        })
+
+        return StepSpec(
+            "snapshot",
+            {
+                "output": "results/state.core",
+                "elf": "build/zephyr/zephyr.elf",
+                "trigger": "on_fault",
+            },
+        )
 
     def _on_anomaly_step(self):
         from eab.cli.regression.models import StepSpec
-        return StepSpec("snapshot", {
-            "output": "results/state.core",
-            "elf": "build/zephyr/zephyr.elf",
-            "trigger": "on_anomaly",
-            "baseline": "baselines/nominal.json",
-        })
+
+        return StepSpec(
+            "snapshot",
+            {
+                "output": "results/state.core",
+                "elf": "build/zephyr/zephyr.elf",
+                "trigger": "on_anomaly",
+                "baseline": "baselines/nominal.json",
+            },
+        )
 
     def test_manual_trigger_always_calls_capture_snapshot(self) -> None:
         from eab.cli.regression.steps import _run_snapshot
 
         snap_result = self._make_snap_result()
-        with patch("eab.cli.regression.steps.capture_snapshot",
-                   return_value=snap_result) as mock_capture:
-            result = _run_snapshot(
-                self._manual_step(), device="nrf5340", chip=None, timeout=60
-            )
+        with patch("eab.cli.regression.steps.capture_snapshot", return_value=snap_result) as mock_capture:
+            result = _run_snapshot(self._manual_step(), device="nrf5340", chip=None, timeout=60)
         mock_capture.assert_called_once()
         assert result.passed
         assert result.output["captured"] is True
@@ -723,12 +762,11 @@ class TestSnapshotStepTriggerConditions:
     def test_on_fault_no_fault_skips_capture(self) -> None:
         from eab.cli.regression.steps import _run_snapshot
 
-        with patch("eab.cli.regression.steps._run_eabctl",
-                   return_value=(0, {"fault_detected": False})), \
-             patch("eab.cli.regression.steps.capture_snapshot") as mock_capture:
-            result = _run_snapshot(
-                self._on_fault_step(), device="nrf5340", chip=None, timeout=60
-            )
+        with (
+            patch("eab.cli.regression.steps._run_eabctl", return_value=(0, {"fault_detected": False})),
+            patch("eab.cli.regression.steps.capture_snapshot") as mock_capture,
+        ):
+            result = _run_snapshot(self._on_fault_step(), device="nrf5340", chip=None, timeout=60)
         mock_capture.assert_not_called()
         assert result.passed
         assert result.output["captured"] is False
@@ -737,13 +775,11 @@ class TestSnapshotStepTriggerConditions:
         from eab.cli.regression.steps import _run_snapshot
 
         snap_result = self._make_snap_result()
-        with patch("eab.cli.regression.steps._run_eabctl",
-                   return_value=(0, {"fault_detected": True})), \
-             patch("eab.cli.regression.steps.capture_snapshot",
-                   return_value=snap_result) as mock_capture:
-            result = _run_snapshot(
-                self._on_fault_step(), device="nrf5340", chip=None, timeout=60
-            )
+        with (
+            patch("eab.cli.regression.steps._run_eabctl", return_value=(0, {"fault_detected": True})),
+            patch("eab.cli.regression.steps.capture_snapshot", return_value=snap_result) as mock_capture,
+        ):
+            result = _run_snapshot(self._on_fault_step(), device="nrf5340", chip=None, timeout=60)
         mock_capture.assert_called_once()
         assert result.passed
         assert result.output["captured"] is True
@@ -751,12 +787,11 @@ class TestSnapshotStepTriggerConditions:
     def test_on_anomaly_zero_count_skips_capture(self) -> None:
         from eab.cli.regression.steps import _run_snapshot
 
-        with patch("eab.cli.regression.steps._run_eabctl",
-                   return_value=(0, {"anomaly_count": 0})), \
-             patch("eab.cli.regression.steps.capture_snapshot") as mock_capture:
-            result = _run_snapshot(
-                self._on_anomaly_step(), device="nrf5340", chip=None, timeout=60
-            )
+        with (
+            patch("eab.cli.regression.steps._run_eabctl", return_value=(0, {"anomaly_count": 0})),
+            patch("eab.cli.regression.steps.capture_snapshot") as mock_capture,
+        ):
+            result = _run_snapshot(self._on_anomaly_step(), device="nrf5340", chip=None, timeout=60)
         mock_capture.assert_not_called()
         assert result.passed
         assert result.output["captured"] is False
@@ -765,13 +800,11 @@ class TestSnapshotStepTriggerConditions:
         from eab.cli.regression.steps import _run_snapshot
 
         snap_result = self._make_snap_result()
-        with patch("eab.cli.regression.steps._run_eabctl",
-                   return_value=(0, {"anomaly_count": 1})), \
-             patch("eab.cli.regression.steps.capture_snapshot",
-                   return_value=snap_result) as mock_capture:
-            result = _run_snapshot(
-                self._on_anomaly_step(), device="nrf5340", chip=None, timeout=60
-            )
+        with (
+            patch("eab.cli.regression.steps._run_eabctl", return_value=(0, {"anomaly_count": 1})),
+            patch("eab.cli.regression.steps.capture_snapshot", return_value=snap_result) as mock_capture,
+        ):
+            result = _run_snapshot(self._on_anomaly_step(), device="nrf5340", chip=None, timeout=60)
         mock_capture.assert_called_once()
         assert result.passed
         assert result.output["captured"] is True

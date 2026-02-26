@@ -47,9 +47,7 @@ def cmd_snapshot(
         _print(
             {
                 "path": result.output_path,
-                "regions": [
-                    {"start": r.start, "size": r.size} for r in result.regions
-                ],
+                "regions": [{"start": r.start, "size": r.size} for r in result.regions],
                 "registers": result.registers,
                 "size_bytes": result.total_size,
             },

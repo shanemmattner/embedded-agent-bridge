@@ -117,10 +117,7 @@ def _parse_elf_load_segments(elf_path: str) -> list[MemoryRegion]:
         ImportError: If pyelftools is not installed.
     """
     if not _PYELFTOOLS_AVAILABLE:
-        raise ImportError(
-            "pyelftools is required for ELF parsing. "
-            "Install it with: pip install pyelftools"
-        )
+        raise ImportError("pyelftools is required for ELF parsing. Install it with: pip install pyelftools")
 
     path = Path(elf_path)
     if not path.exists():
@@ -131,9 +128,7 @@ def _parse_elf_load_segments(elf_path: str) -> list[MemoryRegion]:
         elf = ELFFile(f)
         for seg in elf.iter_segments():
             if seg["p_type"] == "PT_LOAD" and seg["p_memsz"] > 0:
-                regions.append(
-                    MemoryRegion(start=seg["p_vaddr"], size=seg["p_memsz"])
-                )
+                regions.append(MemoryRegion(start=seg["p_vaddr"], size=seg["p_memsz"]))
 
     return sorted(regions, key=lambda r: r.start)
 
@@ -186,8 +181,7 @@ def _read_registers(
 
     if not result.success:
         logger.warning(
-            "GDB register read returned non-zero exit code %d; "
-            "register data may be incomplete.",
+            "GDB register read returned non-zero exit code %d; register data may be incomplete.",
             result.returncode,
         )
 
@@ -231,18 +225,12 @@ def _read_memory_regions(
     for region in regions:
         dump_path = ""
         try:
-            with tempfile.NamedTemporaryFile(
-                suffix=".bin", delete=False
-            ) as tmp:
+            with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tmp:
                 dump_path = tmp.name
 
-            script_content = generate_memory_dump_script(
-                region.start, region.size, dump_path
-            )
+            script_content = generate_memory_dump_script(region.start, region.size, dump_path)
 
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".py", delete=False
-            ) as script_tmp:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as script_tmp:
                 script_tmp.write(script_content)
                 script_path = script_tmp.name
 
@@ -257,11 +245,7 @@ def _read_memory_regions(
                 Path(script_path).unlink(missing_ok=True)
 
             dump_file = Path(dump_path)
-            if (
-                gdb_result.success
-                and dump_file.exists()
-                and dump_file.stat().st_size > 0
-            ):
+            if gdb_result.success and dump_file.exists() and dump_file.stat().st_size > 0:
                 data = dump_file.read_bytes()
                 # Pad or trim to exact region size
                 if len(data) < region.size:
@@ -270,8 +254,7 @@ def _read_memory_regions(
                     data = data[: region.size]
             else:
                 logger.warning(
-                    "Failed to read memory region 0x%08x+%d "
-                    "(returncode=%d); substituting zeros.",
+                    "Failed to read memory region 0x%08x+%d (returncode=%d); substituting zeros.",
                     region.start,
                     region.size,
                     gdb_result.returncode,
@@ -311,14 +294,23 @@ def _build_prstatus_note(registers: dict[str, int]) -> bytes:
 
     # ARM elf_gregset_t: r0–r15, orig_r0 (0), cpsr/xpsr – 18 × 4 bytes = 72
     gr = [
-        _r("r0"), _r("r1"), _r("r2"), _r("r3"),
-        _r("r4"), _r("r5"), _r("r6"), _r("r7"),
-        _r("r8"), _r("r9"), _r("r10"), _r("r11"),
+        _r("r0"),
+        _r("r1"),
+        _r("r2"),
+        _r("r3"),
+        _r("r4"),
+        _r("r5"),
+        _r("r6"),
+        _r("r7"),
+        _r("r8"),
+        _r("r9"),
+        _r("r10"),
+        _r("r11"),
         _r("r12"),
-        _r("sp") if "sp" in registers else _r("r13"),   # SP / r13
-        _r("lr") if "lr" in registers else _r("r14"),   # LR / r14
-        _r("pc") if "pc" in registers else _r("r15"),   # PC / r15
-        0,                                               # orig_r0 (unused)
+        _r("sp") if "sp" in registers else _r("r13"),  # SP / r13
+        _r("lr") if "lr" in registers else _r("r14"),  # LR / r14
+        _r("pc") if "pc" in registers else _r("r15"),  # PC / r15
+        0,  # orig_r0 (unused)
         _r("xpsr") if "xpsr" in registers else _r("cpsr"),  # CPSR
     ]
 
@@ -329,33 +321,39 @@ def _build_prstatus_note(registers: dict[str, int]) -> bytes:
     #   pr_fpvalid (I=4)
     desc = struct.pack(
         "<3ihH2I4I8I18II",
-        0, 0, 0,           # pr_info.si_signo/code/errno
-        5,                 # pr_cursig  (SIGTRAP = 5, conventional for breakpoint)
-        0,                 # padding
-        0, 0,              # pr_sigpend, pr_sighold
-        0, 0, 0, 0,        # pr_pid, pr_ppid, pr_pgrp, pr_sid
-        0, 0,              # pr_utime (tv_sec, tv_usec)
-        0, 0,              # pr_stime
-        0, 0,              # pr_cutime
-        0, 0,              # pr_cstime
-        *gr,               # pr_reg (18 × uint32)
-        0,                 # pr_fpvalid
+        0,
+        0,
+        0,  # pr_info.si_signo/code/errno
+        5,  # pr_cursig  (SIGTRAP = 5, conventional for breakpoint)
+        0,  # padding
+        0,
+        0,  # pr_sigpend, pr_sighold
+        0,
+        0,
+        0,
+        0,  # pr_pid, pr_ppid, pr_pgrp, pr_sid
+        0,
+        0,  # pr_utime (tv_sec, tv_usec)
+        0,
+        0,  # pr_stime
+        0,
+        0,  # pr_cutime
+        0,
+        0,  # pr_cstime
+        *gr,  # pr_reg (18 × uint32)
+        0,  # pr_fpvalid
     )
-    assert len(desc) == _PRSTATUS_DESC_SIZE, (
-        f"prstatus descriptor is {len(desc)} bytes, expected {_PRSTATUS_DESC_SIZE}"
-    )
+    assert len(desc) == _PRSTATUS_DESC_SIZE, f"prstatus descriptor is {len(desc)} bytes, expected {_PRSTATUS_DESC_SIZE}"
 
     # Note name: "CORE\0" padded to 4-byte boundary → 8 bytes
     name_raw = b"CORE\x00"
-    name_padded = name_raw + b"\x00" * (
-        (4 - len(name_raw) % 4) % 4
-    )  # → 8 bytes
+    name_padded = name_raw + b"\x00" * ((4 - len(name_raw) % 4) % 4)  # → 8 bytes
 
     note_header = struct.pack(
         "<III",
-        len(name_raw),       # namesz = 5
-        len(desc),           # descsz = 148
-        _NT_PRSTATUS,        # type   = 1
+        len(name_raw),  # namesz = 5
+        len(desc),  # descsz = 148
+        _NT_PRSTATUS,  # type   = 1
     )
     return note_header + name_padded + desc
 
@@ -406,42 +404,41 @@ def _write_elf_core(
 
     # --- ELF header ---
     e_ident = (
-        b"\x7fELF"      # magic
-        b"\x01"         # EI_CLASS  = ELFCLASS32
-        b"\x01"         # EI_DATA   = ELFDATA2LSB (little-endian)
-        b"\x01"         # EI_VERSION
-        b"\x00"         # EI_OSABI
-        + b"\x00" * 8   # padding
+        b"\x7fELF"  # magic
+        b"\x01"  # EI_CLASS  = ELFCLASS32
+        b"\x01"  # EI_DATA   = ELFDATA2LSB (little-endian)
+        b"\x01"  # EI_VERSION
+        b"\x00" + b"\x00" * 8  # EI_OSABI  # padding
     )
     elf_header = e_ident + struct.pack(
         "<HHIIIIIHHHHHH",
-        _ET_CORE,           # e_type
-        _EM_ARM,            # e_machine
-        _EV_CURRENT,        # e_version
-        0,                  # e_entry
-        elf_hdr_size,       # e_phoff (program headers immediately follow)
-        0,                  # e_shoff (no section headers)
-        0x05000000,         # e_flags (ARM EABI version 5)
-        elf_hdr_size,       # e_ehsize
-        phdr_size,          # e_phentsize
-        n_phdrs,            # e_phnum
-        40,                 # e_shentsize (conventional even when shnum=0)
-        0,                  # e_shnum
-        0,                  # e_shstrndx
+        _ET_CORE,  # e_type
+        _EM_ARM,  # e_machine
+        _EV_CURRENT,  # e_version
+        0,  # e_entry
+        elf_hdr_size,  # e_phoff (program headers immediately follow)
+        0,  # e_shoff (no section headers)
+        0x05000000,  # e_flags (ARM EABI version 5)
+        elf_hdr_size,  # e_ehsize
+        phdr_size,  # e_phentsize
+        n_phdrs,  # e_phnum
+        40,  # e_shentsize (conventional even when shnum=0)
+        0,  # e_shnum
+        0,  # e_shstrndx
     )
     assert len(elf_header) == elf_hdr_size
 
     # --- PT_NOTE program header ---
     ph_note = struct.pack(
         "<IIIIIIII",
-        _PT_NOTE,           # p_type
-        note_offset,        # p_offset
-        0,                  # p_vaddr
-        0,                  # p_paddr
-        note_filesz,        # p_filesz
-        note_filesz,        # p_memsz
-        0,                  # p_flags
-        4,                  # p_align
+        _PT_NOTE,  # p_type
+        note_offset,  # p_offset
+        0,  # p_vaddr
+        0,  # p_paddr
+        note_filesz,  # p_filesz
+        note_filesz,  # p_memsz
+        0,  # p_flags
+        4,  # p_align
     )
 
     # --- PT_LOAD program headers ---
@@ -449,14 +446,14 @@ def _write_elf_core(
     for (region, data), off in zip(regions_data, offsets):
         ph_loads += struct.pack(
             "<IIIIIIII",
-            _PT_LOAD,                   # p_type
-            off,                        # p_offset
-            region.start,               # p_vaddr
-            region.start,               # p_paddr
-            len(data),                  # p_filesz
-            region.size,                # p_memsz
-            _PF_R | _PF_W,             # p_flags
-            4,                          # p_align
+            _PT_LOAD,  # p_type
+            off,  # p_offset
+            region.start,  # p_vaddr
+            region.start,  # p_paddr
+            len(data),  # p_filesz
+            region.size,  # p_memsz
+            _PF_R | _PF_W,  # p_flags
+            4,  # p_align
         )
 
     # --- Write file ---

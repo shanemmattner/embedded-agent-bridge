@@ -50,7 +50,7 @@ _SAMPLE_JSON: dict = {
     "threads": [
         {
             "name": "main",
-            "thread_state": 0x01,   # RUNNING
+            "thread_state": 0x01,  # RUNNING
             "prio": 0,
             "stack_start": 0x20001000,
             "stack_size": 2048,
@@ -58,7 +58,7 @@ _SAMPLE_JSON: dict = {
         },
         {
             "name": "idle",
-            "thread_state": 0x00,   # READY
+            "thread_state": 0x00,  # READY
             "prio": 15,
             "stack_start": 0x20002000,
             "stack_size": 1024,
@@ -66,7 +66,7 @@ _SAMPLE_JSON: dict = {
         },
         {
             "name": "sensor",
-            "thread_state": 0x04,   # PENDING
+            "thread_state": 0x04,  # PENDING
             "prio": 5,
             "stack_start": 0x20003000,
             "stack_size": 4096,
@@ -74,7 +74,7 @@ _SAMPLE_JSON: dict = {
         },
         {
             "name": "monitor",
-            "thread_state": 0x08,   # SUSPENDED
+            "thread_state": 0x08,  # SUSPENDED
             "prio": 3,
             "stack_start": 0x20004000,
             "stack_size": 2048,
@@ -104,8 +104,13 @@ class TestThreadInfoDataclass:
         t = _make_thread_info()
         d = t.to_dict()
         assert set(d.keys()) == {
-            "name", "state", "priority", "stack_base",
-            "stack_size", "stack_used", "stack_free",
+            "name",
+            "state",
+            "priority",
+            "stack_base",
+            "stack_size",
+            "stack_used",
+            "stack_free",
         }
 
     def test_to_dict_values(self):
@@ -374,9 +379,7 @@ class TestHilStepPass:
         step = StepSpec("stack_headroom_assert", {"min_free_bytes": 256})
 
         with patch("eab.cli.regression.steps.inspect_threads", return_value=good_threads):
-            result = _run_stack_headroom_assert(
-                step, device="test-device", chip="NRF5340_XXAA_APP", timeout=30
-            )
+            result = _run_stack_headroom_assert(step, device="test-device", chip="NRF5340_XXAA_APP", timeout=30)
 
         assert result.passed
         assert result.error is None
@@ -389,9 +392,7 @@ class TestHilStepPass:
         step = StepSpec("stack_headroom_assert", {"min_free_bytes": 256})
 
         with patch("eab.cli.regression.steps.inspect_threads", return_value=threads):
-            result = _run_stack_headroom_assert(
-                step, device="dev", chip="chip", timeout=30
-            )
+            result = _run_stack_headroom_assert(step, device="dev", chip="chip", timeout=30)
 
         assert result.passed
 
@@ -412,9 +413,7 @@ class TestHilStepFail:
         step = StepSpec("stack_headroom_assert", {"min_free_bytes": 256})
 
         with patch("eab.cli.regression.steps.inspect_threads", return_value=threads):
-            result = _run_stack_headroom_assert(
-                step, device="dev", chip="chip", timeout=30
-            )
+            result = _run_stack_headroom_assert(step, device="dev", chip="chip", timeout=30)
 
         assert not result.passed
         assert result.error is not None
@@ -427,9 +426,7 @@ class TestHilStepFail:
         step = StepSpec("stack_headroom_assert", {"min_free_bytes": 256})
 
         with patch("eab.cli.regression.steps.inspect_threads", return_value=threads):
-            result = _run_stack_headroom_assert(
-                step, device="dev", chip="chip", timeout=30
-            )
+            result = _run_stack_headroom_assert(step, device="dev", chip="chip", timeout=30)
 
         assert not result.passed
         assert "bt_rx" in result.error
@@ -445,9 +442,7 @@ class TestHilStepFail:
         step = StepSpec("stack_headroom_assert", {"min_free_bytes": 256})
 
         with patch("eab.cli.regression.steps.inspect_threads", return_value=threads):
-            result = _run_stack_headroom_assert(
-                step, device="dev", chip="chip", timeout=30
-            )
+            result = _run_stack_headroom_assert(step, device="dev", chip="chip", timeout=30)
 
         assert not result.passed
         assert "a" in result.error
@@ -474,9 +469,7 @@ class TestGDBBridgeErrorHandling:
 
     @patch("eab.thread_inspector.run_gdb_python")
     def test_raises_on_gdb_error_status(self, mock_run):
-        mock_run.return_value = _make_gdb_result(
-            {"status": "error", "error": "symbol not found: _kernel"}
-        )
+        mock_run.return_value = _make_gdb_result({"status": "error", "error": "symbol not found: _kernel"})
         with pytest.raises(RuntimeError, match="symbol not found"):
             inspect_threads("localhost:3333", "/path/to/app.elf")
 

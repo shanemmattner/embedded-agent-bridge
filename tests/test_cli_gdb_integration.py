@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-
 from eab.cli import main
 
 
@@ -20,13 +19,17 @@ class TestGdbScriptCLI:
         """Test gdb-script with basic arguments."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "gdb-script",
-            "/path/to/script.py",
-            "--chip", "nrf5340",
-            "--device", "NRF5340_XXAA_APP",
-            "--json",
-        ])
+        result = main(
+            [
+                "gdb-script",
+                "/path/to/script.py",
+                "--chip",
+                "nrf5340",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--json",
+            ]
+        )
 
         assert result == 0
         mock_cmd.assert_called_once()
@@ -41,11 +44,14 @@ class TestGdbScriptCLI:
         """Test gdb-script with ELF file."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "gdb-script",
-            "/path/to/script.py",
-            "--elf", "/path/to/app.elf",
-        ])
+        result = main(
+            [
+                "gdb-script",
+                "/path/to/script.py",
+                "--elf",
+                "/path/to/app.elf",
+            ]
+        )
 
         assert result == 0
         call_kwargs = mock_cmd.call_args[1]
@@ -56,12 +62,16 @@ class TestGdbScriptCLI:
         """Test gdb-script with OpenOCD probe type."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "gdb-script",
-            "/path/to/script.py",
-            "--probe", "openocd",
-            "--chip", "mcxn947",
-        ])
+        result = main(
+            [
+                "gdb-script",
+                "/path/to/script.py",
+                "--probe",
+                "openocd",
+                "--chip",
+                "mcxn947",
+            ]
+        )
 
         assert result == 0
         call_kwargs = mock_cmd.call_args[1]
@@ -73,11 +83,14 @@ class TestGdbScriptCLI:
         """Test gdb-script with custom port."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "gdb-script",
-            "/path/to/script.py",
-            "--port", "9999",
-        ])
+        result = main(
+            [
+                "gdb-script",
+                "/path/to/script.py",
+                "--port",
+                "9999",
+            ]
+        )
 
         assert result == 0
         call_kwargs = mock_cmd.call_args[1]
@@ -92,12 +105,15 @@ class TestInspectCLI:
         """Test inspect with variable name."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "inspect",
-            "_kernel",
-            "--chip", "nrf5340",
-            "--json",
-        ])
+        result = main(
+            [
+                "inspect",
+                "_kernel",
+                "--chip",
+                "nrf5340",
+                "--json",
+            ]
+        )
 
         assert result == 0
         mock_cmd.assert_called_once()
@@ -111,12 +127,16 @@ class TestInspectCLI:
         """Test inspect with device and ELF file."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "inspect",
-            "g_state",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/path/to/app.elf",
-        ])
+        result = main(
+            [
+                "inspect",
+                "g_state",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/path/to/app.elf",
+            ]
+        )
 
         assert result == 0
         call_kwargs = mock_cmd.call_args[1]
@@ -133,12 +153,17 @@ class TestThreadsCLI:
         """Test threads snapshot with basic args."""
         mock_inspect.return_value = []
 
-        result = main([
-            "--json",
-            "threads", "snapshot",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/tmp/zephyr.elf",
-        ])
+        result = main(
+            [
+                "--json",
+                "threads",
+                "snapshot",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/tmp/zephyr.elf",
+            ]
+        )
 
         assert result == 0
         mock_inspect.assert_called_once()
@@ -148,11 +173,16 @@ class TestThreadsCLI:
         """Test threads snapshot with device and elf."""
         mock_inspect.return_value = []
 
-        result = main([
-            "threads", "snapshot",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/tmp/zephyr.elf",
-        ])
+        result = main(
+            [
+                "threads",
+                "snapshot",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/tmp/zephyr.elf",
+            ]
+        )
 
         assert result == 0
         call_kwargs = mock_inspect.call_args[1]
@@ -167,11 +197,14 @@ class TestWatchCLI:
         """Test watch with variable name."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "watch",
-            "g_counter",
-            "--chip", "nrf5340",
-        ])
+        result = main(
+            [
+                "watch",
+                "g_counter",
+                "--chip",
+                "nrf5340",
+            ]
+        )
 
         assert result == 0
         mock_cmd.assert_called_once()
@@ -184,11 +217,14 @@ class TestWatchCLI:
         """Test watch with custom max hits."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "watch",
-            "g_counter",
-            "--max-hits", "50",
-        ])
+        result = main(
+            [
+                "watch",
+                "g_counter",
+                "--max-hits",
+                "50",
+            ]
+        )
 
         assert result == 0
         call_kwargs = mock_cmd.call_args[1]
@@ -203,13 +239,16 @@ class TestMemdumpCLI:
         """Test memdump with hex address."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "memdump",
-            "0x20000000",
-            "1024",
-            "/tmp/memdump.bin",
-            "--chip", "nrf5340",
-        ])
+        result = main(
+            [
+                "memdump",
+                "0x20000000",
+                "1024",
+                "/tmp/memdump.bin",
+                "--chip",
+                "nrf5340",
+            ]
+        )
 
         assert result == 0
         mock_cmd.assert_called_once()
@@ -223,14 +262,18 @@ class TestMemdumpCLI:
         """Test memdump with device and ELF."""
         mock_cmd.return_value = 0
 
-        result = main([
-            "memdump",
-            "0x20000000",
-            "2048",
-            "/tmp/out.bin",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/path/to/app.elf",
-        ])
+        result = main(
+            [
+                "memdump",
+                "0x20000000",
+                "2048",
+                "/tmp/out.bin",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/path/to/app.elf",
+            ]
+        )
 
         assert result == 0
         call_kwargs = mock_cmd.call_args[1]
@@ -259,12 +302,17 @@ class TestJSONModeFlag:
     def test_json_flag_threads(self, mock_inspect):
         """--json flag should enable JSON mode for threads snapshot."""
         mock_inspect.return_value = []
-        result = main([
-            "--json",
-            "threads", "snapshot",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/tmp/zephyr.elf",
-        ])
+        result = main(
+            [
+                "--json",
+                "threads",
+                "snapshot",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/tmp/zephyr.elf",
+            ]
+        )
         assert result == 0
 
     @patch("eab.cli.cmd_watch")
@@ -293,7 +341,7 @@ class TestBaseDirResolution:
         mock_cmd.return_value = 0
 
         main(["gdb-script", "/script.py"])
-        
+
         call_kwargs = mock_cmd.call_args[1]
         assert call_kwargs["base_dir"] == "/custom/base/dir"
 
@@ -305,6 +353,6 @@ class TestBaseDirResolution:
         mock_cmd.return_value = 0
 
         main(["inspect", "_kernel"])
-        
+
         call_kwargs = mock_cmd.call_args[1]
         assert call_kwargs["base_dir"] == "/custom/base/dir"

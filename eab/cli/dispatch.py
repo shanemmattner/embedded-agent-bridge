@@ -5,8 +5,8 @@ from __future__ import annotations
 import sys
 from typing import Optional
 
-from eab.cli.parser import _build_parser, _preprocess_argv
 from eab.cli.helpers import _print
+from eab.cli.parser import _build_parser, _preprocess_argv
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -50,16 +50,24 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.cmd == "status":
         return cli.cmd_status(base_dir=base_dir, json_mode=args.json)
     if args.cmd == "tail":
-        lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 50)
+        lines = (
+            args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 50)
+        )
         return cli.cmd_tail(base_dir=base_dir, lines=lines, json_mode=args.json)
     if args.cmd == "alerts":
-        lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 20)
+        lines = (
+            args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 20)
+        )
         return cli.cmd_alerts(base_dir=base_dir, lines=lines, json_mode=args.json)
     if args.cmd == "resets":
-        lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 10)
+        lines = (
+            args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 10)
+        )
         return cli.cmd_resets(base_dir=base_dir, lines=lines, json_mode=args.json)
     if args.cmd == "events":
-        lines = args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 50)
+        lines = (
+            args.lines_flag if args.lines_flag is not None else (args.lines_pos if args.lines_pos is not None else 50)
+        )
         return cli.cmd_events(base_dir=base_dir, lines=lines, json_mode=args.json)
     if args.cmd == "send":
         return cli.cmd_send(
@@ -71,7 +79,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
     if args.cmd == "wait":
-        return cli.cmd_wait(base_dir=base_dir, pattern=args.pattern, timeout_s=args.timeout, scan_all=args.scan_all, scan_from=args.scan_from, json_mode=args.json)
+        return cli.cmd_wait(
+            base_dir=base_dir,
+            pattern=args.pattern,
+            timeout_s=args.timeout,
+            scan_all=args.scan_all,
+            scan_from=args.scan_from,
+            json_mode=args.json,
+        )
     if args.cmd == "wait-event":
         return cli.cmd_wait_event(
             base_dir=base_dir,
@@ -193,6 +208,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     if args.cmd == "threads":
         from eab.cli.threads import cmd_threads_snapshot, cmd_threads_watch
+
         if args.threads_action == "snapshot":
             return cmd_threads_snapshot(
                 device=args.device,
@@ -327,7 +343,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             reset_after=getattr(args, "reset_after", True),
             net_firmware=getattr(args, "net_firmware", None),
             no_stub=args.no_stub,
-            extra_esptool_args=getattr(args, 'extra_esptool_args', []),
+            extra_esptool_args=getattr(args, "extra_esptool_args", []),
             json_mode=args.json,
         )
     if args.cmd == "erase":
@@ -462,6 +478,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.cmd == "reg-read":
         from eab.cli.c2000 import cmd_reg_read
+
         return cmd_reg_read(
             chip=args.chip,
             register=args.register,
@@ -471,12 +488,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     if args.cmd == "erad-status":
         from eab.cli.c2000 import cmd_erad_status
+
         return cmd_erad_status(
             chip=args.chip,
             json_mode=args.json,
         )
     if args.cmd == "stream-vars":
         from eab.cli.c2000 import cmd_stream_vars
+
         if not args.var_specs:
             _print({"error": "Specify --var name:address:type"}, json_mode=args.json)
             return 2
@@ -490,6 +509,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     if args.cmd == "dlog-capture":
         from eab.cli.c2000 import cmd_dlog_capture
+
         if not args.buffer_specs:
             _print({"error": "Specify --buffer name:address"}, json_mode=args.json)
             return 2
@@ -504,6 +524,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     if args.cmd == "c2000-trace-export":
         from eab.cli.c2000 import cmd_c2000_trace_export
+
         return cmd_c2000_trace_export(
             output_file=args.output,
             erad_data=args.erad_data,
@@ -515,6 +536,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.cmd == "multi":
         from eab.cli.multi_cmd import cmd_multi
+
         return cmd_multi(
             command_args=args.multi_cmd,
             timeout=args.timeout,
@@ -522,6 +544,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     if args.cmd == "size":
         from eab.cli.size_cmd import cmd_size
+
         return cmd_size(
             elf=args.elf,
             compare_elf=args.compare,
@@ -530,15 +553,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.cmd == "defmt":
         if args.defmt_action == "decode":
             from eab.cli.defmt_cmd import cmd_defmt_decode
+
             return cmd_defmt_decode(
                 elf=args.elf,
                 input_file=args.input_file,
-                base_dir=base_dir if getattr(args, 'from_rtt', False) else None,
+                base_dir=base_dir if getattr(args, "from_rtt", False) else None,
                 json_mode=args.json,
             )
 
     if args.cmd == "usb-reset":
         from eab.cli.usb_reset import cmd_usb_reset
+
         return cmd_usb_reset(
             vid=args.vid,
             pid=args.pid,
@@ -549,8 +574,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.cmd == "dwt":
         from eab.cli.dwt import (
-            cmd_dwt_watch, cmd_dwt_halt, cmd_dwt_list, cmd_dwt_clear,
+            cmd_dwt_clear,
+            cmd_dwt_halt,
+            cmd_dwt_list,
+            cmd_dwt_watch,
         )
+
         if args.dwt_action == "watch":
             return cmd_dwt_watch(
                 symbol=args.symbol,
@@ -595,6 +624,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.cmd == "mcp-server":
         from eab.cli.mcp_cmd import cmd_mcp_server
+
         return cmd_mcp_server(base_dir=base_dir, json_mode=args.json)
 
     if args.cmd == "debug-monitor":
@@ -627,6 +657,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.cmd == "regression":
         from eab.cli.regression import cmd_regression
+
         return cmd_regression(
             suite=args.suite,
             test=args.test,
@@ -637,9 +668,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.cmd == "anomaly":
         from eab.cli.anomaly_cmds import (
-            cmd_anomaly_record, cmd_anomaly_compare, cmd_anomaly_watch,
             _parse_sigma_threshold,
+            cmd_anomaly_compare,
+            cmd_anomaly_record,
+            cmd_anomaly_watch,
         )
+
         if args.anomaly_action == "record":
             return cmd_anomaly_record(
                 base_dir=base_dir,

@@ -77,7 +77,7 @@ def _generate_thread_script() -> str:
     Returns:
         Multi-line string containing the GDB Python script.
     """
-    return r'''
+    return r"""
 import gdb
 import json
 
@@ -147,7 +147,7 @@ except Exception as exc:
 
 with open(result_file, "w") as f:
     json.dump(result, f)
-'''
+"""
 
 
 def inspect_threads(
@@ -184,9 +184,7 @@ def inspect_threads(
     """
     script_body = _generate_thread_script()
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", delete=False, prefix="eab_thread_"
-    ) as tmp:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, prefix="eab_thread_") as tmp:
         tmp.write(script_body)
         script_path = tmp.name
 

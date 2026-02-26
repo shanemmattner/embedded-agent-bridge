@@ -44,15 +44,9 @@ def cmd_threads_snapshot(
 
 def _print_thread_table(threads: list) -> None:
     """Print threads as a fixed-width human-readable table."""
-    header = (
-        f"{'Name':<24} {'State':<12} {'Priority':>8} "
-        f"{'Stack Used':>10} {'Stack Size':>10} {'Stack Free':>10}"
-    )
+    header = f"{'Name':<24} {'State':<12} {'Priority':>8} {'Stack Used':>10} {'Stack Size':>10} {'Stack Free':>10}"
     separator = "-" * len(header)
     print(header)
     print(separator)
     for t in threads:
-        print(
-            f"{t.name:<24} {t.state:<12} {t.priority:>8} "
-            f"{t.stack_used:>10} {t.stack_size:>10} {t.stack_free:>10}"
-        )
+        print(f"{t.name:<24} {t.state:<12} {t.priority:>8} {t.stack_used:>10} {t.stack_size:>10} {t.stack_free:>10}")

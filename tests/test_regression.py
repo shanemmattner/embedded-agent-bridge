@@ -12,18 +12,26 @@ import pytest
 import yaml
 
 from eab.cli.regression.models import (
-    StepSpec, TestSpec, StepResult, SuiteResult,
+    StepResult,
+    StepSpec,
+    SuiteResult,
+    TestSpec,
 )
 from eab.cli.regression.runner import (
-    cmd_regression, discover_tests, parse_test, run_test, run_suite, _parse_steps,
+    _parse_steps,
+    cmd_regression,
+    discover_tests,
+    parse_test,
+    run_suite,
+    run_test,
 )
-from eab.cli.regression.steps import run_step, _run_eabctl
+from eab.cli.regression.steps import _run_eabctl, run_step
 from eab.thread_inspector import ThreadInfo
-
 
 # ---------------------------------------------------------------------------
 # Model tests
 # ---------------------------------------------------------------------------
+
 
 class TestModels:
     def test_step_spec_defaults(self):
@@ -44,8 +52,7 @@ class TestModels:
         assert r.results == []
 
     def test_step_result_serializable(self):
-        r = StepResult(step_type="wait", params={"pattern": "OK"},
-                       passed=True, duration_ms=100)
+        r = StepResult(step_type="wait", params={"pattern": "OK"}, passed=True, duration_ms=100)
         d = asdict(r)
         assert d["step_type"] == "wait"
         assert d["passed"] is True
@@ -55,6 +62,7 @@ class TestModels:
 # ---------------------------------------------------------------------------
 # YAML parsing
 # ---------------------------------------------------------------------------
+
 
 class TestParsing:
     def _write_yaml(self, tmpdir, name, data):
@@ -119,6 +127,7 @@ class TestParsing:
 # Discovery
 # ---------------------------------------------------------------------------
 
+
 class TestDiscovery:
     def test_discover_finds_yaml(self, tmp_path):
         (tmp_path / "a.yaml").write_text("name: a\nsteps: []")
@@ -148,9 +157,13 @@ class TestDiscovery:
 # Step execution (mocked subprocess)
 # ---------------------------------------------------------------------------
 
+
 def _mock_completed(stdout='{"ok": true}', returncode=0):
     return subprocess.CompletedProcess(
-        args=[], returncode=returncode, stdout=stdout, stderr="",
+        args=[],
+        returncode=returncode,
+        stdout=stdout,
+        stderr="",
     )
 
 
@@ -170,7 +183,8 @@ class TestStepExecution:
     @patch("eab.cli.regression.steps.subprocess.run")
     def test_run_wait_failure(self, mock_run):
         mock_run.return_value = _mock_completed(
-            stdout='{"error": "timeout"}', returncode=1,
+            stdout='{"error": "timeout"}',
+            returncode=1,
         )
         step = StepSpec(step_type="wait", params={"pattern": "Never", "timeout": 1})
         result = run_step(step)
@@ -180,9 +194,13 @@ class TestStepExecution:
     @patch("eab.cli.regression.steps.subprocess.run")
     def test_run_flash(self, mock_run):
         mock_run.return_value = _mock_completed()
-        step = StepSpec(step_type="flash", params={
-            "firmware": "samples/hello", "runner": "jlink",
-        })
+        step = StepSpec(
+            step_type="flash",
+            params={
+                "firmware": "samples/hello",
+                "runner": "jlink",
+            },
+        )
         result = run_step(step, chip="nrf5340")
         assert result.passed is True
         cmd = mock_run.call_args[0][0]
@@ -238,13 +256,16 @@ class TestStepExecution:
         mock_run.return_value = _mock_completed(
             stdout=json.dumps({"variables": {"error_count": 0, "heap_free": 2048}}),
         )
-        step = StepSpec(step_type="read_vars", params={
-            "elf": "build/zephyr/zephyr.elf",
-            "vars": [
-                {"name": "error_count", "expect_eq": 0},
-                {"name": "heap_free", "expect_gt": 1024},
-            ],
-        })
+        step = StepSpec(
+            step_type="read_vars",
+            params={
+                "elf": "build/zephyr/zephyr.elf",
+                "vars": [
+                    {"name": "error_count", "expect_eq": 0},
+                    {"name": "heap_free", "expect_gt": 1024},
+                ],
+            },
+        )
         result = run_step(step, device="nrf5340")
         assert result.passed is True
 
@@ -253,10 +274,13 @@ class TestStepExecution:
         mock_run.return_value = _mock_completed(
             stdout=json.dumps({"variables": {"error_count": 5}}),
         )
-        step = StepSpec(step_type="read_vars", params={
-            "elf": "build/zephyr/zephyr.elf",
-            "vars": [{"name": "error_count", "expect_eq": 0}],
-        })
+        step = StepSpec(
+            step_type="read_vars",
+            params={
+                "elf": "build/zephyr/zephyr.elf",
+                "vars": [{"name": "error_count", "expect_eq": 0}],
+            },
+        )
         result = run_step(step)
         assert result.passed is False
         assert "expected 0" in result.error
@@ -266,10 +290,13 @@ class TestStepExecution:
         mock_run.return_value = _mock_completed(
             stdout=json.dumps({"fault_detected": False}),
         )
-        step = StepSpec(step_type="fault_check", params={
-            "elf": "build/zephyr/zephyr.elf",
-            "expect_clean": True,
-        })
+        step = StepSpec(
+            step_type="fault_check",
+            params={
+                "elf": "build/zephyr/zephyr.elf",
+                "expect_clean": True,
+            },
+        )
         result = run_step(step)
         assert result.passed is True
 
@@ -278,9 +305,12 @@ class TestStepExecution:
         mock_run.return_value = _mock_completed(
             stdout=json.dumps({"fault_detected": True}),
         )
-        step = StepSpec(step_type="fault_check", params={
-            "expect_clean": True,
-        })
+        step = StepSpec(
+            step_type="fault_check",
+            params={
+                "expect_clean": True,
+            },
+        )
         result = run_step(step)
         assert result.passed is False
         assert "Fault detected" in result.error
@@ -299,11 +329,14 @@ class TestStepExecution:
             ThreadInfo(name="main", stack_free=512),
             ThreadInfo(name="idle", stack_free=256),
         ]
-        step = StepSpec(step_type="stack_headroom_assert", params={
-            "min_free_bytes": 128,
-            "elf": "build/app.elf",
-            "device": "dev0",
-        })
+        step = StepSpec(
+            step_type="stack_headroom_assert",
+            params={
+                "min_free_bytes": 128,
+                "elf": "build/app.elf",
+                "device": "dev0",
+            },
+        )
         result = run_step(step)
         assert result.passed is True
 
@@ -313,11 +346,14 @@ class TestStepExecution:
             ThreadInfo(name="main", stack_free=512),
             ThreadInfo(name="sensor_task", stack_free=64),
         ]
-        step = StepSpec(step_type="stack_headroom_assert", params={
-            "min_free_bytes": 128,
-            "elf": "build/app.elf",
-            "device": "dev0",
-        })
+        step = StepSpec(
+            step_type="stack_headroom_assert",
+            params={
+                "min_free_bytes": 128,
+                "elf": "build/app.elf",
+                "device": "dev0",
+            },
+        )
         result = run_step(step)
         assert result.passed is False
         assert "sensor_task" in result.error
@@ -327,11 +363,14 @@ class TestStepExecution:
     @patch("eab.cli.regression.steps.inspect_threads")
     def test_stack_headroom_assert_inspect_error(self, mock_inspect):
         mock_inspect.side_effect = RuntimeError("connection failed")
-        step = StepSpec(step_type="stack_headroom_assert", params={
-            "min_free_bytes": 128,
-            "elf": "build/app.elf",
-            "device": "dev0",
-        })
+        step = StepSpec(
+            step_type="stack_headroom_assert",
+            params={
+                "min_free_bytes": 128,
+                "elf": "build/app.elf",
+                "device": "dev0",
+            },
+        )
         result = run_step(step)
         assert result.passed is False
         assert "connection failed" in result.error
@@ -339,9 +378,14 @@ class TestStepExecution:
     @patch("eab.cli.regression.steps.subprocess.run")
     def test_run_wait_event(self, mock_run):
         mock_run.return_value = _mock_completed()
-        step = StepSpec(step_type="wait_event", params={
-            "event_type": "command_result", "contains": "OK", "timeout": 5,
-        })
+        step = StepSpec(
+            step_type="wait_event",
+            params={
+                "event_type": "command_result",
+                "contains": "OK",
+                "timeout": 5,
+            },
+        )
         result = run_step(step)
         assert result.passed is True
         cmd = mock_run.call_args[0][0]
@@ -353,14 +397,19 @@ class TestStepExecution:
 # Test runner (mocked steps)
 # ---------------------------------------------------------------------------
 
+
 class TestRunner:
     @patch("eab.cli.regression.runner.run_step")
     def test_run_test_all_pass(self, mock_step):
         mock_step.return_value = StepResult(
-            step_type="wait", params={}, passed=True, duration_ms=10,
+            step_type="wait",
+            params={},
+            passed=True,
+            duration_ms=10,
         )
         spec = TestSpec(
-            name="ok", file="ok.yaml",
+            name="ok",
+            file="ok.yaml",
             steps=[StepSpec("wait", {"pattern": "OK"})],
         )
         result = run_test(spec)
@@ -370,11 +419,15 @@ class TestRunner:
     @patch("eab.cli.regression.runner.run_step")
     def test_run_test_setup_failure_skips_steps(self, mock_step):
         mock_step.return_value = StepResult(
-            step_type="flash", params={}, passed=False, duration_ms=10,
+            step_type="flash",
+            params={},
+            passed=False,
+            duration_ms=10,
             error="flash failed",
         )
         spec = TestSpec(
-            name="fail", file="fail.yaml",
+            name="fail",
+            file="fail.yaml",
             setup=[StepSpec("flash", {"firmware": "app"})],
             steps=[StepSpec("wait", {"pattern": "OK"})],
             teardown=[StepSpec("reset", {})],
@@ -388,17 +441,18 @@ class TestRunner:
     @patch("eab.cli.regression.runner.run_step")
     def test_run_test_step_failure_stops(self, mock_step):
         call_count = [0]
+
         def side_effect(step, **kwargs):
             call_count[0] += 1
             if step.step_type == "wait" and step.params.get("pattern") == "fail":
-                return StepResult(step_type="wait", params=step.params,
-                                  passed=False, duration_ms=10, error="not found")
-            return StepResult(step_type=step.step_type, params=step.params,
-                              passed=True, duration_ms=10)
+                return StepResult(step_type="wait", params=step.params, passed=False, duration_ms=10, error="not found")
+            return StepResult(step_type=step.step_type, params=step.params, passed=True, duration_ms=10)
+
         mock_step.side_effect = side_effect
 
         spec = TestSpec(
-            name="partial", file="partial.yaml",
+            name="partial",
+            file="partial.yaml",
             steps=[
                 StepSpec("wait", {"pattern": "OK"}),
                 StepSpec("wait", {"pattern": "fail"}),
@@ -413,17 +467,18 @@ class TestRunner:
     @patch("eab.cli.regression.runner.run_step")
     def test_teardown_always_runs(self, mock_step):
         call_count = [0]
+
         def side_effect(step, **kwargs):
             call_count[0] += 1
             if step.step_type == "wait":
-                return StepResult(step_type="wait", params={},
-                                  passed=False, duration_ms=10, error="fail")
-            return StepResult(step_type=step.step_type, params={},
-                              passed=True, duration_ms=10)
+                return StepResult(step_type="wait", params={}, passed=False, duration_ms=10, error="fail")
+            return StepResult(step_type=step.step_type, params={}, passed=True, duration_ms=10)
+
         mock_step.side_effect = side_effect
 
         spec = TestSpec(
-            name="td", file="td.yaml",
+            name="td",
+            file="td.yaml",
             steps=[StepSpec("wait", {"pattern": "X"})],
             teardown=[StepSpec("reset", {}), StepSpec("reset", {})],
         )
@@ -436,6 +491,7 @@ class TestRunner:
 # ---------------------------------------------------------------------------
 # Suite runner
 # ---------------------------------------------------------------------------
+
 
 class TestSuiteRunner:
     def test_suite_with_tests(self, tmp_path):
@@ -474,6 +530,7 @@ class TestSuiteRunner:
 # cmd_regression entry point
 # ---------------------------------------------------------------------------
 
+
 class TestCmdRegression:
     def test_no_args_returns_2(self, capsys):
         rc = cmd_regression(json_mode=True)
@@ -493,7 +550,11 @@ class TestCmdRegression:
     @patch("eab.cli.regression.runner.run_step")
     def test_suite_failure_returns_1(self, mock_step, tmp_path, capsys):
         mock_step.return_value = StepResult(
-            step_type="wait", params={}, passed=False, duration_ms=0, error="nope",
+            step_type="wait",
+            params={},
+            passed=False,
+            duration_ms=0,
+            error="nope",
         )
         data = {"name": "Fail", "steps": [{"wait": {"pattern": "X"}}]}
         (tmp_path / "fail.yaml").write_text(yaml.dump(data))

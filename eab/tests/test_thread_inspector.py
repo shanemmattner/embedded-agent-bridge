@@ -69,8 +69,13 @@ class TestThreadInfo:
         )
         d = t.to_dict()
         assert set(d.keys()) == {
-            "name", "state", "priority", "stack_base",
-            "stack_size", "stack_used", "stack_free",
+            "name",
+            "state",
+            "priority",
+            "stack_base",
+            "stack_size",
+            "stack_used",
+            "stack_free",
         }
 
     def test_to_dict_values(self):
@@ -94,6 +99,7 @@ class TestThreadInfo:
 
     def test_to_dict_json_serializable(self):
         import json
+
         t = ThreadInfo(
             name="test",
             state="READY",
@@ -272,25 +278,19 @@ class TestInspectThreads:
 
     @patch("eab.thread_inspector.run_gdb_python")
     def test_raises_runtime_error_on_gdb_error_status(self, mock_run):
-        mock_run.return_value = self._make_mock_result(
-            {"status": "error", "error": "symbol not found: _kernel"}
-        )
+        mock_run.return_value = self._make_mock_result({"status": "error", "error": "symbol not found: _kernel"})
         with pytest.raises(RuntimeError, match="symbol not found"):
             inspect_threads("localhost:3333", "/path/to/app.elf")
 
     @patch("eab.thread_inspector.run_gdb_python")
     def test_empty_thread_list(self, mock_run):
-        mock_run.return_value = self._make_mock_result(
-            {"status": "ok", "threads": []}
-        )
+        mock_run.return_value = self._make_mock_result({"status": "ok", "threads": []})
         result = inspect_threads("localhost:3333", "/path/to/app.elf")
         assert result == []
 
     @patch("eab.thread_inspector.run_gdb_python")
     def test_gdb_bridge_called_with_correct_args(self, mock_run):
-        mock_run.return_value = self._make_mock_result(
-            {"status": "ok", "threads": []}
-        )
+        mock_run.return_value = self._make_mock_result({"status": "ok", "threads": []})
         inspect_threads("localhost:3333", "/firmware/app.elf")
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args.kwargs

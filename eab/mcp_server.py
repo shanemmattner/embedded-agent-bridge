@@ -35,6 +35,7 @@ try:
         TextContent,
         Tool,
     )
+
     _MCP_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _MCP_AVAILABLE = False
@@ -52,10 +53,7 @@ except ImportError:  # pragma: no cover
 _BASE_DIR_PROP: dict[str, Any] = {
     "base_dir": {
         "type": "string",
-        "description": (
-            "Session directory for the target device "
-            "(default: /tmp/eab-devices/<device>/)."
-        ),
+        "description": ("Session directory for the target device (default: /tmp/eab-devices/<device>/)."),
     }
 }
 
@@ -80,16 +78,13 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "eab_status",
         "description": (
-            "Return the EAB daemon status for a device: running, PID, "
-            "port, uptime, and last-seen timestamp."
+            "Return the EAB daemon status for a device: running, PID, port, uptime, and last-seen timestamp."
         ),
         "inputSchema": _schema({**_BASE_DIR_PROP, **_JSON_MODE_PROP}),
     },
     {
         "name": "eab_tail",
-        "description": (
-            "Return the last N lines of the device serial log (latest.log)."
-        ),
+        "description": ("Return the last N lines of the device serial log (latest.log)."),
         "inputSchema": _schema(
             {
                 **_BASE_DIR_PROP,
@@ -136,9 +131,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "eab_send",
-        "description": (
-            "Send a text command to the embedded device via the EAB daemon."
-        ),
+        "description": ("Send a text command to the embedded device via the EAB daemon."),
         "inputSchema": _schema(
             {
                 **_BASE_DIR_PROP,
@@ -169,8 +162,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "eab_reset",
         "description": (
-            "Hardware-reset the embedded device.  Requires --chip to be "
-            "specified (e.g., esp32s3, stm32l4)."
+            "Hardware-reset the embedded device.  Requires --chip to be specified (e.g., esp32s3, stm32l4)."
         ),
         "inputSchema": _schema(
             {
@@ -196,8 +188,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "eab_fault_analyze",
         "description": (
-            "Analyze Cortex-M fault registers via a debug probe and return "
-            "a human-readable fault summary."
+            "Analyze Cortex-M fault registers via a debug probe and return a human-readable fault summary."
         ),
         "inputSchema": _schema(
             {
@@ -232,9 +223,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "eab_rtt_tail",
-        "description": (
-            "Return the last N lines of the J-Link RTT log (rtt.log)."
-        ),
+        "description": ("Return the last N lines of the J-Link RTT log (rtt.log)."),
         "inputSchema": _schema(
             {
                 **_BASE_DIR_PROP,
@@ -249,9 +238,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "eab_regression",
-        "description": (
-            "Run hardware-in-the-loop regression tests from a YAML test suite."
-        ),
+        "description": ("Run hardware-in-the-loop regression tests from a YAML test suite."),
         "inputSchema": _schema(
             {
                 "suite": {
@@ -302,9 +289,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 # Tool handler helpers
 # ---------------------------------------------------------------------------
 
+
 def _import_cli() -> Any:
     """Lazy import of eab.cli to allow monkeypatching in tests."""
     import eab.cli as cli  # noqa: PLC0415
+
     return cli
 
 
@@ -338,6 +327,7 @@ def _capture_cmd(func: Any, *args: Any, **kwargs: Any) -> str:
 # ---------------------------------------------------------------------------
 # Tool dispatch
 # ---------------------------------------------------------------------------
+
 
 async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
     """Dispatch an MCP tool call to the corresponding cmd_* function.
@@ -415,6 +405,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
 
     if name == "eab_regression":
         from eab.cli.regression import cmd_regression  # noqa: PLC0415
+
         return _capture_cmd(
             cmd_regression,
             suite=arguments.get("suite"),
@@ -426,6 +417,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
 
     if name == "get_thread_state":
         from eab.thread_inspector import inspect_threads  # noqa: PLC0415
+
         threads = inspect_threads(arguments["device"], arguments["elf_path"])
         return json.dumps({"threads": [t.to_dict() for t in threads]})
 
@@ -435,6 +427,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # MCP server entry point
 # ---------------------------------------------------------------------------
+
 
 async def run_mcp_server() -> None:
     """Run the EAB MCP server over stdio transport.

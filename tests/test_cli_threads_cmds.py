@@ -48,11 +48,16 @@ class TestParserThreadsSubcommand:
         from eab.cli.parser import _build_parser
 
         p = _build_parser()
-        args = p.parse_args([
-            "threads", "snapshot",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/tmp/zephyr.elf",
-        ])
+        args = p.parse_args(
+            [
+                "threads",
+                "snapshot",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/tmp/zephyr.elf",
+            ]
+        )
         assert args.cmd == "threads"
         assert args.threads_action == "snapshot"
         assert args.device == "NRF5340_XXAA_APP"
@@ -62,11 +67,16 @@ class TestParserThreadsSubcommand:
         from eab.cli.parser import _build_parser
 
         p = _build_parser()
-        args = p.parse_args([
-            "threads", "watch",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/tmp/zephyr.elf",
-        ])
+        args = p.parse_args(
+            [
+                "threads",
+                "watch",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/tmp/zephyr.elf",
+            ]
+        )
         assert args.cmd == "threads"
         assert args.threads_action == "watch"
         assert args.device == "NRF5340_XXAA_APP"
@@ -77,12 +87,18 @@ class TestParserThreadsSubcommand:
         from eab.cli.parser import _build_parser
 
         p = _build_parser()
-        args = p.parse_args([
-            "threads", "watch",
-            "--device", "NRF5340_XXAA_APP",
-            "--elf", "/tmp/zephyr.elf",
-            "--interval", "10",
-        ])
+        args = p.parse_args(
+            [
+                "threads",
+                "watch",
+                "--device",
+                "NRF5340_XXAA_APP",
+                "--elf",
+                "/tmp/zephyr.elf",
+                "--interval",
+                "10",
+            ]
+        )
         assert args.interval == pytest.approx(10.0)
 
     def test_snapshot_missing_device_fails(self):

@@ -44,7 +44,6 @@ except ImportError:
     _pylink = None  # type: ignore
 
 # noqa: E402 — internal imports follow conditional optional-dep blocks above
-from eab.cli.dwt._helpers import _open_jlink, _resolve_symbol  # noqa: E402
 from eab.dwt_watchpoint import (  # noqa: E402
     Comparator,
     ComparatorAllocator,
@@ -420,6 +419,9 @@ def run_dwt_explain(
         ValueError: If ``elf_path`` does not exist, ``device`` is ``None``,
             or any symbol is not found in the ELF.
     """
+    # Lazy import to avoid circular dependency via eab.cli.dwt.__init__
+    from eab.cli.dwt._helpers import _open_jlink, _resolve_symbol  # noqa: PLC0415
+
     if not os.path.isfile(elf_path):
         raise ValueError(f"ELF file not found: {elf_path!r}")
 

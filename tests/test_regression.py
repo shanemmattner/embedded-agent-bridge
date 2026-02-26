@@ -18,6 +18,7 @@ from eab.cli.regression.runner import (
     cmd_regression, discover_tests, parse_test, run_test, run_suite, _parse_steps,
 )
 from eab.cli.regression.steps import run_step, _run_eabctl
+from eab.thread_inspector import ThreadInfo
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +292,49 @@ class TestStepExecution:
         result = run_step(step)
         assert result.passed is True
         assert result.step_type == "assert_log"
+
+    @patch("eab.cli.regression.steps.inspect_threads")
+    def test_stack_headroom_assert_pass(self, mock_inspect):
+        mock_inspect.return_value = [
+            ThreadInfo(name="main", stack_free=512),
+            ThreadInfo(name="idle", stack_free=256),
+        ]
+        step = StepSpec(step_type="stack_headroom_assert", params={
+            "min_free_bytes": 128,
+            "elf": "build/app.elf",
+            "device": "dev0",
+        })
+        result = run_step(step)
+        assert result.passed is True
+
+    @patch("eab.cli.regression.steps.inspect_threads")
+    def test_stack_headroom_assert_fail(self, mock_inspect):
+        mock_inspect.return_value = [
+            ThreadInfo(name="main", stack_free=512),
+            ThreadInfo(name="sensor_task", stack_free=64),
+        ]
+        step = StepSpec(step_type="stack_headroom_assert", params={
+            "min_free_bytes": 128,
+            "elf": "build/app.elf",
+            "device": "dev0",
+        })
+        result = run_step(step)
+        assert result.passed is False
+        assert "sensor_task" in result.error
+        assert "stack_free=64" in result.error
+        assert "min_free_bytes=128" in result.error
+
+    @patch("eab.cli.regression.steps.inspect_threads")
+    def test_stack_headroom_assert_inspect_error(self, mock_inspect):
+        mock_inspect.side_effect = RuntimeError("connection failed")
+        step = StepSpec(step_type="stack_headroom_assert", params={
+            "min_free_bytes": 128,
+            "elf": "build/app.elf",
+            "device": "dev0",
+        })
+        result = run_step(step)
+        assert result.passed is False
+        assert "connection failed" in result.error
 
     @patch("eab.cli.regression.steps.subprocess.run")
     def test_run_wait_event(self, mock_run):

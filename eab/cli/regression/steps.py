@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 from eab.cli.regression.models import StepResult, StepSpec
 from eab.cli.usb_reset import reset_usb_device
+from eab.thread_inspector import inspect_threads
 
 
 def _graceful_kill(proc: subprocess.Popen, timeout: int = 5, usb_delay: float = 2.0):
@@ -653,6 +654,49 @@ def _run_anomaly_watch(
     )
 
 
+def _run_stack_headroom_assert(
+    step: StepSpec, *,
+    device: Optional[str],
+    chip: Optional[str],
+    timeout: int,
+    **_kw: Any,
+) -> StepResult:
+    t0 = time.monotonic()
+    p = step.params
+    min_free_bytes = int(p.get("min_free_bytes", 0))
+    step_device = p.get("device") or device
+    elf = p.get("elf", "")
+
+    try:
+        threads = inspect_threads(step_device, elf)
+    except RuntimeError as exc:
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            step_type="stack_headroom_assert", params=step.params,
+            passed=False, duration_ms=ms,
+            error=str(exc),
+        )
+
+    offenders = [t for t in threads if t.stack_free < min_free_bytes]
+    ms = int((time.monotonic() - t0) * 1000)
+
+    if offenders:
+        parts = [
+            f"thread '{t.name}' has stack_free={t.stack_free} < min_free_bytes={min_free_bytes}"
+            for t in offenders
+        ]
+        return StepResult(
+            step_type="stack_headroom_assert", params=step.params,
+            passed=False, duration_ms=ms,
+            error="; ".join(parts),
+        )
+
+    return StepResult(
+        step_type="stack_headroom_assert", params=step.params,
+        passed=True, duration_ms=ms,
+    )
+
+
 from eab.cli.regression.trace_steps import (
     _run_trace_start, _run_trace_stop, _run_trace_export, _run_trace_validate,
 )
@@ -676,6 +720,7 @@ _STEP_DISPATCH = {
     "trace_export": _run_trace_export,
     "trace_validate": _run_trace_validate,
     "anomaly_watch": _run_anomaly_watch,
+    "stack_headroom_assert": _run_stack_headroom_assert,
 }
 
 # Register BLE step executors — late import to avoid circular dependency

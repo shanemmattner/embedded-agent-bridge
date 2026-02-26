@@ -564,48 +564,42 @@ class TestGDBCommandEntryPoints:
         assert exc_info.value.code == 0
 
     def test_threads_argument_routing(self):
-        """threads should route all arguments to cmd_threads correctly."""
+        """threads snapshot should route device and elf arguments correctly."""
         from unittest.mock import patch
         from eab.control import main
-        
-        with patch("eab.cli.cmd_threads") as mock_cmd:
-            mock_cmd.return_value = 0
-            
+
+        with patch("eab.thread_inspector.inspect_threads") as mock_inspect:
+            mock_inspect.return_value = []
+
             main([
-                "threads",
+                "--json",
+                "threads", "snapshot",
                 "--device", "MCXN947",
                 "--elf", "/path/to/mcxn.elf",
-                "--chip", "mcxn947",
-                "--rtos", "zephyr",
-                "--probe", "openocd",
-                "--port", "3333",
-                "--json",
             ])
-            
-            assert mock_cmd.called
-            call_kwargs = mock_cmd.call_args[1]
-            
+
+            assert mock_inspect.called
+            call_kwargs = mock_inspect.call_args[1]
+
             assert call_kwargs["device"] == "MCXN947"
-            assert call_kwargs["elf"] == "/path/to/mcxn.elf"
-            assert call_kwargs["chip"] == "mcxn947"
-            assert call_kwargs["rtos"] == "zephyr"
-            assert call_kwargs["probe_type"] == "openocd"
-            assert call_kwargs["port"] == 3333
-            assert call_kwargs["json_mode"] is True
+            assert call_kwargs["elf_path"] == "/path/to/mcxn.elf"
 
     def test_threads_default_rtos(self):
-        """threads should default to zephyr RTOS."""
+        """threads snapshot subcommand is callable with required args."""
         from unittest.mock import patch
         from eab.control import main
-        
-        with patch("eab.cli.cmd_threads") as mock_cmd:
-            mock_cmd.return_value = 0
-            
-            main(["threads"])
-            
-            assert mock_cmd.called
-            call_kwargs = mock_cmd.call_args[1]
-            assert call_kwargs["rtos"] == "zephyr"
+
+        with patch("eab.thread_inspector.inspect_threads") as mock_inspect:
+            mock_inspect.return_value = []
+
+            result = main([
+                "threads", "snapshot",
+                "--device", "NRF5340_XXAA_APP",
+                "--elf", "/tmp/zephyr.elf",
+            ])
+
+            assert result == 0
+            assert mock_inspect.called
 
     def test_watch_help(self):
         """watch --help should display help without errors."""
@@ -755,7 +749,6 @@ class TestGDBCommandEntryPoints:
         commands_to_test = [
             ("gdb-script", ["gdb-script", "/tmp/test.py"]),
             ("inspect", ["inspect", "var"]),
-            ("threads", ["threads"]),
             ("watch", ["watch", "var"]),
             ("memdump", ["memdump", "0x20000000", "1024", "/tmp/out.bin"]),
         ]
@@ -780,7 +773,6 @@ class TestGDBCommandEntryPoints:
         commands_to_test = [
             ("gdb-script", ["gdb-script", "/tmp/test.py"]),
             ("inspect", ["inspect", "var"]),
-            ("threads", ["threads"]),
             ("watch", ["watch", "var"]),
             ("memdump", ["memdump", "0x20000000", "1024", "/tmp/out.bin"]),
         ]

@@ -220,14 +220,18 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Debug probe type (default: jlink)")
     p_inspect.add_argument("--port", type=int, default=None, help="GDB server port override")
 
-    p_threads = sub.add_parser("threads", help="List RTOS threads via GDB")
-    p_threads.add_argument("--device", default=None, help="Device string for J-Link")
-    p_threads.add_argument("--elf", default=None, help="ELF file for GDB symbols")
-    p_threads.add_argument("--chip", default="nrf5340", help="Chip type for GDB selection")
-    p_threads.add_argument("--rtos", default="zephyr", help="RTOS type (default: zephyr)")
-    p_threads.add_argument("--probe", default="jlink", choices=["jlink", "openocd", "xds110"],
-                        help="Debug probe type (default: jlink)")
-    p_threads.add_argument("--port", type=int, default=None, help="GDB server port override")
+    p_threads = sub.add_parser("threads", help="Thread inspection commands")
+    threads_sub = p_threads.add_subparsers(dest="threads_action", required=True)
+
+    p_threads_snapshot = threads_sub.add_parser("snapshot", help="Inspect threads once and print results")
+    p_threads_snapshot.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_threads_snapshot.add_argument("--elf", required=True, help="Path to ELF file with DWARF debug symbols")
+
+    p_threads_watch = threads_sub.add_parser("watch", help="Poll thread state at a fixed interval")
+    p_threads_watch.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_threads_watch.add_argument("--elf", required=True, help="Path to ELF file with DWARF debug symbols")
+    p_threads_watch.add_argument("--interval", type=float, default=5.0,
+                                 help="Seconds between polls (default: 5)")
 
     p_watch = sub.add_parser("watch", help="Set watchpoint on variable and log hits")
     p_watch.add_argument("variable", help="Variable name to watch (e.g., g_counter)")

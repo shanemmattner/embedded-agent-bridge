@@ -29,6 +29,7 @@ from eab.cli.backtrace_cmds import cmd_decode_backtrace
 from eab.cli.rtt_cmds import cmd_rtt_start, cmd_rtt_stop, cmd_rtt_status, cmd_rtt_reset, cmd_rtt_tail
 from eab.cli.binary_capture_cmds import cmd_rtt_capture_start, cmd_rtt_capture_convert, cmd_rtt_capture_info
 from eab.cli.trace import cmd_trace_start, cmd_trace_stop, cmd_trace_export
+from eab.cli.threads import cmd_threads_snapshot, cmd_threads_watch
 
 # Lazy import: regression depends on PyYAML which may not be installed.
 # Imported in dispatch.py only when the regression command is used.
@@ -97,4 +98,6 @@ __all__ = [
     "cmd_trace_start",
     "cmd_trace_stop",
     "cmd_trace_export",
+    "cmd_threads_snapshot",
+    "cmd_threads_watch",
 ]

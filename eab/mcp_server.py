@@ -17,7 +17,6 @@ If the ``mcp`` package is not installed, importing this module will raise an
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import Any

@@ -25,7 +25,6 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
-
 def _make_mock_mcp_module() -> types.ModuleType:
     """Build a minimal fake ``mcp`` package tree so eab.mcp_server can import."""
     mcp_pkg = types.ModuleType("mcp")
@@ -44,14 +43,12 @@ def _make_mock_mcp_module() -> types.ModuleType:
             def decorator(fn):  # noqa: ANN001
                 self._list_tools_handler = fn
                 return fn
-
             return decorator
 
         def call_tool(self):  # noqa: ANN201
             def decorator(fn):  # noqa: ANN001
                 self._call_tool_handler = fn
                 return fn
-
             return decorator
 
         async def run(self, read_stream, write_stream, opts):  # noqa: ANN001,ANN201
@@ -114,7 +111,6 @@ def _load_mcp_server_module() -> types.ModuleType:
 # Fixtures
 # ---------------------------------------------------------------------------
 
-
 @pytest.fixture()
 def mcp_module():
     """Provides eab.mcp_server loaded with a mocked mcp package."""
@@ -131,7 +127,6 @@ def mcp_module():
 # ---------------------------------------------------------------------------
 # Tests: TOOL_DEFINITIONS
 # ---------------------------------------------------------------------------
-
 
 class TestToolDefinitions:
     def test_tool_definitions_non_empty(self, mcp_module):
@@ -154,24 +149,27 @@ class TestToolDefinitions:
             "eab_fault_analyze",
             "eab_rtt_tail",
             "eab_regression",
-            "capture_snapshot",
+            "dwt_stream_explain",
         }
         assert expected.issubset(names), f"Missing tools: {expected - names}"
 
     def test_schema_type_is_object(self, mcp_module):
         for tool in mcp_module.TOOL_DEFINITIONS:
-            assert tool["inputSchema"]["type"] == "object", f"Tool {tool['name']} schema type is not 'object'"
+            assert tool["inputSchema"]["type"] == "object", (
+                f"Tool {tool['name']} schema type is not 'object'"
+            )
 
     def test_required_fields_are_lists(self, mcp_module):
         for tool in mcp_module.TOOL_DEFINITIONS:
             req = tool["inputSchema"].get("required", [])
-            assert isinstance(req, list), f"Tool {tool['name']} 'required' is not a list"
+            assert isinstance(req, list), (
+                f"Tool {tool['name']} 'required' is not a list"
+            )
 
 
 # ---------------------------------------------------------------------------
 # Tests: _handle_tool dispatch
 # ---------------------------------------------------------------------------
-
 
 class TestHandleTool:
     """Each test verifies _handle_tool calls the correct cmd_* function."""
@@ -259,70 +257,49 @@ class TestHandleTool:
     def test_eab_regression(self, mcp_module):
         mock_fn = MagicMock(return_value=0)
         with patch("eab.cli.regression.cmd_regression", mock_fn):
-            result = self._run(mcp_module._handle_tool("eab_regression", {"suite": "/tests/suite"}))
+            result = self._run(
+                mcp_module._handle_tool("eab_regression", {"suite": "/tests/suite"})
+            )
         data = json.loads(result)
         assert data["return_code"] == 0
         mock_fn.assert_called_once()
         _, kwargs = mock_fn.call_args
         assert kwargs["suite"] == "/tests/suite"
 
-    def test_capture_snapshot(self, mcp_module):
-        mock_region = MagicMock()
-        mock_region.start = 0x20000000
-        mock_region.size = 0x40000
-        mock_result = MagicMock()
-        mock_result.output_path = "/tmp/snap.bin"
-        mock_result.regions = [mock_region]
-        mock_result.registers = {"r0": 0, "pc": 0x12345678}
-        mock_result.total_size = 65536
-
-        mock_fn = MagicMock(return_value=mock_result)
-        with patch("eab.snapshot.capture_snapshot", mock_fn):
+    def test_dwt_stream_explain(self, mcp_module):
+        fake_result = {
+            "events": [],
+            "source_context": "DWT Watchpoint Hit Summary\n========================================\n",
+            "ai_prompt": "You are an expert...",
+            "suggested_watchpoints": ["conn_interval"],
+        }
+        with patch("eab.mcp_server.run_dwt_explain", return_value=fake_result) as mock_fn:
             result = self._run(
                 mcp_module._handle_tool(
-                    "capture_snapshot",
-                    {
-                        "device": "NRF5340_XXAA_APP",
-                        "elf_path": "/fw/app.elf",
-                        "output_path": "/tmp/snap.bin",
-                    },
+                    "dwt_stream_explain",
+                    {"symbols": ["conn_interval"], "duration_s": 5, "elf_path": "/fw.elf"},
                 )
             )
         data = json.loads(result)
-        assert data["path"] == "/tmp/snap.bin"
-        assert "regions" in data
-        assert len(data["regions"]) == 1
-        assert data["regions"][0]["start"] == 0x20000000
-        assert data["regions"][0]["size"] == 0x40000
-        assert "registers" in data
-        assert data["registers"]["pc"] == 0x12345678
-        assert data["size_bytes"] == 65536
+        assert data["suggested_watchpoints"] == ["conn_interval"]
         mock_fn.assert_called_once_with(
-            device="NRF5340_XXAA_APP",
-            elf_path="/fw/app.elf",
-            output_path="/tmp/snap.bin",
+            symbols=["conn_interval"],
+            duration_s=5,
+            elf_path="/fw.elf",
         )
 
-    def test_capture_snapshot_default_output_path(self, mcp_module):
-        mock_region = MagicMock()
-        mock_region.start = 0x20000000
-        mock_region.size = 0x40000
-        mock_result = MagicMock()
-        mock_result.output_path = "snapshot.core"
-        mock_result.regions = [mock_region]
-        mock_result.registers = {"r0": 0}
-        mock_result.total_size = 65536
-
-        mock_fn = MagicMock(return_value=mock_result)
-        with patch("eab.snapshot.capture_snapshot", mock_fn):
-            self._run(
-                mcp_module._handle_tool(
-                    "capture_snapshot",
-                    {"device": "NRF5340_XXAA_APP", "elf_path": "/fw/app.elf"},
+    def test_dwt_stream_explain_value_error_propagates(self, mcp_module):
+        with patch(
+            "eab.mcp_server.run_dwt_explain",
+            side_effect=ValueError("ELF file not found"),
+        ):
+            with pytest.raises(ValueError, match="ELF file not found"):
+                self._run(
+                    mcp_module._handle_tool(
+                        "dwt_stream_explain",
+                        {"symbols": ["x"], "duration_s": 1, "elf_path": "/missing.elf"},
+                    )
                 )
-            )
-        _, kwargs = mock_fn.call_args
-        assert kwargs["output_path"] == "snapshot.core"
 
     def test_unknown_tool_returns_error(self, mcp_module):
         result = self._run(mcp_module._handle_tool("nonexistent_tool", {}))
@@ -342,7 +319,6 @@ class TestHandleTool:
 # ---------------------------------------------------------------------------
 # Tests: run_mcp_server
 # ---------------------------------------------------------------------------
-
 
 class TestRunMcpServer:
     def test_run_raises_import_error_when_mcp_unavailable(self):
@@ -366,10 +342,10 @@ class TestRunMcpServer:
 
         with patch("builtins.__import__", side_effect=fake_import):
             try:
-                import eab.mcp_server as ms  # noqa: PLC0415, F401
+                import eab.mcp_server as ms  # noqa: PLC0415
             except ImportError:
                 # Module itself failed to import — that's fine for this test
-                pass
+                ms = None
 
         # Restore
         sys.modules.update(saved)
@@ -398,7 +374,6 @@ class TestRunMcpServer:
 # ---------------------------------------------------------------------------
 # Tests: cmd_mcp_server (launcher)
 # ---------------------------------------------------------------------------
-
 
 class TestCmdMcpServer:
     def test_returns_0_on_clean_run(self):
@@ -431,7 +406,6 @@ class TestCmdMcpServer:
 
         # Direct approach: patch the import inside cmd_mcp_server
         import builtins  # noqa: PLC0415
-
         real_import = builtins.__import__
 
         def broken_import(name, *args, **kwargs):  # noqa: ANN001,ANN002,ANN003,ANN201
@@ -452,7 +426,6 @@ class TestCmdMcpServer:
 
     def test_returns_1_on_exception(self):
         from eab.cli.mcp_cmd import cmd_mcp_server  # noqa: PLC0415
-
         # Ensure mcp_server is importable (mocked or real)
         _load_mcp_server_module()
 
@@ -462,7 +435,6 @@ class TestCmdMcpServer:
 
     def test_returns_0_on_keyboard_interrupt(self):
         from eab.cli.mcp_cmd import cmd_mcp_server  # noqa: PLC0415
-
         _load_mcp_server_module()
 
         with patch("eab.cli.mcp_cmd.asyncio.run", side_effect=KeyboardInterrupt()):
@@ -473,7 +445,6 @@ class TestCmdMcpServer:
 # ---------------------------------------------------------------------------
 # Tests: CLI parser
 # ---------------------------------------------------------------------------
-
 
 class TestParser:
     def test_mcp_server_subcommand_registered(self):
@@ -505,7 +476,6 @@ class TestParser:
 # ---------------------------------------------------------------------------
 # Tests: dispatch
 # ---------------------------------------------------------------------------
-
 
 class TestDispatch:
     def test_dispatch_mcp_server(self):

@@ -1,0 +1,12 @@
+{
+  "assignees": [],
+  "body": "## Summary\n\n`eabctl snapshot` command that dumps all RAM regions + registers to a GDB-compatible `.core` ELF file at any time (no crash required). Like `gcore` but for embedded targets.\n\n## What to build\n\n1. New module `eab/snapshot.py`\n   - `capture_snapshot(device, elf_path, output_path) -> SnapshotResult`\n   - Parse ELF LOAD segments to determine which RAM ranges to dump\n   - Read all RAM regions via GDB one-shot commands (reuse `eab/gdb_bridge.py`)\n   - Read all Cortex-M registers (R0-R15, xPSR, MSP, PSP, special regs)\n   - Write standard ELF core file format (GDB `core-file` compatible)\n   - Return `SnapshotResult` with metadata (timestamp, regions dumped, size)\n\n2. New CLI command `eabctl snapshot`\n   - `eabctl snapshot --device NRF5340_XXAA_APP --elf firmware.elf --output snapshot.core --json`\n   - JSON output: `{\"path\": \"snapshot.core\", \"regions\": [...], \"registers\": {...}, \"size_bytes\": N}`\n\n3. New HIL regression step `snapshot`\n   ```yaml\n   steps:\n     - snapshot:\n         output: results/state.core\n         elf: build/zephyr/zephyr.elf\n         trigger: on_fault  # or: manual, on_anomaly\n   ```\n\n4. New MCP tool `capture_snapshot` in `eab/mcp_server.py`\n\n5. Unit tests in `tests/unit/test_snapshot.py`\n   - Mock GDB memory reads and register reads\n   - Verify ELF core file format (parse back with pyelftools)\n   - Test trigger conditions, edge cases (no ELF, GDB failure)\n\n## Existing code to reuse\n\n- `eab/gdb_bridge.py` \u2014 GDB one-shot command execution\n- `eab/fault_analyzer.py` \u2014 register reading patterns\n- `eab/mcp_server.py` \u2014 MCP tool registration\n- `eab/cli/regression/steps.py` \u2014 step dispatch pattern\n\n## Acceptance criteria\n\n- `eabctl snapshot` produces a .core file loadable by `arm-none-eabi-gdb firmware.elf snapshot.core`\n- MCP tool and HIL step work\n- All new tests pass\n- Existing 1403 tests still pass",
+  "comments": [],
+  "createdAt": "2026-02-26T22:28:56Z",
+  "labels": [],
+  "number": 135,
+  "title": "Live Memory Snapshot / Coredump-on-Demand",
+  "updatedAt": "2026-02-26T22:28:56Z",
+  "url": "https://github.com/shanemmattner/embedded-agent-bridge/issues/135",
+  "fetched_at": "2026-02-26T22:29:31.372166+00:00"
+}

@@ -34,6 +34,24 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         metavar="SECONDS",
         help="Default timeout for HIL operations (default: 30).",
     )
+    group.addoption(
+        "--hil-central-device",
+        default=None,
+        metavar="DEVICE",
+        help="EAB device name for BLE central DK (e.g. nrf5340-central).",
+    )
+    group.addoption(
+        "--hil-central-chip",
+        default=None,
+        metavar="CHIP",
+        help="Chip string for the central DK (e.g. NRF5340_XXAA_APP).",
+    )
+    group.addoption(
+        "--hil-central-probe",
+        default=None,
+        metavar="PROBE",
+        help="Probe selector for the central DK (J-Link serial or VID:PID).",
+    )
 
 
 @pytest.fixture(scope="function")

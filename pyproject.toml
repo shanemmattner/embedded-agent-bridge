@@ -32,6 +32,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+anomaly = [
+    "scipy>=1.9",
+    "numpy>=1.22",
+]
 plotter = [
     "websockets>=14",
 ]

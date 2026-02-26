@@ -38,5 +38,6 @@ pytest_runtest_setup = _rtt_setup
 pytest_runtest_makereport = _rtt_makereport
 
 
-# Re-export fixture so pytest discovers it from this module
+# Re-export fixtures so pytest discovers them from this module
 from eab.hil.device_fixture import hil_device  # noqa: F401, E402
+from eab.hil.central_fixture import hil_central  # noqa: F401, E402

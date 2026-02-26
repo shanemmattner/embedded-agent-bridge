@@ -14,13 +14,22 @@ class StepSpec:
 
 
 @dataclass
+class DeviceSpec:
+    """A named device entry in a multi-device YAML config."""
+    device: str                    # EAB device name (directory under /tmp/eab-devices/)
+    chip: Optional[str] = None     # chip string for flash/reset/fault-analyze
+    probe: Optional[str] = None    # probe selector (J-Link serial or VID:PID)
+
+
+@dataclass
 class TestSpec:
     """A complete test parsed from YAML."""
     name: str
     file: str
-    device: Optional[str] = None
-    chip: Optional[str] = None
+    device: Optional[str] = None   # legacy single-device
+    chip: Optional[str] = None     # legacy single-device
     timeout: int = 60
+    devices: dict[str, DeviceSpec] = field(default_factory=dict)  # multi-device map
     setup: list[StepSpec] = field(default_factory=list)
     steps: list[StepSpec] = field(default_factory=list)
     teardown: list[StepSpec] = field(default_factory=list)

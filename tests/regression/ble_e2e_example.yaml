@@ -1,0 +1,88 @@
+# Example multi-device BLE regression test
+# Requires two nRF5340 DKs: one running peripheral firmware, one running
+# the EAB central fixture firmware.
+#
+# Run with:
+#   eabctl regression --test tests/regression/ble_e2e_example.yaml
+#
+name: ble_e2e_notify_and_write
+timeout: 120
+
+# Named device slots. Keys are arbitrary but must match the 'device:' param
+# in individual steps. Legacy single-device tests use top-level 'device:'
+# and 'chip:' unchanged.
+devices:
+  peripheral:
+    device: nrf5340-peripheral        # EAB device name → /tmp/eab-devices/nrf5340-peripheral/
+    chip: NRF5340_XXAA_APP
+    probe: "001050285282"             # J-Link serial of peripheral DK
+  central:
+    device: nrf5340-central
+    chip: NRF5340_XXAA_APP
+    probe: "000683466297"             # J-Link serial of central DK
+
+setup:
+  - flash:
+      firmware: examples/nrf5340-ble-peripheral
+      device: peripheral
+  - flash:
+      firmware: examples/nrf5340-ble-central-fixture
+      device: central
+  - reset:
+      device: peripheral
+  - reset:
+      device: central
+
+steps:
+  - wait:
+      pattern: "Advertising as: EAB-Peripheral"
+      device: peripheral
+      timeout: 10
+
+  - ble_scan:
+      device: central
+      target_name: "EAB-Peripheral"
+      timeout: 15
+
+  - ble_connect:
+      device: central
+      timeout: 15
+
+  - wait:
+      pattern: "Connected"
+      device: peripheral
+      timeout: 10
+
+  - ble_subscribe:
+      device: central
+      char_uuid: "EAB20002"
+      timeout: 10
+
+  - ble_assert_notify:
+      device: central
+      char_uuid: "EAB20002"
+      count: 5
+      timeout: 20
+
+  - ble_write:
+      device: central
+      char_uuid: "EAB20003"
+      value: "01"
+      without_response: true
+      timeout: 10
+
+  - wait:
+      pattern: "mode=fast"
+      device: peripheral
+      timeout: 5
+
+teardown:
+  - ble_disconnect:
+      device: central
+      timeout: 10
+  - fault_check:
+      device: peripheral
+      expect_clean: true
+  - fault_check:
+      device: central
+      expect_clean: true

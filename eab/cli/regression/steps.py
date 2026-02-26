@@ -595,6 +595,64 @@ def _run_sram_boot(step: StepSpec, *, device: Optional[str],
     )
 
 
+def _run_anomaly_watch(
+    step: "StepSpec", *,
+    device: Optional[str],
+    chip: Optional[str],
+    timeout: int,
+    **_kw: Any,
+) -> "StepResult":
+    """
+    Run `eabctl anomaly compare` for the given baseline/duration, check for anomalies.
+    """
+    t0 = time.monotonic()
+    p = step.params
+
+    baseline = p.get("baseline")
+    if not baseline:
+        return StepResult(
+            step_type="anomaly_watch", params=step.params,
+            passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+            error="anomaly_watch step requires 'baseline' param",
+        )
+
+    duration = float(p.get("duration", 30))
+    max_sigma = float(p.get("max_sigma", 3.0))
+    fail_on_anomaly = bool(p.get("fail_on_anomaly", True))
+    min_anomaly_count = int(p.get("min_anomaly_count", 1))
+    log_source = p.get("log_source")
+
+    args = [
+        "anomaly", "compare",
+        "--baseline", baseline,
+        "--duration", str(duration),
+        "--sigma", str(max_sigma),
+    ]
+    if log_source:
+        args.extend(["--log-source", log_source])
+
+    # Use duration + 15s buffer for subprocess timeout
+    rc, output = _run_eabctl(args, device=device, timeout=int(duration) + 15)
+    ms = int((time.monotonic() - t0) * 1000)
+
+    anomaly_count = output.get("anomaly_count", 0)
+    if fail_on_anomaly and anomaly_count >= min_anomaly_count:
+        anomalous_metrics = [
+            name for name, m in output.get("metrics", {}).items()
+            if m.get("anomalous")
+        ]
+        error = f"{anomaly_count} anomalous metric(s): {anomalous_metrics}"
+        return StepResult(
+            step_type="anomaly_watch", params=step.params,
+            passed=False, duration_ms=ms, output=output, error=error,
+        )
+
+    return StepResult(
+        step_type="anomaly_watch", params=step.params,
+        passed=True, duration_ms=ms, output=output,
+    )
+
+
 from eab.cli.regression.trace_steps import (
     _run_trace_start, _run_trace_stop, _run_trace_export, _run_trace_validate,
 )
@@ -617,4 +675,9 @@ _STEP_DISPATCH = {
     "trace_stop": _run_trace_stop,
     "trace_export": _run_trace_export,
     "trace_validate": _run_trace_validate,
+    "anomaly_watch": _run_anomaly_watch,
 }
+
+# Register BLE step executors — late import to avoid circular dependency
+from eab.cli.regression.ble_steps import BLE_STEP_DISPATCH  # noqa: E402
+_STEP_DISPATCH.update(BLE_STEP_DISPATCH)

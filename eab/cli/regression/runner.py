@@ -14,7 +14,7 @@ import yaml
 from eab.cli.daemon.lifecycle_cmds import cmd_pause, cmd_resume
 from eab.cli.helpers import _print
 from eab.cli.regression.models import (
-    StepSpec, TestSpec, TestResult, StepResult, SuiteResult,
+    StepSpec, TestSpec, TestResult, StepResult, SuiteResult, DeviceSpec,
 )
 from eab.cli.regression.steps import run_step
 
@@ -49,6 +49,20 @@ def _parse_steps(raw: list[dict]) -> list[StepSpec]:
     return steps
 
 
+def _parse_devices(raw: dict) -> dict[str, DeviceSpec]:
+    """Parse the 'devices:' block into DeviceSpec objects."""
+    result = {}
+    for slot_name, spec in raw.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"devices.{slot_name} must be a mapping")
+        result[slot_name] = DeviceSpec(
+            device=spec["device"],
+            chip=spec.get("chip"),
+            probe=spec.get("probe"),
+        )
+    return result
+
+
 def parse_test(yaml_path: str) -> TestSpec:
     """Parse a YAML test file into a TestSpec."""
     with open(yaml_path, "r", encoding="utf-8") as f:
@@ -57,12 +71,17 @@ def parse_test(yaml_path: str) -> TestSpec:
     if not isinstance(data, dict):
         raise ValueError(f"Invalid test file (expected mapping): {yaml_path}")
 
+    devices: dict[str, DeviceSpec] = {}
+    if "devices" in data and isinstance(data["devices"], dict):
+        devices = _parse_devices(data["devices"])
+
     return TestSpec(
         name=data.get("name", os.path.basename(yaml_path)),
         file=yaml_path,
         device=data.get("device"),
         chip=data.get("chip"),
         timeout=data.get("timeout", 60),
+        devices=devices,
         setup=_parse_steps(data.get("setup", [])),
         steps=_parse_steps(data.get("steps", [])),
         teardown=_parse_steps(data.get("teardown", [])),
@@ -115,6 +134,26 @@ def _run_step_with_usb_guard(
             time.sleep(2)
 
 
+def _resolve_step_device(
+    step: StepSpec,
+    spec: TestSpec,
+) -> tuple[Optional[str], Optional[str]]:
+    """Return (device_name, chip) for a step, respecting the devices: map.
+
+    Priority:
+      1. step.params['device'] resolved through spec.devices map
+      2. spec.device / spec.chip (legacy single-device)
+    """
+    slot = step.params.get("device")
+    if slot and slot in spec.devices:
+        ds = spec.devices[slot]
+        return ds.device, ds.chip
+    if slot and not spec.devices:
+        # device param is a literal EAB device name (no devices: block)
+        return slot, spec.chip
+    return spec.device, spec.chip
+
+
 def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult:
     """Execute a single test: setup → steps → teardown."""
     timeout = global_timeout or spec.timeout
@@ -130,8 +169,9 @@ def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult
 
     # Setup — fail fast
     for step in spec.setup:
+        step_device, step_chip = _resolve_step_device(step, spec)
         result = _run_step_with_usb_guard(
-            step, device=spec.device, chip=spec.chip,
+            step, device=step_device, chip=step_chip,
             timeout=timeout, log_offset=log_offset, base_dir=base_dir)
         all_steps.append(result)
         if not result.passed:
@@ -142,8 +182,9 @@ def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult
     # Steps — stop on first failure (only if setup passed)
     if passed:
         for step in spec.steps:
+            step_device, step_chip = _resolve_step_device(step, spec)
             result = _run_step_with_usb_guard(
-                step, device=spec.device, chip=spec.chip,
+                step, device=step_device, chip=step_chip,
                 timeout=timeout, log_offset=log_offset, base_dir=base_dir)
             all_steps.append(result)
             if not result.passed:
@@ -153,8 +194,9 @@ def run_test(spec: TestSpec, global_timeout: Optional[int] = None) -> TestResult
 
     # Teardown — always runs, errors logged but don't cause failure
     for step in spec.teardown:
+        step_device, step_chip = _resolve_step_device(step, spec)
         result = _run_step_with_usb_guard(
-            step, device=spec.device, chip=spec.chip,
+            step, device=step_device, chip=step_chip,
             timeout=timeout, log_offset=log_offset, base_dir=base_dir)
         all_steps.append(result)
 

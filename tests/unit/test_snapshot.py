@@ -11,10 +11,11 @@ Tests cover:
 
 from __future__ import annotations
 
+import json
 import struct
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -561,3 +562,216 @@ class TestEdgeCases:
         elf_path = _make_minimal_elf(tmp_path, [])
         regions = _parse_elf_load_segments(str(elf_path))
         assert regions == []
+
+
+# ---------------------------------------------------------------------------
+# CLI JSON output
+# ---------------------------------------------------------------------------
+
+
+class TestSnapshotCliJsonOutput:
+    """Verify cmd_snapshot --json produces valid JSON with required keys."""
+
+    def _make_mock_result(self) -> SnapshotResult:
+        return SnapshotResult(
+            output_path="/tmp/snap.core",
+            regions=[MemoryRegion(start=0x20000000, size=0x8000)],
+            registers={"r0": 1, "pc": 2},
+            total_size=65536,
+        )
+
+    def test_json_output_contains_required_keys(self, capsys: pytest.CaptureFixture) -> None:
+        """JSON output must contain path, regions, registers, and size_bytes."""
+        from eab.cli.snapshot_cmd import cmd_snapshot
+
+        mock_result = self._make_mock_result()
+        with patch("eab.snapshot.capture_snapshot", return_value=mock_result):
+            ret = cmd_snapshot(
+                device="NRF5340_XXAA_APP",
+                elf="/build/fw.elf",
+                output="/tmp/snap.core",
+                json_mode=True,
+            )
+
+        assert ret == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "path" in data
+        assert "regions" in data
+        assert "registers" in data
+        assert "size_bytes" in data
+
+    def test_json_path_matches_output(self, capsys: pytest.CaptureFixture) -> None:
+        from eab.cli.snapshot_cmd import cmd_snapshot
+
+        mock_result = self._make_mock_result()
+        with patch("eab.snapshot.capture_snapshot", return_value=mock_result):
+            cmd_snapshot(
+                device="NRF5340_XXAA_APP",
+                elf="/build/fw.elf",
+                output="/tmp/snap.core",
+                json_mode=True,
+            )
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["path"] == "/tmp/snap.core"
+
+    def test_json_regions_is_list(self, capsys: pytest.CaptureFixture) -> None:
+        from eab.cli.snapshot_cmd import cmd_snapshot
+
+        mock_result = self._make_mock_result()
+        with patch("eab.snapshot.capture_snapshot", return_value=mock_result):
+            cmd_snapshot(
+                device="NRF5340_XXAA_APP",
+                elf="/build/fw.elf",
+                output="/tmp/snap.core",
+                json_mode=True,
+            )
+
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data["regions"], list)
+        assert len(data["regions"]) == 1
+        assert data["regions"][0]["start"] == 0x20000000
+        assert data["regions"][0]["size"] == 0x8000
+
+    def test_json_registers_is_dict(self, capsys: pytest.CaptureFixture) -> None:
+        from eab.cli.snapshot_cmd import cmd_snapshot
+
+        mock_result = self._make_mock_result()
+        with patch("eab.snapshot.capture_snapshot", return_value=mock_result):
+            cmd_snapshot(
+                device="NRF5340_XXAA_APP",
+                elf="/build/fw.elf",
+                output="/tmp/snap.core",
+                json_mode=True,
+            )
+
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data["registers"], dict)
+        assert data["registers"]["r0"] == 1
+        assert data["registers"]["pc"] == 2
+
+    def test_json_size_bytes_matches_total_size(self, capsys: pytest.CaptureFixture) -> None:
+        from eab.cli.snapshot_cmd import cmd_snapshot
+
+        mock_result = self._make_mock_result()
+        with patch("eab.snapshot.capture_snapshot", return_value=mock_result):
+            cmd_snapshot(
+                device="NRF5340_XXAA_APP",
+                elf="/build/fw.elf",
+                output="/tmp/snap.core",
+                json_mode=True,
+            )
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["size_bytes"] == 65536
+
+
+# ---------------------------------------------------------------------------
+# HIL step trigger conditions
+# ---------------------------------------------------------------------------
+
+
+class TestSnapshotStepTriggerConditions:
+    """Verify snapshot HIL step calls capture_snapshot only under right triggers."""
+
+    def _make_snap_result(self) -> MagicMock:
+        return MagicMock(
+            output_path="results/state.core",
+            total_size=1024,
+            regions=[MagicMock(), MagicMock()],
+        )
+
+    def _manual_step(self):
+        from eab.cli.regression.models import StepSpec
+        return StepSpec("snapshot", {
+            "output": "results/state.core",
+            "elf": "build/zephyr/zephyr.elf",
+            "trigger": "manual",
+        })
+
+    def _on_fault_step(self):
+        from eab.cli.regression.models import StepSpec
+        return StepSpec("snapshot", {
+            "output": "results/state.core",
+            "elf": "build/zephyr/zephyr.elf",
+            "trigger": "on_fault",
+        })
+
+    def _on_anomaly_step(self):
+        from eab.cli.regression.models import StepSpec
+        return StepSpec("snapshot", {
+            "output": "results/state.core",
+            "elf": "build/zephyr/zephyr.elf",
+            "trigger": "on_anomaly",
+            "baseline": "baselines/nominal.json",
+        })
+
+    def test_manual_trigger_always_calls_capture_snapshot(self) -> None:
+        from eab.cli.regression.steps import _run_snapshot
+
+        snap_result = self._make_snap_result()
+        with patch("eab.cli.regression.steps.capture_snapshot",
+                   return_value=snap_result) as mock_capture:
+            result = _run_snapshot(
+                self._manual_step(), device="nrf5340", chip=None, timeout=60
+            )
+        mock_capture.assert_called_once()
+        assert result.passed
+        assert result.output["captured"] is True
+
+    def test_on_fault_no_fault_skips_capture(self) -> None:
+        from eab.cli.regression.steps import _run_snapshot
+
+        with patch("eab.cli.regression.steps._run_eabctl",
+                   return_value=(0, {"fault_detected": False})), \
+             patch("eab.cli.regression.steps.capture_snapshot") as mock_capture:
+            result = _run_snapshot(
+                self._on_fault_step(), device="nrf5340", chip=None, timeout=60
+            )
+        mock_capture.assert_not_called()
+        assert result.passed
+        assert result.output["captured"] is False
+
+    def test_on_fault_with_fault_calls_capture(self) -> None:
+        from eab.cli.regression.steps import _run_snapshot
+
+        snap_result = self._make_snap_result()
+        with patch("eab.cli.regression.steps._run_eabctl",
+                   return_value=(0, {"fault_detected": True})), \
+             patch("eab.cli.regression.steps.capture_snapshot",
+                   return_value=snap_result) as mock_capture:
+            result = _run_snapshot(
+                self._on_fault_step(), device="nrf5340", chip=None, timeout=60
+            )
+        mock_capture.assert_called_once()
+        assert result.passed
+        assert result.output["captured"] is True
+
+    def test_on_anomaly_zero_count_skips_capture(self) -> None:
+        from eab.cli.regression.steps import _run_snapshot
+
+        with patch("eab.cli.regression.steps._run_eabctl",
+                   return_value=(0, {"anomaly_count": 0})), \
+             patch("eab.cli.regression.steps.capture_snapshot") as mock_capture:
+            result = _run_snapshot(
+                self._on_anomaly_step(), device="nrf5340", chip=None, timeout=60
+            )
+        mock_capture.assert_not_called()
+        assert result.passed
+        assert result.output["captured"] is False
+
+    def test_on_anomaly_nonzero_count_calls_capture(self) -> None:
+        from eab.cli.regression.steps import _run_snapshot
+
+        snap_result = self._make_snap_result()
+        with patch("eab.cli.regression.steps._run_eabctl",
+                   return_value=(0, {"anomaly_count": 1})), \
+             patch("eab.cli.regression.steps.capture_snapshot",
+                   return_value=snap_result) as mock_capture:
+            result = _run_snapshot(
+                self._on_anomaly_step(), device="nrf5340", chip=None, timeout=60
+            )
+        mock_capture.assert_called_once()
+        assert result.passed
+        assert result.output["captured"] is True

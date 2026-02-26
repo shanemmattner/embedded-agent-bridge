@@ -295,9 +295,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "output_path": {
                     "type": "string",
                     "description": "Destination path for the generated ELF core file.",
+                    "default": "snapshot.core",
                 },
             },
-            required=["device", "elf_path", "output_path"],
+            required=["device", "elf_path"],
         ),
     },
 ]
@@ -434,7 +435,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
         result = _capture_snapshot(
             device=arguments["device"],
             elf_path=arguments["elf_path"],
-            output_path=arguments["output_path"],
+            output_path=arguments.get("output_path", "snapshot.core"),
         )
         return json.dumps({
             "path": result.output_path,

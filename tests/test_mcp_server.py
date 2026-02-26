@@ -304,6 +304,27 @@ class TestHandleTool:
             output_path="/tmp/snap.bin",
         )
 
+    def test_capture_snapshot_default_output_path(self, mcp_module):
+        mock_region = MagicMock()
+        mock_region.start = 0x20000000
+        mock_region.size = 0x40000
+        mock_result = MagicMock()
+        mock_result.output_path = "snapshot.core"
+        mock_result.regions = [mock_region]
+        mock_result.registers = {"r0": 0}
+        mock_result.total_size = 65536
+
+        mock_fn = MagicMock(return_value=mock_result)
+        with patch("eab.snapshot.capture_snapshot", mock_fn):
+            self._run(
+                mcp_module._handle_tool(
+                    "capture_snapshot",
+                    {"device": "NRF5340_XXAA_APP", "elf_path": "/fw/app.elf"},
+                )
+            )
+        _, kwargs = mock_fn.call_args
+        assert kwargs["output_path"] == "snapshot.core"
+
     def test_unknown_tool_returns_error(self, mcp_module):
         result = self._run(mcp_module._handle_tool("nonexistent_tool", {}))
         data = json.loads(result)

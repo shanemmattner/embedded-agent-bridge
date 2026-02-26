@@ -1,0 +1,45 @@
+{
+  "subtasks": [
+    {
+      "id": "1",
+      "description": "Create the core snapshot module at eab/snapshot.py. This module implements the main snapshot logic:\n\n1. Define a SnapshotResult dataclass/TypedDict with fields: path (str), timestamp (str), regions (list of dicts with address, size), registers (dict of register name to value), size_bytes (int).\n\n2. Implement capture_snapshot(device, elf_path, output_path) -> SnapshotResult:\n   - Parse the ELF file at elf_path using pyelftools to extract PT_LOAD segments (address, size) representing RAM regions to dump.\n   - Use the GDB bridge from eab/gdb_bridge.py to read memory for each RAM region. Follow the one-shot command execution pattern already used in that module.\n   - Read all Cortex-M registers: R0-R12, SP (R13), LR (R14), PC (R15), xPSR, MSP, PSP, CONTROL, PRIMASK, BASEPRI, FAULTMASK. Follow the register reading patterns used in eab/fault_analyzer.py.\n   - Write a GDB-compatible ELF core file to output_path. The core file must be ET_CORE type, contain PT_LOAD program headers for each memory region with the dumped data, and a PT_NOTE segment containing an NT_PRSTATUS note with the ARM register state laid out in the order GDB expects for ARM targets.\n   - Return a SnapshotResult with metadata about what was captured.\n\n3. Handle error cases: missing ELF file (raise FileNotFoundError), GDB connection failure (raise RuntimeError with descriptive message), invalid ELF format (raise ValueError).\n\n4. Follow the project's conventions: Google-style docstrings, type hints, grouped imports (stdlib, external/pyelftools, internal eab modules).\n\nAcceptance criteria: The module exists, imports cleanly, and the capture_snapshot function can produce a valid ELF core file that arm-none-eabi-gdb can load with 'core-file' command.",
+      "files": [
+        "eab/snapshot.py"
+      ],
+      "confidence": "UNCERTAIN - file_analysis was not provided so exact patterns in gdb_bridge.py and fault_analyzer.py need to be read by the implementer"
+    },
+    {
+      "id": "2",
+      "description": "Add the 'eabctl snapshot' CLI command. Look at existing CLI commands in the eab/cli/ directory to follow the established pattern for command registration, argument parsing, and output formatting.\n\nThe command should accept these arguments:\n  --device: target device name (required)\n  --elf: path to firmware ELF file (required)\n  --output: path for output .core file (default: snapshot.core)\n  --json: flag to enable JSON output\n\nBehavior:\n  - Call capture_snapshot() from eab/snapshot.py (created in subtask 1)\n  - On success without --json: print human-readable summary (path, number of regions, total size)\n  - On success with --json: print JSON object with keys: path, regions (list of {address, size}), registers (dict), size_bytes\n  - On error: print error message to stderr, exit with non-zero code\n\nRegister the command in whatever CLI dispatch mechanism the project uses (check eab/cli/__init__.py or equivalent entry point).\n\nAcceptance criteria: Running 'eabctl snapshot --device NRF5340_XXAA_APP --elf firmware.elf --output snapshot.core --json' invokes capture_snapshot and produces correct JSON output.",
+      "files": [
+        "eab/cli/snapshot.py"
+      ],
+      "confidence": "UNCERTAIN - exact CLI registration pattern and directory structure need to be discovered from file_analysis"
+    },
+    {
+      "id": "3",
+      "description": "Add a 'snapshot' HIL regression step. Follow the existing step dispatch pattern in eab/cli/regression/steps.py.\n\nThe new step should support this YAML configuration:\n  steps:\n    - snapshot:\n        output: results/state.core\n        elf: build/zephyr/zephyr.elf\n        trigger: on_fault  # also: manual, on_anomaly\n\nImplementation:\n  - Add a snapshot step handler/class following the same pattern as other steps in steps.py\n  - Parse the 'output', 'elf', and 'trigger' fields from the step config\n  - The 'trigger' field determines when the snapshot fires: 'manual' means always execute, 'on_fault' means execute only when a fault is detected, 'on_anomaly' means execute on anomaly detection. Default trigger should be 'manual'.\n  - When triggered, call capture_snapshot() from eab/snapshot.py with the device from the regression context\n  - Register the step in the step dispatch mechanism used by the file\n\nAcceptance criteria: A regression YAML file with a 'snapshot' step is correctly parsed and dispatched, calling capture_snapshot with the right parameters.",
+      "files": [
+        "eab/cli/regression/steps.py"
+      ],
+      "confidence": "UNCERTAIN - exact step registration pattern needs to be read from the file"
+    },
+    {
+      "id": "4",
+      "description": "Add a 'capture_snapshot' MCP tool in eab/mcp_server.py. Follow the existing MCP tool registration pattern already used in that file.\n\nThe tool should:\n  - Be named 'capture_snapshot'\n  - Accept parameters: device (string), elf_path (string), output_path (string, optional with default 'snapshot.core')\n  - Call capture_snapshot() from eab/snapshot.py\n  - Return the SnapshotResult as a JSON-serializable dict with keys: path, regions, registers, size_bytes\n  - Handle errors by returning appropriate error responses following the pattern of other tools in the file\n\nAcceptance criteria: The capture_snapshot tool is registered in the MCP server and callable, returning snapshot results in the expected format.",
+      "files": [
+        "eab/mcp_server.py"
+      ],
+      "confidence": "UNCERTAIN - exact MCP tool registration pattern needs to be read from the file"
+    },
+    {
+      "id": "5",
+      "description": "Create comprehensive unit tests at tests/unit/test_snapshot.py for the snapshot functionality created in subtasks 1-4.\n\nTests to write (use pytest, mock external dependencies):\n\n1. test_capture_snapshot_success: Mock gdb_bridge to return fake memory contents and register values. Mock ELF parsing to return known LOAD segments. Verify capture_snapshot produces a file, returns correct SnapshotResult metadata.\n\n2. test_core_file_format: After capture_snapshot produces a .core file with mocked data, parse it back using pyelftools. Verify: ELF type is ET_CORE, PT_LOAD segments match the input RAM regions, PT_NOTE segment contains register data, memory contents match what was 'read'.\n\n3. test_register_reading: Mock gdb_bridge register read. Verify all expected Cortex-M registers (R0-R15, xPSR, MSP, PSP, CONTROL, PRIMASK, BASEPRI, FAULTMASK) are captured in the result.\n\n4. test_missing_elf_file: Call capture_snapshot with a nonexistent ELF path. Verify FileNotFoundError is raised.\n\n5. test_gdb_connection_failure: Mock gdb_bridge to raise an error. Verify RuntimeError is raised with a descriptive message.\n\n6. test_snapshot_cli_json_output: Mock capture_snapshot, invoke the CLI command with --json flag, verify JSON output contains expected keys (path, regions, registers, size_bytes).\n\n7. test_snapshot_step_trigger_conditions: Test the HIL step with different trigger values (manual, on_fault, on_anomaly) and verify it only calls capture_snapshot under the right conditions.\n\nFollow existing test patterns and fixtures from other test files in tests/unit/. Use tmp_path fixture for output files.\n\nAcceptance criteria: All tests pass with 'python3 -m pytest tests/unit/test_snapshot.py --tb=short -q'. Tests cover the core module, CLI, and HIL step.",
+      "files": [
+        "tests/unit/test_snapshot.py"
+      ]
+    }
+  ],
+  "strategy": "execute",
+  "deferred_work": ""
+}

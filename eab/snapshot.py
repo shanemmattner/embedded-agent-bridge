@@ -17,7 +17,7 @@ import re
 import struct
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -92,7 +92,7 @@ class SnapshotResult:
     regions: list[MemoryRegion] = field(default_factory=list)
     registers: dict[str, int] = field(default_factory=dict)
     total_size: int = 0
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # =============================================================================
@@ -560,5 +560,5 @@ def capture_snapshot(
         regions=regions,
         registers=registers,
         total_size=total_size,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )

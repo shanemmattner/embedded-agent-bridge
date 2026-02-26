@@ -419,6 +419,12 @@ def run_dwt_explain(
         ValueError: If ``elf_path`` does not exist, ``device`` is ``None``,
             or any symbol is not found in the ELF.
     """
+    if not symbols:
+        raise ValueError("symbols list must not be empty")
+
+    if duration_s <= 0:
+        raise ValueError(f"duration_s must be a positive number, got {duration_s!r}")
+
     # Lazy import to avoid circular dependency via eab.cli.dwt.__init__
     from eab.cli.dwt._helpers import _open_jlink, _resolve_symbol  # noqa: PLC0415
 

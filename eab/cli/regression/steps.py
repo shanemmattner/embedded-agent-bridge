@@ -83,7 +83,9 @@ def run_step(
     log_offset: Optional[int] = None,
 ) -> StepResult:
     """Execute a single test step and return the result."""
-    fn: Optional[Callable[..., StepResult]] = cast(Optional[Callable[..., StepResult]], _STEP_DISPATCH.get(step.step_type))
+    fn: Optional[Callable[..., StepResult]] = cast(
+        Optional[Callable[..., StepResult]], _STEP_DISPATCH.get(step.step_type)
+    )
     if fn is None:
         return StepResult(
             step_type=step.step_type,

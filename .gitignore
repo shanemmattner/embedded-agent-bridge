@@ -75,7 +75,12 @@ C2000-BUILD-SUMMARY.md
 stress_test_results.json
 devices.json
 OVERNIGHT_*.md
+*-NOTES.md
 docs/*PLAN*.md
+docs/*plan*.md
+
+# CCS Debug build output
+**/Debug/
 
 # ST AI workspace artifacts
 st_ai_output/

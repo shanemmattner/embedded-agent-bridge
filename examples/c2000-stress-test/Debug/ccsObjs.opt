@@ -1,7 +1,0 @@
-"./launchxl_ex1_sci_io_driverlib.obj"
-"./main.obj"
-"./device/device.obj"
-"./device/f28003x_codestartbranch.obj"
-"../28003x_launchxl_demo_flash_lnk.cmd"
-"/tmp/c2000ware-core-sdk/driverlib/f28003x/driverlib/ccs/Debug/driverlib.lib"
--llibc.a

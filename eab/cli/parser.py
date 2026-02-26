@@ -722,14 +722,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # dwt explain
     p_dwt_explain = dwt_sub.add_parser("explain", help="Capture DWT data and produce an AI narrative")
-    p_dwt_explain.add_argument("--device", default=None,
-                               help="Device identifier, e.g. NRF5340_XXAA_APP")
-    p_dwt_explain.add_argument("--symbols", required=True,
-                               help="Comma-separated list of symbol names, e.g. conn_interval,mtu_size")
-    p_dwt_explain.add_argument("--elf", required=True,
-                               help="Path to the ELF file")
-    p_dwt_explain.add_argument("--duration", type=int, default=5,
-                               help="Capture duration in seconds (default: 5)")
+    p_dwt_explain.add_argument("--device", default=None, help="Device identifier, e.g. NRF5340_XXAA_APP")
+    p_dwt_explain.add_argument(
+        "--symbols", required=True, help="Comma-separated list of symbol names, e.g. conn_interval,mtu_size"
+    )
+    p_dwt_explain.add_argument("--elf", required=True, help="Path to the ELF file")
+    p_dwt_explain.add_argument("--duration", type=int, default=5, help="Capture duration in seconds (default: 5)")
 
     # --- MCP server ---
     sub.add_parser(

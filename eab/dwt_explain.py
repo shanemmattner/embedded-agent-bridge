@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 try:
     from elftools.elf.elffile import ELFFile  # noqa: F401
     from elftools.elf.sections import SymbolTableSection  # noqa: F401
+
     _PYELFTOOLS_AVAILABLE = True
 except ImportError:
     _PYELFTOOLS_AVAILABLE = False
@@ -95,6 +96,7 @@ class ExplainResult(TypedDict):
 # =============================================================================
 # ELF source-line enrichment
 # =============================================================================
+
 
 def resolve_source_line(address: int, elf_path: str) -> SourceLocation:
     """Resolve an address to source file, line number, and function name.
@@ -181,6 +183,7 @@ def resolve_source_line(address: int, elf_path: str) -> SourceLocation:
 # Event capture
 # =============================================================================
 
+
 def capture_events(
     comparators: list[Comparator],
     jlink: Any,
@@ -254,6 +257,7 @@ def capture_events(
 # Event enrichment
 # =============================================================================
 
+
 def enrich_events(events: list[RawEvent], elf_path: str) -> list[EnrichedEvent]:
     """Add source location fields to each raw watchpoint event.
 
@@ -300,6 +304,7 @@ def enrich_events(events: list[RawEvent], elf_path: str) -> list[EnrichedEvent]:
 # Prompt formatting
 # =============================================================================
 
+
 def format_explain_prompt(enriched_events: list[EnrichedEvent]) -> ExplainResult:
     """Build a structured prompt and context from enriched watchpoint events.
 
@@ -325,21 +330,11 @@ def format_explain_prompt(enriched_events: list[EnrichedEvent]) -> ExplainResult
         hit_counter[key] += 1
 
     context_lines: list[str] = ["DWT Watchpoint Hit Summary", "=" * 40]
-    for (label, src_file, line_no, func_name), count in sorted(
-        hit_counter.items(), key=lambda x: -x[1]
-    ):
-        context_lines.append(
-            f"  Symbol : {label}"
-        )
-        context_lines.append(
-            f"  Function : {func_name}"
-        )
-        context_lines.append(
-            f"  Location : {src_file}:{line_no}"
-        )
-        context_lines.append(
-            f"  Hit count: {count}"
-        )
+    for (label, src_file, line_no, func_name), count in sorted(hit_counter.items(), key=lambda x: -x[1]):
+        context_lines.append(f"  Symbol : {label}")
+        context_lines.append(f"  Function : {func_name}")
+        context_lines.append(f"  Location : {src_file}:{line_no}")
+        context_lines.append(f"  Hit count: {count}")
         context_lines.append("")
 
     source_context = "\n".join(context_lines)
@@ -355,12 +350,9 @@ def format_explain_prompt(enriched_events: list[EnrichedEvent]) -> ExplainResult
         "",
     ]
 
-    for (label, src_file, line_no, func_name), count in sorted(
-        hit_counter.items(), key=lambda x: -x[1]
-    ):
+    for (label, src_file, line_no, func_name), count in sorted(hit_counter.items(), key=lambda x: -x[1]):
         prompt_lines.append(
-            f"  - Symbol '{label}' was accessed {count} time(s) "
-            f"in {func_name}() at {src_file}:{line_no}."
+            f"  - Symbol '{label}' was accessed {count} time(s) in {func_name}() at {src_file}:{line_no}."
         )
 
     prompt_lines += [
@@ -376,9 +368,7 @@ def format_explain_prompt(enriched_events: list[EnrichedEvent]) -> ExplainResult
     ai_prompt = "\n".join(prompt_lines)
 
     # --- suggested_watchpoints: unique labels observed ---
-    suggested_watchpoints: list[str] = sorted(
-        {ev["label"] for ev in enriched_events}
-    )
+    suggested_watchpoints: list[str] = sorted({ev["label"] for ev in enriched_events})
 
     return ExplainResult(
         events=enriched_events,
@@ -391,6 +381,7 @@ def format_explain_prompt(enriched_events: list[EnrichedEvent]) -> ExplainResult
 # =============================================================================
 # Orchestrator
 # =============================================================================
+
 
 def run_dwt_explain(
     symbols: list[str],
@@ -433,8 +424,7 @@ def run_dwt_explain(
 
     if device is None:
         raise ValueError(
-            "A J-Link device string must be provided (e.g. 'NRF5340_XXAA_APP'). "
-            "Pass it via the device= argument."
+            "A J-Link device string must be provided (e.g. 'NRF5340_XXAA_APP'). Pass it via the device= argument."
         )
 
     # Resolve all symbols before opening hardware

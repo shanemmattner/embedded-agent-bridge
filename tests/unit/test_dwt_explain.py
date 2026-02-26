@@ -63,9 +63,7 @@ class TestResolveSourceLine:
     @patch("eab.dwt_explain.subprocess.run")
     @patch("eab.dwt_explain.which_or_sdk")
     @patch("eab.dwt_explain.os.path.isfile")
-    def test_returns_expected_source_location(
-        self, mock_isfile, mock_which, mock_subrun
-    ):
+    def test_returns_expected_source_location(self, mock_isfile, mock_which, mock_subrun):
         mock_isfile.return_value = True
         mock_which.return_value = "/usr/bin/arm-none-eabi-addr2line"
 
@@ -83,9 +81,7 @@ class TestResolveSourceLine:
     @patch("eab.dwt_explain.subprocess.run")
     @patch("eab.dwt_explain.which_or_sdk")
     @patch("eab.dwt_explain.os.path.isfile")
-    def test_returns_fallback_when_addr2line_not_found(
-        self, mock_isfile, mock_which, mock_subrun
-    ):
+    def test_returns_fallback_when_addr2line_not_found(self, mock_isfile, mock_which, mock_subrun):
         mock_isfile.return_value = True
         mock_which.return_value = None
 
@@ -114,9 +110,7 @@ class TestCaptureEvents:
     @patch("eab.dwt_explain.os.unlink")
     @patch("eab.dwt_explain.DwtWatchpointDaemon")
     @patch("eab.dwt_explain.tempfile.NamedTemporaryFile")
-    def test_returns_parsed_events(
-        self, mock_tf_cls, mock_daemon_cls, mock_unlink, mock_sleep, sample_raw_events
-    ):
+    def test_returns_parsed_events(self, mock_tf_cls, mock_daemon_cls, mock_unlink, mock_sleep, sample_raw_events):
         # Set up fake temp file path
         mock_tf = MagicMock()
         mock_tf.name = "/tmp/fake_events.jsonl"
@@ -144,9 +138,7 @@ class TestCaptureEvents:
     @patch("eab.dwt_explain.os.unlink")
     @patch("eab.dwt_explain.DwtWatchpointDaemon")
     @patch("eab.dwt_explain.tempfile.NamedTemporaryFile")
-    def test_returns_empty_list_when_no_events(
-        self, mock_tf_cls, mock_daemon_cls, mock_unlink, mock_sleep
-    ):
+    def test_returns_empty_list_when_no_events(self, mock_tf_cls, mock_daemon_cls, mock_unlink, mock_sleep):
         mock_tf = MagicMock()
         mock_tf.name = "/tmp/fake_events.jsonl"
         mock_tf_cls.return_value = mock_tf
@@ -168,9 +160,7 @@ class TestCaptureEvents:
 
 class TestEnrichEvents:
     @patch("eab.dwt_explain.resolve_source_line")
-    def test_enriched_events_have_source_fields(
-        self, mock_resolve, sample_raw_events
-    ):
+    def test_enriched_events_have_source_fields(self, mock_resolve, sample_raw_events):
         mock_resolve.return_value = {
             "source_file": "sensor.c",
             "line_number": 17,
@@ -186,9 +176,7 @@ class TestEnrichEvents:
             assert event["function_name"] == "sensor_read"
 
     @patch("eab.dwt_explain.resolve_source_line")
-    def test_enriched_events_retain_original_fields(
-        self, mock_resolve, sample_raw_events
-    ):
+    def test_enriched_events_retain_original_fields(self, mock_resolve, sample_raw_events):
         mock_resolve.return_value = {
             "source_file": "sensor.c",
             "line_number": 17,
@@ -281,9 +269,7 @@ class TestRunDwtExplain:
             "function_name": "ble_init",
         }
 
-        result = run_dwt_explain(
-            ["conn_interval"], 1.0, "/fake/app.elf", "NRF5340_XXAA_APP"
-        )
+        result = run_dwt_explain(["conn_interval"], 1.0, "/fake/app.elf", "NRF5340_XXAA_APP")
 
         assert "events" in result
         assert "ai_prompt" in result
@@ -350,9 +336,7 @@ class TestRunDwtExplainNoEvents:
         mock_allocator_cls.return_value = mock_allocator
         mock_capture.return_value = []
 
-        result = run_dwt_explain(
-            ["conn_interval"], 1.0, "/fake/app.elf", "NRF5340_XXAA_APP"
-        )
+        result = run_dwt_explain(["conn_interval"], 1.0, "/fake/app.elf", "NRF5340_XXAA_APP")
 
         assert result["events"] == []
         assert isinstance(result["ai_prompt"], str)
@@ -375,29 +359,21 @@ class TestRunDwtExplainNoEvents:
 class TestRunDwtExplainUnknownSymbol:
     @patch("eab.cli.dwt._helpers._resolve_symbol")
     @patch("eab.dwt_explain.os.path.isfile")
-    def test_raises_value_error_for_unknown_symbol(
-        self, mock_isfile, mock_resolve_sym
-    ):
+    def test_raises_value_error_for_unknown_symbol(self, mock_isfile, mock_resolve_sym):
         mock_isfile.return_value = True
         mock_resolve_sym.side_effect = SymbolNotFoundError("no_such_var not found")
 
         with pytest.raises(ValueError):
-            run_dwt_explain(
-                ["no_such_var"], 1.0, "/fake/app.elf", "NRF5340_XXAA_APP"
-            )
+            run_dwt_explain(["no_such_var"], 1.0, "/fake/app.elf", "NRF5340_XXAA_APP")
 
     @patch("eab.cli.dwt._helpers._resolve_symbol")
     @patch("eab.dwt_explain.os.path.isfile")
-    def test_error_message_contains_symbol_name(
-        self, mock_isfile, mock_resolve_sym
-    ):
+    def test_error_message_contains_symbol_name(self, mock_isfile, mock_resolve_sym):
         mock_isfile.return_value = True
         mock_resolve_sym.side_effect = SymbolNotFoundError("no_such_var not found")
 
         with pytest.raises(ValueError, match="no_such_var"):
-            run_dwt_explain(
-                ["no_such_var"], 1.0, "/fake/app.elf", "NRF5340_XXAA_APP"
-            )
+            run_dwt_explain(["no_such_var"], 1.0, "/fake/app.elf", "NRF5340_XXAA_APP")
 
 
 # =============================================================================

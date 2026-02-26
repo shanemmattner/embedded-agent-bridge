@@ -41,12 +41,12 @@ class ThreadInfo:
     """Information about a single Zephyr RTOS thread."""
 
     name: str
-    state: str
-    priority: int
-    stack_base: int
-    stack_size: int
-    stack_used: int
-    stack_free: int
+    state: str = "READY"
+    priority: int = 0
+    stack_base: int = 0
+    stack_size: int = 0
+    stack_used: int = 0
+    stack_free: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serialisable dict representation.

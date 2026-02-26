@@ -397,3 +397,22 @@ class TestRunDwtExplainUnknownSymbol:
             run_dwt_explain(
                 ["no_such_var"], 1.0, "/fake/app.elf", "NRF5340_XXAA_APP"
             )
+
+
+# =============================================================================
+# 8. Input validation — empty symbols, non-positive duration
+# =============================================================================
+
+
+class TestRunDwtExplainInputValidation:
+    def test_raises_value_error_for_empty_symbols(self):
+        with pytest.raises(ValueError, match="symbols"):
+            run_dwt_explain([], 1, "/fake/app.elf", "NRF5340_XXAA_APP")
+
+    def test_raises_value_error_for_zero_duration(self):
+        with pytest.raises(ValueError, match="duration_s"):
+            run_dwt_explain(["conn_interval"], 0, "/fake/app.elf", "NRF5340_XXAA_APP")
+
+    def test_raises_value_error_for_negative_duration(self):
+        with pytest.raises(ValueError, match="duration_s"):
+            run_dwt_explain(["conn_interval"], -5, "/fake/app.elf", "NRF5340_XXAA_APP")

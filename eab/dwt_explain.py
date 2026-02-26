@@ -422,13 +422,13 @@ def run_dwt_explain(
     # Lazy import to avoid circular dependency via eab.cli.dwt.__init__
     from eab.cli.dwt._helpers import _open_jlink, _resolve_symbol  # noqa: PLC0415
 
-    if not os.path.isfile(elf_path):
-        raise ValueError(f"ELF file not found: {elf_path!r}")
-
     if device is None:
         raise ValueError(
             "A J-Link device string must be provided (e.g. 'NRF5340_XXAA_APP'). Pass it via the device= argument."
         )
+
+    if not os.path.isfile(elf_path):
+        raise ValueError(f"ELF file not found: {elf_path!r}")
 
     # Resolve all symbols before opening hardware
     resolved: list[tuple[str, int, int]] = []  # (label, address, size_bytes)

@@ -699,4 +699,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_anom_wat.add_argument("--log-source", default=None,
                              help="Override log file path")
 
+    # --- snapshot ---
+    p_snapshot = sub.add_parser("snapshot", help="Capture a core snapshot from a running device")
+    p_snapshot.add_argument("--device", required=True, help="Target device name (e.g. NRF5340_XXAA_APP)")
+    p_snapshot.add_argument("--elf", required=True, help="Path to the firmware ELF file")
+    p_snapshot.add_argument("--output", required=True, help="Output path for the .core file")
+
     return parser

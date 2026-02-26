@@ -523,6 +523,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             compare_elf=args.compare,
             json_mode=args.json,
         )
+    if args.cmd == "snapshot":
+        from eab.cli.snapshot_cmd import cmd_snapshot
+        return cmd_snapshot(
+            device=args.device,
+            elf=args.elf,
+            output=args.output,
+            json_mode=args.json,
+        )
+
     if args.cmd == "defmt":
         if args.defmt_action == "decode":
             from eab.cli.defmt_cmd import cmd_defmt_decode

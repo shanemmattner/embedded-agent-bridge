@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 from eab.cli.regression.models import StepResult, StepSpec
 from eab.cli.usb_reset import reset_usb_device
+from eab.snapshot import capture_snapshot
 
 
 def _graceful_kill(proc: subprocess.Popen, timeout: int = 5, usb_delay: float = 2.0):
@@ -287,14 +288,14 @@ def _run_bench_capture(step: StepSpec, *, device: Optional[str],
         args.extend(['--scan-from', str(log_offset)])
     rc, output = _run_eabctl(args, device=device, timeout=step_timeout + 5)
     ms = int((time.monotonic() - t0) * 1000)
-    
+
     if rc != 0:
         return StepResult(
             step_type='bench_capture', params=step.params,
             passed=False, duration_ms=ms, output=output,
             error=output.get('error') or f"Pattern '{pattern}' not matched within {step_timeout}s",
         )
-    
+
     # Parse key=value pairs from matched line
     line_data = output.get('line') or output.get('matched_line') or output.get('stdout', '')
     if isinstance(line_data, dict):
@@ -313,7 +314,7 @@ def _run_bench_capture(step: StepSpec, *, device: Optional[str],
                     bench[k] = float(v)
                 except ValueError:
                     bench[k] = v
-    
+
     # Validate expectations
     errors = []
     for assertion, expected_val in expect.items():
@@ -333,7 +334,7 @@ def _run_bench_capture(step: StepSpec, *, device: Optional[str],
             errors.append(f'{field_name}: expected < {expected_val}, got {actual}')
         elif op == 'eq' and actual != expected_val:
             errors.append(f'{field_name}: expected {expected_val}, got {actual}')
-    
+
     output['bench'] = bench
     return StepResult(
         step_type='bench_capture', params=step.params,
@@ -653,8 +654,130 @@ def _run_anomaly_watch(
     )
 
 
+def _run_snapshot(step: StepSpec, *, device: Optional[str],
+                  chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
+    """Capture a core snapshot from the target, conditioned on a trigger mode.
+
+    Trigger modes:
+      - ``manual``    (default): always capture.
+      - ``on_fault``:  capture only if a fault is detected via fault-analyze.
+      - ``on_anomaly``: capture only if anomaly_count >= 1 via anomaly compare.
+
+    Args:
+        step:    Step specification with params: output, elf, trigger,
+                 and (for on_anomaly) baseline.
+        device:  Target device identifier.
+        chip:    Chip family string.
+        timeout: Subprocess timeout in seconds.
+
+    Returns:
+        StepResult with passed=True when no capture was needed or when
+        the capture succeeded; passed=False on validation or capture error.
+    """
+    t0 = time.monotonic()
+    p = step.params
+
+    output_path = p.get("output")
+    if not output_path:
+        return StepResult(
+            step_type="snapshot", params=step.params,
+            passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+            error="snapshot step requires 'output' param",
+        )
+
+    elf = p.get("elf")
+    if not elf:
+        return StepResult(
+            step_type="snapshot", params=step.params,
+            passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+            error="snapshot step requires 'elf' param",
+        )
+
+    trigger = p.get("trigger", "manual")
+    should_capture = False
+
+    if trigger == "on_fault":
+        args = ["fault-analyze", "--elf", elf]
+        if p.get("device") or device:
+            args.extend(["--device", p.get("device") or device])
+        if p.get("chip") or chip:
+            args.extend(["--chip", p.get("chip") or chip])
+        _, fault_output = _run_eabctl(args, timeout=timeout)
+        has_fault = (
+            fault_output.get("fault_detected", False)
+            or fault_output.get("faulted", False)
+        )
+        should_capture = has_fault
+
+    elif trigger == "on_anomaly":
+        baseline = p.get("baseline")
+        if not baseline:
+            return StepResult(
+                step_type="snapshot", params=step.params,
+                passed=False, duration_ms=int((time.monotonic() - t0) * 1000),
+                error="snapshot step with on_anomaly trigger requires 'baseline' param",
+            )
+        duration = float(p.get("duration", 30))
+        max_sigma = float(p.get("max_sigma", 3.0))
+        log_source = p.get("log_source")
+        anomaly_args = [
+            "anomaly", "compare",
+            "--baseline", baseline,
+            "--duration", str(duration),
+            "--sigma", str(max_sigma),
+        ]
+        if log_source:
+            anomaly_args.extend(["--log-source", log_source])
+        _, anomaly_output = _run_eabctl(
+            anomaly_args, device=device, timeout=int(duration) + 15
+        )
+        should_capture = anomaly_output.get("anomaly_count", 0) >= 1
+
+    else:
+        # manual or unrecognised trigger — always capture
+        should_capture = True
+
+    if not should_capture:
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            step_type="snapshot", params=step.params,
+            passed=True, duration_ms=ms,
+            output={"captured": False, "trigger": trigger},
+        )
+
+    try:
+        result = capture_snapshot(
+            device=device or "",
+            elf_path=elf,
+            output_path=output_path,
+            chip=chip or "nrf5340",
+        )
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            step_type="snapshot", params=step.params,
+            passed=True, duration_ms=ms,
+            output={
+                "captured": True,
+                "trigger": trigger,
+                "output_path": result.output_path,
+                "total_size": result.total_size,
+                "region_count": len(result.regions),
+            },
+        )
+    except Exception as exc:
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            step_type="snapshot", params=step.params,
+            passed=False, duration_ms=ms,
+            error=f"capture_snapshot failed: {exc}",
+        )
+
+
 from eab.cli.regression.trace_steps import (
-    _run_trace_start, _run_trace_stop, _run_trace_export, _run_trace_validate,
+    _run_trace_export,
+    _run_trace_start,
+    _run_trace_stop,
+    _run_trace_validate,
 )
 
 _STEP_DISPATCH = {
@@ -676,8 +799,10 @@ _STEP_DISPATCH = {
     "trace_export": _run_trace_export,
     "trace_validate": _run_trace_validate,
     "anomaly_watch": _run_anomaly_watch,
+    "snapshot": _run_snapshot,
 }
 
 # Register BLE step executors — late import to avoid circular dependency
 from eab.cli.regression.ble_steps import BLE_STEP_DISPATCH  # noqa: E402
+
 _STEP_DISPATCH.update(BLE_STEP_DISPATCH)

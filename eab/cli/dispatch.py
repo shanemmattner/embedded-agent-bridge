@@ -543,9 +543,83 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
 
+    if args.cmd == "dwt":
+        from eab.cli.dwt import (
+            cmd_dwt_watch, cmd_dwt_halt, cmd_dwt_list, cmd_dwt_clear,
+        )
+        if args.dwt_action == "watch":
+            return cmd_dwt_watch(
+                symbol=args.symbol,
+                addr=args.addr,
+                elf=args.elf,
+                device=args.device,
+                mode=args.mode,
+                size=args.size,
+                poll_hz=args.poll_hz,
+                output=args.output,
+                duration=args.duration,
+                probe_selector=args.probe_selector,
+                json_mode=args.json,
+            )
+        if args.dwt_action == "halt":
+            return cmd_dwt_halt(
+                symbol=args.symbol,
+                elf=args.elf,
+                device=args.device,
+                chip=args.chip,
+                mode=args.mode,
+                condition=args.condition,
+                max_hits=args.max_hits,
+                backtrace=args.backtrace,
+                probe_type=args.probe,
+                probe_selector=args.probe_selector,
+                port=args.port,
+                json_mode=args.json,
+            )
+        if args.dwt_action == "list":
+            return cmd_dwt_list(
+                device=args.device,
+                probe_selector=args.probe_selector,
+                json_mode=args.json,
+            )
+        if args.dwt_action == "clear":
+            return cmd_dwt_clear(
+                device=args.device,
+                probe_selector=args.probe_selector,
+                json_mode=args.json,
+            )
+
     if args.cmd == "mcp-server":
         from eab.cli.mcp_cmd import cmd_mcp_server
         return cmd_mcp_server(base_dir=base_dir, json_mode=args.json)
+
+    if args.cmd == "debug-monitor":
+        if args.dm_action == "enable":
+            return cli.cmd_debug_monitor_enable(
+                device=args.device,
+                priority=args.priority,
+                json_mode=args.json,
+            )
+        if args.dm_action == "disable":
+            return cli.cmd_debug_monitor_disable(
+                device=args.device,
+                json_mode=args.json,
+            )
+        if args.dm_action == "status":
+            return cli.cmd_debug_monitor_status(
+                device=args.device,
+                json_mode=args.json,
+            )
+
+    if args.cmd == "preflight":
+        if getattr(args, "ble_safe", False):
+            return cli.cmd_preflight_ble_safe(
+                device=args.device,
+                build_dir=args.build_dir,
+                json_mode=args.json,
+            )
+        _print({"error": "Specify --ble-safe flag"}, json_mode=args.json)
+        return 2
 
     if args.cmd == "regression":
         from eab.cli.regression import cmd_regression

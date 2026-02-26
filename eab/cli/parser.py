@@ -556,11 +556,96 @@ def _build_parser() -> argparse.ArgumentParser:
     p_defmt_decode.add_argument("--input", dest="input_file", default=None, help="Input file (raw RTT binary)")
     p_defmt_decode.add_argument("--from-rtt", action="store_true", help="Read from device RTT log (uses base_dir/rtt.log)")
 
+    # --- DWT hardware watchpoints ---
+    p_dwt = sub.add_parser("dwt", help="DWT hardware watchpoints (non-halting stream)")
+    dwt_sub = p_dwt.add_subparsers(dest="dwt_action", required=True)
+
+    # dwt watch
+    p_dwt_watch = dwt_sub.add_parser("watch", help="Non-halting watchpoint — stream JSONL hits")
+    p_dwt_watch.add_argument("--symbol", required=False, default=None,
+                             help="Symbol name from ELF (e.g., conn_interval)")
+    p_dwt_watch.add_argument("--addr", type=lambda x: int(x, 0), default=None,
+                             help="Raw address override (hex, e.g., 0x20001234). Skips ELF lookup.")
+    p_dwt_watch.add_argument("--elf", default=None,
+                             help="ELF file for symbol resolution")
+    p_dwt_watch.add_argument("--device", required=True,
+                             help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_dwt_watch.add_argument("--mode", default="write",
+                             choices=["read", "write", "rw"],
+                             help="Watchpoint mode (default: write)")
+    p_dwt_watch.add_argument("--size", type=int, default=None, choices=[1, 2, 4],
+                             help="Variable size in bytes (auto from ELF if omitted)")
+    p_dwt_watch.add_argument("--poll-hz", type=int, default=100,
+                             help="Poll rate in Hz (default: 100)")
+    p_dwt_watch.add_argument("--output", default=None,
+                             help="Append JSONL events to this file")
+    p_dwt_watch.add_argument("--duration", type=float, default=None,
+                             help="Stop after N seconds (default: run until Ctrl-C)")
+    p_dwt_watch.add_argument("--probe-selector", default=None,
+                             help="J-Link serial number for multi-probe setups")
+
+    # dwt halt
+    p_dwt_halt = dwt_sub.add_parser("halt", help="Halting watchpoint via GDB with optional condition")
+    p_dwt_halt.add_argument("--symbol", required=True,
+                             help="Variable name to watch (must be in ELF symbols)")
+    p_dwt_halt.add_argument("--elf", required=True,
+                             help="ELF file for debug symbols")
+    p_dwt_halt.add_argument("--device", default=None,
+                             help="J-Link device string")
+    p_dwt_halt.add_argument("--chip", default="nrf5340",
+                             help="Chip type for GDB selection (default: nrf5340)")
+    p_dwt_halt.add_argument("--mode", default="write",
+                             choices=["read", "write", "rw"],
+                             help="Watchpoint mode: write=watch, read=rwatch, rw=awatch")
+    p_dwt_halt.add_argument("--condition", default=None,
+                             help="Python expression evaluated at each hit (e.g., 'value > 100')")
+    p_dwt_halt.add_argument("--max-hits", type=int, default=100)
+    p_dwt_halt.add_argument("--backtrace", action="store_true", default=True)
+    p_dwt_halt.add_argument("--probe", default="jlink",
+                             choices=["jlink", "openocd"])
+    p_dwt_halt.add_argument("--probe-selector", default=None)
+    p_dwt_halt.add_argument("--port", type=int, default=None)
+
+    # dwt list
+    p_dwt_list = dwt_sub.add_parser("list", help="Show active DWT comparators")
+    p_dwt_list.add_argument("--device", default=None,
+                             help="J-Link device (reads live DWT_FUNCTn registers)")
+    p_dwt_list.add_argument("--probe-selector", default=None)
+
+    # dwt clear
+    p_dwt_clear = dwt_sub.add_parser("clear", help="Release all DWT comparators")
+    p_dwt_clear.add_argument("--device", required=True,
+                              help="J-Link device string")
+    p_dwt_clear.add_argument("--probe-selector", default=None)
+
     # --- MCP server ---
     sub.add_parser(
         "mcp-server",
         help="Start the EAB MCP server (stdio transport) for Claude Desktop / MCP clients",
     )
+
+    # --- debug-monitor (ARM Debug Monitor exception control) ---
+    p_dm = sub.add_parser("debug-monitor", help="Control ARM Debug Monitor exception mode")
+    dm_sub = p_dm.add_subparsers(dest="dm_action", required=True)
+
+    p_dm_enable = dm_sub.add_parser("enable", help="Enable debug monitor mode on target")
+    p_dm_enable.add_argument("--device", required=True, help="J-Link device string (e.g., NRF5340_XXAA_APP)")
+    p_dm_enable.add_argument("--priority", type=int, default=3,
+                              help="Debug monitor exception priority (0-7, lower = higher priority, default: 3)")
+
+    p_dm_disable = dm_sub.add_parser("disable", help="Disable debug monitor mode on target")
+    p_dm_disable.add_argument("--device", required=True, help="J-Link device string")
+
+    p_dm_status = dm_sub.add_parser("status", help="Show current debug monitor status")
+    p_dm_status.add_argument("--device", required=True, help="J-Link device string")
+
+    # --- preflight (BLE-safe check) ---
+    p_preflight_ble = sub.add_parser("preflight", help="Pre-debug preflight checks (BLE-safe mode etc.)")
+    p_preflight_ble.add_argument("--device", required=True, help="J-Link device string")
+    p_preflight_ble.add_argument("--build-dir", dest="build_dir", default="build",
+                                  help="Zephyr build directory (default: build)")
+    p_preflight_ble.add_argument("--ble-safe", action="store_true",
+                                  help="Check if BLE build conflicts with halt-mode debugging")
 
     # --- regression (hardware-in-the-loop test runner) ---
     p_regression = sub.add_parser("regression", help="Run hardware-in-the-loop regression tests")

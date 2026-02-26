@@ -7,15 +7,9 @@ import os
 import struct
 import subprocess
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, cast
 
 from eab.cli.regression.models import StepResult, StepSpec
-from eab.cli.regression.trace_steps import (
-    _run_trace_export,
-    _run_trace_start,
-    _run_trace_stop,
-    _run_trace_validate,
-)
 from eab.cli.usb_reset import reset_usb_device
 from eab.thread_inspector import inspect_threads
 
@@ -89,7 +83,7 @@ def run_step(
     log_offset: Optional[int] = None,
 ) -> StepResult:
     """Execute a single test step and return the result."""
-    fn: Optional[Callable[..., StepResult]] = _STEP_DISPATCH.get(step.step_type)
+    fn: Optional[Callable[..., StepResult]] = cast(Optional[Callable[..., StepResult]], _STEP_DISPATCH.get(step.step_type))
     if fn is None:
         return StepResult(
             step_type=step.step_type,
@@ -768,7 +762,7 @@ def _run_stack_headroom_assert(
 
     try:
         threads = inspect_threads(step_device, elf)
-    except RuntimeError as exc:
+    except Exception as exc:
         ms = int((time.monotonic() - t0) * 1000)
         return StepResult(
             step_type="stack_headroom_assert",
@@ -800,6 +794,14 @@ def _run_stack_headroom_assert(
         duration_ms=ms,
     )
 
+
+# Late import to avoid circular dependency: trace_steps imports _run_eabctl from this module
+from eab.cli.regression.trace_steps import (  # noqa: E402
+    _run_trace_export,
+    _run_trace_start,
+    _run_trace_stop,
+    _run_trace_validate,
+)
 
 _STEP_DISPATCH = {
     "flash": _run_flash,

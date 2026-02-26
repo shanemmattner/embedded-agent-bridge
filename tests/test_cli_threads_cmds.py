@@ -237,7 +237,7 @@ class TestCmdThreadsSnapshot:
             elf="/path/to/app.elf",
             json_mode=True,
         )
-        mock_inspect.assert_called_once_with(device="NRF5340_XXAA_APP", elf_path="/path/to/app.elf")
+        mock_inspect.assert_called_once_with(target="NRF5340_XXAA_APP", elf="/path/to/app.elf")
 
 
 # =============================================================================

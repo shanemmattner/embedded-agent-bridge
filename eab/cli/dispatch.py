@@ -545,7 +545,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.cmd == "dwt":
         from eab.cli.dwt import (
-            cmd_dwt_watch, cmd_dwt_halt, cmd_dwt_list, cmd_dwt_clear,
+            cmd_dwt_watch, cmd_dwt_halt, cmd_dwt_list, cmd_dwt_clear, cmd_dwt_explain,
         )
         if args.dwt_action == "watch":
             return cmd_dwt_watch(
@@ -586,6 +586,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             return cmd_dwt_clear(
                 device=args.device,
                 probe_selector=args.probe_selector,
+                json_mode=args.json,
+            )
+        if args.dwt_action == "explain":
+            return cmd_dwt_explain(
+                device=args.device,
+                symbols=args.symbols,
+                elf=args.elf,
+                duration=args.duration,
                 json_mode=args.json,
             )
 

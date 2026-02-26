@@ -22,6 +22,8 @@ import json
 import logging
 from typing import Any
 
+from eab.dwt_explain import run_dwt_explain
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -275,6 +277,32 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             }
         ),
     },
+    {
+        "name": "dwt_stream_explain",
+        "description": (
+            "Arm DWT watchpoints on the requested symbols, capture hit events "
+            "for a given duration, resolve addresses to source locations, and "
+            "return an LLM-ready explanation of the access pattern."
+        ),
+        "inputSchema": _schema(
+            {
+                "symbols": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of symbol names to watch.",
+                },
+                "duration_s": {
+                    "type": "integer",
+                    "description": "Capture duration in seconds.",
+                },
+                "elf_path": {
+                    "type": "string",
+                    "description": "Path to ELF binary with DWARF debug info.",
+                },
+            },
+            required=["symbols", "duration_s", "elf_path"],
+        ),
+    },
 ]
 
 
@@ -403,6 +431,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
             timeout=arguments.get("timeout"),
             json_mode=arguments.get("json_mode", True),
         )
+
+    if name == "dwt_stream_explain":
+        result = run_dwt_explain(
+            symbols=arguments["symbols"],
+            duration_s=arguments["duration_s"],
+            elf_path=arguments["elf_path"],
+        )
+        return json.dumps(result)
 
     return json.dumps({"error": f"Unknown tool: {name}"})
 

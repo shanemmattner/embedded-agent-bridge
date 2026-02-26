@@ -41,7 +41,7 @@ class TestDaemonEntryPoint:
         from eab.daemon import main
 
         sig = inspect.signature(main)
-        assert sig.return_annotation == int or sig.return_annotation == "int"
+        assert sig.return_annotation is int or sig.return_annotation == "int"
 
     def test_daemon_help_flag(self):
         """Running with --help should show help and exit with code 0."""
@@ -89,7 +89,7 @@ class TestControlEntryPoint:
         from eab.control import main
 
         sig = inspect.signature(main)
-        assert sig.return_annotation == int or sig.return_annotation == "int"
+        assert sig.return_annotation is int or sig.return_annotation == "int"
 
     def test_control_help_flag(self):
         """Running with --help should show help and exit with code 0."""

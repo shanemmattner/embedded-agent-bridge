@@ -7,9 +7,15 @@ import os
 import struct
 import subprocess
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from eab.cli.regression.models import StepResult, StepSpec
+from eab.cli.regression.trace_steps import (
+    _run_trace_export,
+    _run_trace_start,
+    _run_trace_stop,
+    _run_trace_validate,
+)
 from eab.cli.usb_reset import reset_usb_device
 from eab.thread_inspector import inspect_threads
 
@@ -83,7 +89,7 @@ def run_step(
     log_offset: Optional[int] = None,
 ) -> StepResult:
     """Execute a single test step and return the result."""
-    fn = _STEP_DISPATCH.get(step.step_type)
+    fn: Optional[Callable[..., StepResult]] = _STEP_DISPATCH.get(step.step_type)
     if fn is None:
         return StepResult(
             step_type=step.step_type,
@@ -757,7 +763,7 @@ def _run_stack_headroom_assert(
     t0 = time.monotonic()
     p = step.params
     min_free_bytes = int(p.get("min_free_bytes", 0))
-    step_device = p.get("device") or device
+    step_device: str = str(p.get("device") or device or "")
     elf = p.get("elf", "")
 
     try:
@@ -794,13 +800,6 @@ def _run_stack_headroom_assert(
         duration_ms=ms,
     )
 
-
-from eab.cli.regression.trace_steps import (
-    _run_trace_export,
-    _run_trace_start,
-    _run_trace_stop,
-    _run_trace_validate,
-)
 
 _STEP_DISPATCH = {
     "flash": _run_flash,

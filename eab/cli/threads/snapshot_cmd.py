@@ -26,7 +26,7 @@ def cmd_threads_snapshot(
     from eab.thread_inspector import inspect_threads
 
     try:
-        threads = inspect_threads(device=device, elf_path=elf)
+        threads = inspect_threads(target=device, elf=elf)
     except ImportError as exc:
         _print({"error": str(exc)}, json_mode=json_mode)
         return 1

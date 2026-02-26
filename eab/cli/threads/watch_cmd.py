@@ -34,7 +34,7 @@ def cmd_threads_watch(
     try:
         while True:
             try:
-                threads = inspect_threads(device=device, elf_path=elf)
+                threads = inspect_threads(target=device, elf=elf)
             except ImportError as exc:
                 _print({"error": str(exc)}, json_mode=json_mode)
                 return 1

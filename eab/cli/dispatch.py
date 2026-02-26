@@ -327,7 +327,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
     if args.cmd == "diagnose":
-        return cli.cmd_diagnose(base_dir=base_dir, json_mode=args.json, device_name=device_name)
+        return cli.cmd_diagnose(base_dir=base_dir, json_mode=args.json, device_name=target_device or "")
     if args.cmd == "flash":
         return cli.cmd_flash(
             firmware=args.firmware,

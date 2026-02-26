@@ -25,6 +25,7 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_mcp_module() -> types.ModuleType:
     """Build a minimal fake ``mcp`` package tree so eab.mcp_server can import."""
     mcp_pkg = types.ModuleType("mcp")
@@ -43,12 +44,14 @@ def _make_mock_mcp_module() -> types.ModuleType:
             def decorator(fn):  # noqa: ANN001
                 self._list_tools_handler = fn
                 return fn
+
             return decorator
 
         def call_tool(self):  # noqa: ANN201
             def decorator(fn):  # noqa: ANN001
                 self._call_tool_handler = fn
                 return fn
+
             return decorator
 
         async def run(self, read_stream, write_stream, opts):  # noqa: ANN001,ANN201
@@ -111,6 +114,7 @@ def _load_mcp_server_module() -> types.ModuleType:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def mcp_module():
     """Provides eab.mcp_server loaded with a mocked mcp package."""
@@ -127,6 +131,7 @@ def mcp_module():
 # ---------------------------------------------------------------------------
 # Tests: TOOL_DEFINITIONS
 # ---------------------------------------------------------------------------
+
 
 class TestToolDefinitions:
     def test_tool_definitions_non_empty(self, mcp_module):
@@ -155,21 +160,18 @@ class TestToolDefinitions:
 
     def test_schema_type_is_object(self, mcp_module):
         for tool in mcp_module.TOOL_DEFINITIONS:
-            assert tool["inputSchema"]["type"] == "object", (
-                f"Tool {tool['name']} schema type is not 'object'"
-            )
+            assert tool["inputSchema"]["type"] == "object", f"Tool {tool['name']} schema type is not 'object'"
 
     def test_required_fields_are_lists(self, mcp_module):
         for tool in mcp_module.TOOL_DEFINITIONS:
             req = tool["inputSchema"].get("required", [])
-            assert isinstance(req, list), (
-                f"Tool {tool['name']} 'required' is not a list"
-            )
+            assert isinstance(req, list), f"Tool {tool['name']} 'required' is not a list"
 
 
 # ---------------------------------------------------------------------------
 # Tests: _handle_tool dispatch
 # ---------------------------------------------------------------------------
+
 
 class TestHandleTool:
     """Each test verifies _handle_tool calls the correct cmd_* function."""
@@ -257,9 +259,7 @@ class TestHandleTool:
     def test_eab_regression(self, mcp_module):
         mock_fn = MagicMock(return_value=0)
         with patch("eab.cli.regression.cmd_regression", mock_fn):
-            result = self._run(
-                mcp_module._handle_tool("eab_regression", {"suite": "/tests/suite"})
-            )
+            result = self._run(mcp_module._handle_tool("eab_regression", {"suite": "/tests/suite"}))
         data = json.loads(result)
         assert data["return_code"] == 0
         mock_fn.assert_called_once()
@@ -320,6 +320,7 @@ class TestHandleTool:
 # Tests: run_mcp_server
 # ---------------------------------------------------------------------------
 
+
 class TestRunMcpServer:
     def test_run_raises_import_error_when_mcp_unavailable(self):
         """When mcp is not installed, run_mcp_server should raise ImportError."""
@@ -375,6 +376,7 @@ class TestRunMcpServer:
 # Tests: cmd_mcp_server (launcher)
 # ---------------------------------------------------------------------------
 
+
 class TestCmdMcpServer:
     def test_returns_0_on_clean_run(self):
         from eab.cli.mcp_cmd import cmd_mcp_server  # noqa: PLC0415
@@ -406,6 +408,7 @@ class TestCmdMcpServer:
 
         # Direct approach: patch the import inside cmd_mcp_server
         import builtins  # noqa: PLC0415
+
         real_import = builtins.__import__
 
         def broken_import(name, *args, **kwargs):  # noqa: ANN001,ANN002,ANN003,ANN201
@@ -426,6 +429,7 @@ class TestCmdMcpServer:
 
     def test_returns_1_on_exception(self):
         from eab.cli.mcp_cmd import cmd_mcp_server  # noqa: PLC0415
+
         # Ensure mcp_server is importable (mocked or real)
         _load_mcp_server_module()
 
@@ -435,6 +439,7 @@ class TestCmdMcpServer:
 
     def test_returns_0_on_keyboard_interrupt(self):
         from eab.cli.mcp_cmd import cmd_mcp_server  # noqa: PLC0415
+
         _load_mcp_server_module()
 
         with patch("eab.cli.mcp_cmd.asyncio.run", side_effect=KeyboardInterrupt()):
@@ -445,6 +450,7 @@ class TestCmdMcpServer:
 # ---------------------------------------------------------------------------
 # Tests: CLI parser
 # ---------------------------------------------------------------------------
+
 
 class TestParser:
     def test_mcp_server_subcommand_registered(self):
@@ -476,6 +482,7 @@ class TestParser:
 # ---------------------------------------------------------------------------
 # Tests: dispatch
 # ---------------------------------------------------------------------------
+
 
 class TestDispatch:
     def test_dispatch_mcp_server(self):

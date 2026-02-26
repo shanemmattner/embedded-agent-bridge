@@ -40,6 +40,7 @@ from .log_sanitize import sanitize_serial_bytes
 from .port_lock import PortLock, find_port_users, list_all_locks
 from .chip_recovery import ChipRecovery, ChipState
 from .singleton import SingletonDaemon, check_singleton
+from .auto_fault_analyzer import AutoFaultAnalyzer, AutoFaultConfig
 
 
 class SerialDaemon:
@@ -69,6 +70,14 @@ class SerialDaemon:
         log_max_files: int = 5,
         log_compress: bool = True,
         device_name: str = "",
+        # Auto fault analysis parameters
+        auto_fault_enabled: bool = False,
+        auto_fault_chip: str = "nrf5340",
+        auto_fault_device: str = "NRF5340_XXAA_APP",
+        auto_fault_probe: str = "jlink",
+        auto_fault_probe_selector: Optional[str] = None,
+        auto_fault_elf: Optional[str] = None,
+        auto_fault_restart_rtt: bool = False,
     ):
         self._port = port
         self._baud = baud
@@ -194,6 +203,22 @@ class SerialDaemon:
             on_crash_detected=self._on_crash_detected,
         )
         self._auto_recovery = True  # Enable automatic recovery
+
+        # Auto fault analysis on crash detection
+        self._auto_fault = AutoFaultAnalyzer(
+            config=AutoFaultConfig(
+                enabled=auto_fault_enabled,
+                chip=auto_fault_chip,
+                device=auto_fault_device,
+                probe_type=auto_fault_probe,
+                probe_selector=auto_fault_probe_selector,
+                elf=auto_fault_elf,
+                restart_rtt=auto_fault_restart_rtt,
+                base_dir=base_dir,
+            ),
+            emitter=self._events,
+            rtt_bridge=None,  # Set later via set_rtt_bridge() if needed
+        )
 
     def _emit_event(self, event_type: str, data: Optional[dict] = None, level: str = "info") -> None:
         try:
@@ -351,11 +376,32 @@ class SerialDaemon:
         )
 
     def _on_crash_detected(self, line: str) -> None:
-        """Called when a crash is detected."""
+        """Called when a crash is detected.
+
+        Emits a crash_detected event immediately, then dispatches
+        auto fault analysis to a background thread (if configured).
+        """
         self._logger.error(f"Crash detected!")
         # Log to alerts
         self._session_logger.log_line(f"[EAB] CRASH DETECTED: {line[:100]}")
         self._emit_event("crash_detected", {"line": line[:200]}, level="error")
+
+        # Auto fault analysis — dispatches to background thread, returns immediately.
+        # The fault_report event is emitted asynchronously when analysis completes.
+        self._auto_fault.on_crash_detected(line)
+
+    def set_rtt_bridge(self, rtt_bridge) -> None:
+        """Set the JLinkBridge for RTT stop/start during fault analysis.
+
+        Call this after constructing the daemon if using J-Link RTT.
+        Allows analyze_fault() to stop RTT before GDB connects (J-Link
+        single-client constraint).
+
+        Args:
+            rtt_bridge: JLinkBridge instance (or any object with
+                        rtt_status()/stop_rtt()/start_rtt() methods).
+        """
+        self._auto_fault._rtt_bridge = rtt_bridge
 
     def start(self, force: bool = False) -> bool:
         """Start the daemon. Returns True if started successfully.
@@ -1116,6 +1162,46 @@ Examples:
         help="Device name for per-device singleton (e.g., esp32, nrf5340)",
     )
 
+    # Auto fault analysis arguments
+    parser.add_argument(
+        "--auto-fault-analysis",
+        action="store_true",
+        default=False,
+        help="Enable auto fault analysis on crash detection",
+    )
+    parser.add_argument(
+        "--fault-chip",
+        default="nrf5340",
+        help="Chip type for auto fault analysis GDB selection (default: nrf5340)",
+    )
+    parser.add_argument(
+        "--fault-device",
+        default="NRF5340_XXAA_APP",
+        help="Device string for auto fault analysis (e.g., NRF5340_XXAA_APP, MCXN947)",
+    )
+    parser.add_argument(
+        "--fault-probe",
+        default="jlink",
+        choices=["jlink", "openocd", "xds110"],
+        help="Debug probe type for auto fault analysis (default: jlink)",
+    )
+    parser.add_argument(
+        "--fault-probe-selector",
+        default=None,
+        help="Probe serial/ID for auto fault analysis (multi-probe)",
+    )
+    parser.add_argument(
+        "--fault-elf",
+        default=None,
+        help="ELF file path for GDB symbol loading during auto fault analysis",
+    )
+    parser.add_argument(
+        "--fault-restart-rtt",
+        action="store_true",
+        default=False,
+        help="Restart RTT after auto fault analysis completes (J-Link only)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.list:
@@ -1289,6 +1375,14 @@ Examples:
         log_max_files=args.log_max_files,
         log_compress=not args.no_log_compress,
         device_name=args.device_name,
+        # Auto fault analysis
+        auto_fault_enabled=args.auto_fault_analysis,
+        auto_fault_chip=args.fault_chip,
+        auto_fault_device=args.fault_device,
+        auto_fault_probe=args.fault_probe,
+        auto_fault_probe_selector=args.fault_probe_selector,
+        auto_fault_elf=args.fault_elf,
+        auto_fault_restart_rtt=args.fault_restart_rtt,
     )
 
     # Handle signals

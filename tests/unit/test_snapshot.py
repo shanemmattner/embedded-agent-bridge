@@ -19,6 +19,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytest.importorskip("elftools", reason="pyelftools is not installed")
+
 from eab.gdb_bridge import GDBResult
 from eab.snapshot import (
     MemoryRegion,

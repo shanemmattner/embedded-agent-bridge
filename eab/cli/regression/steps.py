@@ -877,7 +877,7 @@ def _run_snapshot(
         )
 
 
-from eab.cli.regression.trace_steps import (
+from eab.cli.regression.trace_steps import (  # noqa: E402
     _run_trace_export,
     _run_trace_start,
     _run_trace_stop,

@@ -275,6 +275,31 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             }
         ),
     },
+    {
+        "name": "capture_snapshot",
+        "description": (
+            "Capture a full memory snapshot (ELF core file) from a live embedded "
+            "target via a debug probe.  Halts the target, reads all Cortex-M "
+            "registers and RAM regions, and writes an ELF32 ET_CORE file."
+        ),
+        "inputSchema": _schema(
+            {
+                "device": {
+                    "type": "string",
+                    "description": "J-Link / probe device identifier (e.g., NRF5340_XXAA_APP).",
+                },
+                "elf_path": {
+                    "type": "string",
+                    "description": "Path to the firmware ELF file used to identify memory regions.",
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Destination path for the generated ELF core file.",
+                },
+            },
+            required=["device", "elf_path", "output_path"],
+        ),
+    },
 ]
 
 
@@ -403,6 +428,20 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
             timeout=arguments.get("timeout"),
             json_mode=arguments.get("json_mode", True),
         )
+
+    if name == "capture_snapshot":
+        from eab.snapshot import capture_snapshot as _capture_snapshot  # noqa: PLC0415
+        result = _capture_snapshot(
+            device=arguments["device"],
+            elf_path=arguments["elf_path"],
+            output_path=arguments["output_path"],
+        )
+        return json.dumps({
+            "path": result.output_path,
+            "regions": [{"start": r.start, "size": r.size} for r in result.regions],
+            "registers": result.registers,
+            "size_bytes": result.total_size,
+        })
 
     return json.dumps({"error": f"Unknown tool: {name}"})
 

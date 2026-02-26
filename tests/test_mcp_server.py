@@ -150,6 +150,7 @@ class TestToolDefinitions:
             "eab_fault_analyze",
             "eab_rtt_tail",
             "eab_regression",
+            "capture_snapshot",
         }
         assert expected.issubset(names), f"Missing tools: {expected - names}"
 
@@ -265,6 +266,43 @@ class TestHandleTool:
         mock_fn.assert_called_once()
         _, kwargs = mock_fn.call_args
         assert kwargs["suite"] == "/tests/suite"
+
+    def test_capture_snapshot(self, mcp_module):
+        mock_region = MagicMock()
+        mock_region.start = 0x20000000
+        mock_region.size = 0x40000
+        mock_result = MagicMock()
+        mock_result.output_path = "/tmp/snap.bin"
+        mock_result.regions = [mock_region]
+        mock_result.registers = {"r0": 0, "pc": 0x12345678}
+        mock_result.total_size = 65536
+
+        mock_fn = MagicMock(return_value=mock_result)
+        with patch("eab.snapshot.capture_snapshot", mock_fn):
+            result = self._run(
+                mcp_module._handle_tool(
+                    "capture_snapshot",
+                    {
+                        "device": "NRF5340_XXAA_APP",
+                        "elf_path": "/fw/app.elf",
+                        "output_path": "/tmp/snap.bin",
+                    },
+                )
+            )
+        data = json.loads(result)
+        assert data["path"] == "/tmp/snap.bin"
+        assert "regions" in data
+        assert len(data["regions"]) == 1
+        assert data["regions"][0]["start"] == 0x20000000
+        assert data["regions"][0]["size"] == 0x40000
+        assert "registers" in data
+        assert data["registers"]["pc"] == 0x12345678
+        assert data["size_bytes"] == 65536
+        mock_fn.assert_called_once_with(
+            device="NRF5340_XXAA_APP",
+            elf_path="/fw/app.elf",
+            output_path="/tmp/snap.bin",
+        )
 
     def test_unknown_tool_returns_error(self, mcp_module):
         result = self._run(mcp_module._handle_tool("nonexistent_tool", {}))

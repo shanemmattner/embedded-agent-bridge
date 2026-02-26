@@ -658,4 +658,45 @@ def _build_parser() -> argparse.ArgumentParser:
     p_regression.add_argument("--timeout", type=int, default=None,
                                help="Global timeout per test in seconds (overrides per-test)")
 
+    # --- anomaly detection ---
+    p_anomaly = sub.add_parser("anomaly", help="Anomaly detection (record/compare/watch)")
+    anomaly_sub = p_anomaly.add_subparsers(dest="anomaly_action", required=True)
+
+    # anomaly record
+    p_anom_rec = anomaly_sub.add_parser("record", help="Record a golden baseline from device log")
+    p_anom_rec.add_argument("--duration", type=float, default=60.0,
+                             help="Recording window in seconds (default: 60)")
+    p_anom_rec.add_argument("--output", "-o", required=True,
+                             help="Output baseline JSON file path")
+    p_anom_rec.add_argument("--log-source", default=None,
+                             help="Override log file path (default: <base_dir>/latest.log)")
+    p_anom_rec.add_argument("--metric", dest="metrics", action="append", default=[],
+                             help="Metric name(s) to record (repeatable; default: all)")
+
+    # anomaly compare
+    p_anom_cmp = anomaly_sub.add_parser("compare", help="Compare live window against a baseline")
+    p_anom_cmp.add_argument("--baseline", required=True,
+                              help="Path to baseline JSON file")
+    p_anom_cmp.add_argument("--duration", type=float, default=30.0,
+                              help="Comparison window in seconds (default: 30)")
+    p_anom_cmp.add_argument("--sigma", type=float, default=3.0,
+                              help="Z-score alert threshold (default: 3.0)")
+    p_anom_cmp.add_argument("--log-source", default=None,
+                              help="Override log file path")
+
+    # anomaly watch
+    p_anom_wat = anomaly_sub.add_parser("watch", help="Streaming EWMA anomaly watch")
+    p_anom_wat.add_argument("--metric", required=True,
+                             help="Metric name to watch (e.g. bt_notification_interval_ms)")
+    p_anom_wat.add_argument("--threshold", default="2.5sigma",
+                             help="Alert threshold, e.g. '2.5sigma' (default: 2.5sigma)")
+    p_anom_wat.add_argument("--ewma-window", type=int, default=20,
+                             help="EWMA window size (default: 20)")
+    p_anom_wat.add_argument("--min-samples", type=int, default=30,
+                             help="Cold-start samples before alerting (default: 30)")
+    p_anom_wat.add_argument("--duration", type=float, default=None,
+                             help="Stop after N seconds (default: run until Ctrl-C)")
+    p_anom_wat.add_argument("--log-source", default=None,
+                             help="Override log file path")
+
     return parser

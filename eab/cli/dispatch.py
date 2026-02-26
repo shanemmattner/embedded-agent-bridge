@@ -631,5 +631,43 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
 
+    if args.cmd == "anomaly":
+        from eab.cli.anomaly_cmds import (
+            cmd_anomaly_record, cmd_anomaly_compare, cmd_anomaly_watch,
+            _parse_sigma_threshold,
+        )
+        if args.anomaly_action == "record":
+            return cmd_anomaly_record(
+                base_dir=base_dir,
+                duration_s=args.duration,
+                output_path=args.output,
+                log_source=args.log_source,
+                metrics=args.metrics or None,
+                device=target_device or "",
+                json_mode=args.json,
+            )
+        if args.anomaly_action == "compare":
+            return cmd_anomaly_compare(
+                base_dir=base_dir,
+                baseline_path=args.baseline,
+                duration_s=args.duration,
+                sigma_threshold=args.sigma,
+                log_source=args.log_source,
+                device=target_device or "",
+                json_mode=args.json,
+            )
+        if args.anomaly_action == "watch":
+            sigma = _parse_sigma_threshold(args.threshold)
+            return cmd_anomaly_watch(
+                base_dir=base_dir,
+                metric_name=args.metric,
+                threshold_sigma=sigma,
+                ewma_window=args.ewma_window,
+                min_samples=args.min_samples,
+                duration_s=args.duration,
+                log_source=args.log_source,
+                json_mode=args.json,
+            )
+
     parser.error(f"Unknown command: {args.cmd}")
     return 2

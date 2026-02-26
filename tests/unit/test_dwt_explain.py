@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -416,3 +417,141 @@ class TestRunDwtExplainInputValidation:
     def test_raises_value_error_for_negative_duration(self):
         with pytest.raises(ValueError, match="duration_s"):
             run_dwt_explain(["conn_interval"], -5, "/fake/app.elf", "NRF5340_XXAA_APP")
+
+
+# =============================================================================
+# 9. CLI JSON output
+# =============================================================================
+
+
+class TestCmdDwtExplainJsonMode:
+    """Tests for cmd_dwt_explain CLI handler with --json flag."""
+
+    @pytest.fixture
+    def fake_result(self) -> dict:
+        return {
+            "events": [
+                {
+                    "ts": 1000,
+                    "label": "conn_interval",
+                    "addr": "0x20001234",
+                    "value": "0x4",
+                    "source_file": "ble.c",
+                    "line_number": 10,
+                    "function_name": "ble_init",
+                },
+            ],
+            "source_context": "DWT Watchpoint Hit Summary\n========",
+            "ai_prompt": "You are an expert embedded-systems engineer.",
+            "suggested_watchpoints": ["conn_interval"],
+        }
+
+    @patch("eab.cli.dwt.explain_cmd.run_dwt_explain")
+    def test_json_mode_prints_valid_json(self, mock_run, fake_result, capsys):
+        from eab.cli.dwt.explain_cmd import cmd_dwt_explain
+
+        mock_run.return_value = fake_result
+
+        rc = cmd_dwt_explain(
+            device="NRF5340_XXAA_APP",
+            symbols="conn_interval",
+            elf="/fake/app.elf",
+            duration=1,
+            json_mode=True,
+        )
+
+        captured = capsys.readouterr()
+        assert rc == 0
+        parsed = json.loads(captured.out)
+        assert "events" in parsed
+        assert "source_context" in parsed
+        assert "ai_prompt" in parsed
+        assert "suggested_watchpoints" in parsed
+        assert isinstance(parsed["suggested_watchpoints"], list)
+
+    @patch("eab.cli.dwt.explain_cmd.run_dwt_explain")
+    def test_non_json_mode_prints_ai_prompt(self, mock_run, fake_result, capsys):
+        from eab.cli.dwt.explain_cmd import cmd_dwt_explain
+
+        mock_run.return_value = fake_result
+
+        rc = cmd_dwt_explain(
+            device="NRF5340_XXAA_APP",
+            symbols="conn_interval",
+            elf="/fake/app.elf",
+            duration=1,
+            json_mode=False,
+        )
+
+        captured = capsys.readouterr()
+        assert rc == 0
+        assert fake_result["ai_prompt"] in captured.out
+        # Should not be JSON-formatted output
+        assert "{" not in captured.out
+
+
+# =============================================================================
+# 10. MCP tool handler
+# =============================================================================
+
+
+class TestMcpDwtStreamExplain:
+    """Tests for the MCP _handle_tool dispatcher with dwt_stream_explain."""
+
+    @pytest.fixture
+    def fake_result(self) -> dict:
+        return {
+            "events": [
+                {
+                    "ts": 2000,
+                    "label": "tx_power",
+                    "addr": "0x20001238",
+                    "value": "0x0",
+                    "source_file": "radio.c",
+                    "line_number": 55,
+                    "function_name": "radio_configure",
+                },
+            ],
+            "source_context": "DWT Watchpoint Hit Summary\n========",
+            "ai_prompt": "You are an expert embedded-systems engineer.",
+            "suggested_watchpoints": ["tx_power"],
+        }
+
+    @patch("eab.mcp_server.run_dwt_explain")
+    def test_dwt_stream_explain_returns_valid_json(self, mock_run, fake_result):
+        from eab.mcp_server import _handle_tool
+
+        mock_run.return_value = fake_result
+
+        raw = asyncio.run(
+            _handle_tool(
+                "dwt_stream_explain",
+                {
+                    "symbols": ["tx_power"],
+                    "duration_s": 1,
+                    "elf_path": "/fake/app.elf",
+                },
+            )
+        )
+
+        parsed = json.loads(raw)
+        assert "events" in parsed
+        assert "source_context" in parsed
+        assert "ai_prompt" in parsed
+        assert "suggested_watchpoints" in parsed
+        assert isinstance(parsed["suggested_watchpoints"], list)
+        mock_run.assert_called_once_with(
+            symbols=["tx_power"],
+            duration_s=1,
+            elf_path="/fake/app.elf",
+        )
+
+    @patch("eab.mcp_server.run_dwt_explain")
+    def test_unknown_tool_returns_error_json(self, mock_run):
+        from eab.mcp_server import _handle_tool
+
+        raw = asyncio.run(_handle_tool("no_such_tool", {}))
+
+        parsed = json.loads(raw)
+        assert "error" in parsed
+        mock_run.assert_not_called()

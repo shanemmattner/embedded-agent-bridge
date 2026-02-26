@@ -33,7 +33,7 @@ eabctl flash fw.bin --chip esp32s3  # Flash firmware
 eabctl diagnose --json             # Full health check
 ```
 
-That's it. Your agent reads files and calls CLI commands. No MCP server, no custom protocol, no interactive sessions.
+That's it. Your agent reads files and calls CLI commands. No custom protocol, no interactive sessions.
 
 ## Why
 
@@ -109,6 +109,51 @@ EAB turns these interactive sessions into file I/O and CLI calls. The agent read
 - CI-friendly: exit code 0 = all pass, 1 = any fail
 - Steps shell out to `eabctl --json` for full isolation
 
+**HIL pytest Plugin**
+- Write hardware-in-the-loop tests as normal `pytest` functions with fixtures and `assert`
+- `hil_device` fixture manages device lifecycle (flash, reset, teardown)
+- RTT output captured per-test, attached to pytest report on failure
+- `--hil-device`, `--hil-chip`, `--hil-probe` CLI options; tests auto-skip without hardware
+- `hil_central` fixture for second BLE central device
+
+**BLE Hardware-in-the-Loop**
+- Second nRF5340 DK as BLE central controlled via RTT shell (`BleCentral`)
+- Multi-device YAML regression: `devices: {peripheral: ..., central: ...}` 
+- New YAML steps: `ble_scan`, `ble_connect`, `ble_subscribe`, `ble_write`, `expect_notify`
+- Full BLE end-to-end test: peripheral advertises → central connects → notifications flow → writes
+
+**DWT Non-Halting Watchpoints**
+- Program Cortex-M DWT comparators to watch memory addresses without halting the CPU
+- Stream JSONL events when watched variables change (at ~100Hz polling via J-Link)
+- ELF symbol resolution — watch `conn_interval` by name, not address
+- Conditional halting watchpoints via GDB Python (e.g. halt only when value changes >20%)
+- `eabctl dwt watch/halt/list/clear` subcommands; all 4 comparators on Cortex-M33
+
+**Debug Monitor Mode**
+- Non-halting breakpoints for BLE firmware — debug handler runs as Cortex-M exception
+- BLE Link Layer keeps running at high priority; GATT callbacks debuggable without disconnect
+- `eabctl debug-monitor enable --device NRF5340_XXAA_APP [--priority 3]`
+- DEMCR register control (MON_EN bit 16); integrates with regression YAML flash step
+- `eabctl preflight --ble-safe` warns when BLE build + halt-mode debugging detected
+
+**MCP Server**
+- Exposes all `eabctl` commands as MCP tools for Claude Desktop, Cursor, and any MCP-aware agent
+- 8 tools: `get_status`, `read_rtt`, `send_command`, `fault_analyze`, `flash_firmware`, `reset_device`, `run_regression`, `get_alerts`
+- stdio transport; install with `pip install embedded-agent-bridge[mcp]`
+- Add to Claude Desktop: `{"mcpServers": {"eab": {"command": "eabmcp"}}}`
+
+**Anomaly Detection**
+- Baseline recording: capture RTT metric distributions from a known-good firmware run
+- Z-score comparison: detect deviations from baseline (message rates, event intervals, error counts)
+- EWMA streaming: real-time sigma alerting on a rolling mean — pure Python, no numpy required
+- Regression step: `anomaly_watch` with configurable sigma threshold and `fail_on_anomaly`
+- Metrics extracted: BT notify count, connection interval, MTU, heap free, TX backpressure
+
+**Fault Analysis + RTT Context**  
+- `--rtt-context N` on `fault-analyze`: captures last N RTT log lines before crash timestamp
+- JSON output adds `context_window` and `ai_prompt` fields for LLM root cause analysis
+- Auto-trigger: crash pattern detection → automatic fault-analyze → `fault_report` event
+
 **Agent-Friendly Design**
 - All output in files — agents read with `cat`, `tail`, or their native file tools
 - `--json` flag on every command for structured output
@@ -162,6 +207,7 @@ eabctl openocd stop
 | `rtt.log` | Timestamped RTT output |
 | `rtt.csv` | RTT data in CSV format |
 | `rtt.jsonl` | RTT structured events |
+| `baselines/*.json` | Anomaly detection baseline (metric stats from golden run) |
 
 ## Platform Support
 
@@ -203,10 +249,16 @@ eabctl openocd stop
 - [x] ML inference benchmarking (TFLite Micro + CMSIS-NN, DWT profiling)
 - [x] Cross-board ML comparison (STM32N6 Cortex-M55 vs MCXN947 Cortex-M33)
 - [x] STM32N6 SRAM boot automation
+- [x] MCP server (for agents that support it)
+- [x] HIL pytest plugin (`hil_device` fixture, RTT capture per test, auto-skip without hardware)
+- [x] DWT non-halting watchpoints (stream events without halting CPU, ELF symbol resolution)
+- [x] Debug Monitor Mode (BLE-safe non-halting breakpoints, DEMCR MON_EN)
+- [x] BLE HIL steps (second nRF5340 DK as central, multi-device YAML, ble_scan/connect/notify/write)
+- [x] Anomaly detection (baseline record/compare + EWMA streaming, pure Python, no numpy)
+- [x] Fault analyze + RTT context window (auto-trigger on crash, ai_prompt field)
 - [ ] NPU acceleration benchmarks (Neural-ART, eIQ Neutron)
 - [ ] Multiple simultaneous port support
 - [ ] GDB MI protocol wrapper (persistent debugging sessions)
-- [ ] MCP server (for agents that support it)
 - [ ] Cross-tool event correlation
 - [ ] Power profiling integration
 
@@ -256,7 +308,7 @@ eabctl gdb --chip esp32s3 --cmd "bt" # Run GDB commands
 eabctl openocd stop                  # Stop OpenOCD
 
 # Fault analysis
-eabctl fault-analyze --device NRF5340_XXAA_APP --json
+eabctl fault-analyze --device NRF5340_XXAA_APP --rtt-context 100 --json
 eabctl fault-analyze --device MCXN947 --probe openocd --chip mcxn947 --json
 
 # RTT (Real-Time Transfer) streaming
@@ -279,7 +331,51 @@ eabctl c2000-trace-export -o trace.json --erad erad.json --dlog dlog.json
 eabctl regression --suite tests/hw/ --json       # Run all tests in directory
 eabctl regression --test tests/hw/smoke.yaml     # Run single test
 eabctl regression --suite tests/hw/ --filter "*nrf*" --json  # Filter by pattern
+
+# DWT non-halting watchpoints
+eabctl dwt watch --device NRF5340_XXAA_APP --address 0x20001234 --size 4 --mode write --label "conn_interval"
+eabctl dwt watch --device NRF5340_XXAA_APP --symbol conn_interval --elf build/zephyr/zephyr.elf
+eabctl dwt halt --device NRF5340_XXAA_APP --symbol conn_interval --elf zephyr.elf --condition "abs(new-prev)/prev>0.20"
+eabctl dwt list   # active comparators
+eabctl dwt clear  # release all
+
+# Debug monitor mode (non-halting breakpoints for BLE)
+eabctl debug-monitor enable --device NRF5340_XXAA_APP --priority 3
+eabctl debug-monitor disable --device NRF5340_XXAA_APP
+eabctl debug-monitor status --device NRF5340_XXAA_APP --json
+eabctl preflight --ble-safe  # warn if BLE build + halt-mode
+
+# Anomaly detection
+eabctl anomaly record --device NRF5340_XXAA_APP --duration 60 --output baselines/nominal.json
+eabctl anomaly compare --device NRF5340_XXAA_APP --baseline baselines/nominal.json --duration 30 --json
+eabctl anomaly watch --device NRF5340_XXAA_APP --metric bt_notification_interval_ms --threshold 2.5sigma
+
+# MCP server (for Claude Desktop / Cursor)
+eabmcp  # start MCP server (stdio transport)
 ```
+
+## Regression Step Types
+
+| Step | Implementation | Parameters |
+|------|---------------|------------|
+| `flash` | `eabctl flash` | firmware, chip, runner, address |
+| `reset` | `eabctl reset` | chip, method |
+| `send` | `eabctl send` | text, await_ack, timeout |
+| `wait` | `eabctl tail` with pattern | pattern, timeout |
+| `assert_log` | Alias for `wait` | pattern, timeout |
+| `wait_event` | `eabctl wait-event` | event_type, contains, timeout |
+| `sleep` | `time.sleep()` | seconds |
+| `read_vars` | `eabctl read-vars` | elf, vars (name, expect_eq/gt/lt) |
+| `fault_check` | `eabctl fault-analyze` | elf, expect_clean |
+| `bench_capture` | Parse `[ML_BENCH]` RTT output | pattern, metrics |
+| `sram_boot` | GDB load for SRAM boot | elf, load_addr |
+| `ble_scan` | `BleCentral.scan()` | device, target_name, timeout |
+| `ble_connect` | `BleCentral.connect()` | device, timeout |
+| `ble_subscribe` | `BleCentral.subscribe_notify()` | device, char_uuid |
+| `ble_write` | `BleCentral.write()` | device, char_uuid, value |
+| `expect_notify` | `BleCentral.assert_notify()` | device, char_uuid, count, timeout |
+| `ble_disconnect` | `BleCentral.disconnect()` | device |
+| `anomaly_watch` | `eabctl anomaly watch` | device, baseline, max_sigma, duration, fail_on_anomaly |
 
 ## Related Projects
 

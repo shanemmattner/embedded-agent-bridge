@@ -556,6 +556,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_defmt_decode.add_argument("--input", dest="input_file", default=None, help="Input file (raw RTT binary)")
     p_defmt_decode.add_argument("--from-rtt", action="store_true", help="Read from device RTT log (uses base_dir/rtt.log)")
 
+    # --- MCP server ---
+    sub.add_parser(
+        "mcp-server",
+        help="Start the EAB MCP server (stdio transport) for Claude Desktop / MCP clients",
+    )
+
     # --- regression (hardware-in-the-loop test runner) ---
     p_regression = sub.add_parser("regression", help="Run hardware-in-the-loop regression tests")
     p_regression.add_argument("--suite", default=None,

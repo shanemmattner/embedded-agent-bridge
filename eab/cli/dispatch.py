@@ -543,6 +543,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
 
+    if args.cmd == "mcp-server":
+        from eab.cli.mcp_cmd import cmd_mcp_server
+        return cmd_mcp_server(base_dir=base_dir, json_mode=args.json)
+
     if args.cmd == "regression":
         from eab.cli.regression import cmd_regression
         return cmd_regression(

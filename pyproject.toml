@@ -38,6 +38,9 @@ plotter = [
 jlink = [
     "pylink-square>=1.0",
 ]
+mcp = [
+    "mcp>=1.0",
+]
 dev = [
     "pytest>=9",
     "pytest-cov>=6",
@@ -47,6 +50,7 @@ dev = [
 [project.scripts]
 eab = "eab.daemon:main"
 eabctl = "eab.control:main"
+eabmcp = "eab.cli.mcp_cmd:main"
 
 [project.urls]
 Homepage = "https://github.com/shanemmattner/embedded-agent-bridge"

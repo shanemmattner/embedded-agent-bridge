@@ -1,0 +1,12 @@
+{
+  "assignees": [],
+  "body": "## Summary\n\nNew MCP tool `dwt_stream_explain(symbols, duration_s)` that arms DWT watchpoints, captures N seconds of the JSONL event stream, enriches with ELF source line info, and returns an LLM-friendly narrative of what the firmware is doing.\n\n## What to build\n\n1. New MCP tool in `eab/mcp_server.py`: `dwt_stream_explain`\n   - Parameters: `symbols: list[str]`, `duration_s: int`, `elf_path: str`\n   - Arms DWT watchpoints on specified symbols (reuse existing `eabctl dwt watch` logic)\n   - Captures JSONL events for `duration_s` seconds\n   - Enriches each event with ELF source line info (addr2line / pyelftools)\n   - Formats a structured prompt with the event stream + source context\n   - Returns narrative text + suggested follow-up watchpoints\n\n2. New CLI command `eabctl dwt explain` as a non-MCP entry point\n   - `eabctl dwt explain --device NRF5340_XXAA_APP --symbols conn_interval,mtu_size --elf zephyr.elf --duration 10 --json`\n   - Output: JSON with `events`, `source_context`, `ai_prompt` fields\n\n3. Unit tests in `tests/unit/test_dwt_explain.py`\n   - Mock DWT watchpoint arming, JSONL capture, ELF symbol resolution\n   - Test prompt formatting, edge cases (no events, unknown symbols)\n\n## Existing code to reuse\n\n- `eab/dwt_profiler.py` \u2014 DWT register access via pylink\n- `eab/mcp_server.py` \u2014 existing MCP server with 8 tools\n- `eab/cli/parser.py` \u2014 `dwt` subparser already exists (watch/halt/list/clear)\n- DWT watchpoint JSONL format already defined\n\n## Acceptance criteria\n\n- MCP tool callable from Claude Desktop\n- CLI command works standalone\n- All new tests pass\n- Existing 1403 tests still pass",
+  "comments": [],
+  "createdAt": "2026-02-26T22:28:44Z",
+  "labels": [],
+  "number": 134,
+  "title": "LLM DWT Stream Interpreter \u2014 new MCP tool",
+  "updatedAt": "2026-02-26T22:28:44Z",
+  "url": "https://github.com/shanemmattner/embedded-agent-bridge/issues/134",
+  "fetched_at": "2026-02-26T22:29:29.954618+00:00"
+}

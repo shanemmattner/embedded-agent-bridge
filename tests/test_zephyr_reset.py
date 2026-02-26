@@ -23,28 +23,31 @@ class TestZephyrResetCommand:
     """Test ZephyrProfile.get_reset_command() method."""
 
     def test_nrf5340_reset_uses_nrfjprog(self):
-        """Should use nrfjprog --reset for nRF5340."""
+        """Should use nrfjprog --reset for nRF5340 when nrfjprog is available."""
         profile = ZephyrProfile(variant="nrf5340")
-        cmd = profile.get_reset_command()
-        
+        with patch("eab.chips.zephyr.shutil.which", return_value="/usr/bin/nrfjprog"):
+            cmd = profile.get_reset_command()
+
         assert cmd.tool == "nrfjprog"
         assert cmd.args == ["--reset"]
         assert cmd.timeout == 30.0
 
     def test_nrf52840_reset_uses_nrfjprog(self):
-        """Should use nrfjprog --reset for nRF52840."""
+        """Should use nrfjprog --reset for nRF52840 when nrfjprog is available."""
         profile = ZephyrProfile(variant="nrf52840")
-        cmd = profile.get_reset_command()
-        
+        with patch("eab.chips.zephyr.shutil.which", return_value="/usr/bin/nrfjprog"):
+            cmd = profile.get_reset_command()
+
         assert cmd.tool == "nrfjprog"
         assert cmd.args == ["--reset"]
         assert cmd.timeout == 30.0
 
     def test_nrf52833_reset_uses_nrfjprog(self):
-        """Should use nrfjprog --reset for nRF52833."""
+        """Should use nrfjprog --reset for nRF52833 when nrfjprog is available."""
         profile = ZephyrProfile(variant="nrf52833")
-        cmd = profile.get_reset_command()
-        
+        with patch("eab.chips.zephyr.shutil.which", return_value="/usr/bin/nrfjprog"):
+            cmd = profile.get_reset_command()
+
         assert cmd.tool == "nrfjprog"
         assert cmd.args == ["--reset"]
         assert cmd.timeout == 30.0
@@ -138,27 +141,28 @@ class TestCmdResetIntegration:
     """Test cmd_reset() CLI command with Zephyr targets."""
 
     def test_reset_nrf5340_success(self):
-        """Should successfully reset nRF5340 using nrfjprog."""
+        """Should successfully reset nRF5340 using nrfjprog when available."""
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "Resetting device\nDevice reset successful"
         mock_result.stderr = ""
-        
-        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.flash.reset_cmd._print") as mock_print:
-                result = cmd_reset(
-                    chip="nrf5340",
-                    method="hard",
-                    connect_under_reset=False,
-                    device=None,
-                    json_mode=True,
-                )
-        
+
+        with patch("eab.chips.zephyr.shutil.which", return_value="/usr/bin/nrfjprog"):
+            with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
+                with patch("eab.cli.flash.reset_cmd._print") as mock_print:
+                    result = cmd_reset(
+                        chip="nrf5340",
+                        method="hard",
+                        connect_under_reset=False,
+                        device=None,
+                        json_mode=True,
+                    )
+
         assert result == 0
         mock_run.assert_called_once()
         call_args = mock_run.call_args
         assert call_args[0][0] == ["nrfjprog", "--reset"]
-        
+
         # Verify JSON output
         assert mock_print.called
         output = mock_print.call_args[0][0]
@@ -167,22 +171,23 @@ class TestCmdResetIntegration:
         assert output["command"] == ["nrfjprog", "--reset"]
 
     def test_reset_nrf52840_success(self):
-        """Should successfully reset nRF52840 using nrfjprog."""
+        """Should successfully reset nRF52840 using nrfjprog when available."""
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "Reset complete"
         mock_result.stderr = ""
-        
-        with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
-            with patch("eab.cli.helpers._print"):
-                result = cmd_reset(
-                    chip="nrf52840",
-                    method="hard",
-                    connect_under_reset=False,
-                    device=None,
-                    json_mode=False,
-                )
-        
+
+        with patch("eab.chips.zephyr.shutil.which", return_value="/usr/bin/nrfjprog"):
+            with patch("eab.cli.flash.reset_cmd.subprocess.run", return_value=mock_result) as mock_run:
+                with patch("eab.cli.helpers._print"):
+                    result = cmd_reset(
+                        chip="nrf52840",
+                        method="hard",
+                        connect_under_reset=False,
+                        device=None,
+                        json_mode=False,
+                    )
+
         assert result == 0
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]

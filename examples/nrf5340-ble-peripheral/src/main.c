@@ -237,7 +237,7 @@ static const struct bt_data sd[] = {
 
 static void start_advertising(void)
 {
-	int err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad),
+	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad),
 				  sd, ARRAY_SIZE(sd));
 	if (err) {
 		LOG_ERR("Advertising start failed: %d", err);
@@ -245,24 +245,6 @@ static void start_advertising(void)
 		LOG_INF("Advertising as: EAB-Peripheral");
 	}
 }
-
-/* ===================================================================
- * MTU exchange
- * =================================================================== */
-
-static void mtu_exchange_cb(struct bt_conn *conn, uint8_t err,
-			    struct bt_gatt_exchange_params *params)
-{
-	if (err) {
-		LOG_ERR("MTU exchange failed: %u", err);
-	} else {
-		negotiated_mtu = bt_gatt_get_mtu(conn);
-		LOG_INF("MTU exchanged: %u (payload capacity: %u bytes)",
-			negotiated_mtu, negotiated_mtu - 3);
-	}
-}
-
-static struct bt_gatt_exchange_params mtu_params;
 
 /* ===================================================================
  * Connection callbacks
@@ -292,20 +274,15 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 	LOG_INF("=== CONNECTED ===");
 	LOG_INF("  Peer:     %s", addr);
 	LOG_INF("  Handle:   %u", bt_conn_index(conn));
-	LOG_INF("  Interval: %u ms", info.le.interval * 5 / 4);
+	/* info.le.interval deprecated in Zephyr 4.x — use conn_param_updated_cb for live params */
 	LOG_INF("  Latency:  %u events", info.le.latency);
 	LOG_INF("  Timeout:  %u ms", info.le.timeout * 10);
 	LOG_INF("  Security: L%u", bt_conn_get_security(conn));
 	LOG_INF("  Total connections: %u", conn_count);
 
-	/* Request larger MTU — default 23 bytes limits throughput */
-	mtu_params.func = mtu_exchange_cb;
-	int mtu_err = bt_gatt_exchange_mtu(conn, &mtu_params);
-	if (mtu_err) {
-		LOG_WRN("MTU exchange request failed: %d", mtu_err);
-	} else {
-		LOG_INF("MTU exchange requested...");
-	}
+	/* MTU exchange handled automatically by CONFIG_BT_GATT_AUTO_UPDATE_MTU */
+	negotiated_mtu = bt_gatt_get_mtu(conn);
+	LOG_INF("  MTU:      %u bytes (payload: %u)", negotiated_mtu, negotiated_mtu - 3);
 }
 
 static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
@@ -525,21 +502,25 @@ int main(void)
 	LOG_INF("  Status (read):    EAB20004");
 	LOG_INF("----------------------------------------");
 
-	/* Load bonding keys from NVS — MUST be before bt_enable() */
-	int err = settings_load();
-	if (err) {
-		LOG_WRN("settings_load failed: %d (bonds won't persist)", err);
-	} else {
-		LOG_INF("Settings loaded (bonding keys restored)");
-	}
-
-	/* Initialize Bluetooth */
-	err = bt_enable(NULL);
+	/* Initialize Bluetooth first — bt_gatt_init() must run before
+	 * settings_load() to avoid NULL work handler crash (Zephyr 4.x).
+	 * settings_load() triggers db_hash_commit() → gatt_sc.work which
+	 * must be initialized by bt_gatt_init() first.
+	 */
+	int err = bt_enable(NULL);
 	if (err) {
 		LOG_ERR("BLE init failed: %d", err);
 		return err;
 	}
 	LOG_INF("BLE initialized");
+
+	/* Load bonding keys from NVS — MUST be after bt_enable() in Zephyr 4.x */
+	err = settings_load();
+	if (err) {
+		LOG_WRN("settings_load failed: %d (bonds won't persist)", err);
+	} else {
+		LOG_INF("Settings loaded (bonding keys restored)");
+	}
 
 	/* Start advertising */
 	start_advertising();

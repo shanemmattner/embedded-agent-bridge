@@ -51,6 +51,11 @@ def _detect_esp_idf_project(
                 {"error": "Could not detect chip from sdkconfig. Specify --chip explicitly."},
                 json_mode=json_mode
             )
+        elif os.path.isdir(firmware):
+            _print(
+                {"error": "not an ESP-IDF project. Expected sdkconfig or sdkconfig.defaults in project directory."},
+                json_mode=json_mode
+            )
         else:
             _print(
                 {"error": "--chip is required when flashing a binary file"},

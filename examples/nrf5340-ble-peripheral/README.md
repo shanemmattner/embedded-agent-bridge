@@ -23,7 +23,7 @@ Demonstrates the three core GATT patterns:
 export ZEPHYR_BASE=~/zephyrproject/zephyr
 
 cd examples/nrf5340-ble-peripheral
-west build -b nrf5340dk_nrf5340_cpuapp
+west build -b nrf5340dk/nrf5340/cpuapp
 eabctl flash --chip nrf5340 --runner jlink
 ```
 
@@ -124,8 +124,12 @@ drops data. This example logs the error and backs off. Real fix: use `bt_gatt_no
 with a "sent" callback to know when a buffer slot is freed.
 
 ### Bond Key Persistence
-`settings_load()` is called **before** `bt_enable()`. Without this, bond keys are
-lost on every reboot and the client must re-pair. With it, reconnection is seamless.
+`settings_load()` is called **after** `bt_enable()` in Zephyr 4.x. `bt_enable()` must
+run first to initialize `bt_gatt_init()`, which sets up work queue handlers that
+`settings_load()` → `db_hash_commit()` → `do_db_hash()` relies on. Calling
+`settings_load()` before `bt_enable()` causes a NULL function pointer crash in the
+system work queue. With `settings_load()` called in the correct order, bond keys
+are restored and reconnection is seamless.
 
 ### Write Without Response
 The control characteristic supports both `WRITE` and `WRITE_WITHOUT_RESP`. The client

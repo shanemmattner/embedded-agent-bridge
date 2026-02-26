@@ -7,7 +7,10 @@ Uses west for flashing and board-specific debug tools (jlink, openocd, pyocd).
 
 from __future__ import annotations
 
+import glob
+import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -18,6 +21,22 @@ from .base import (
     OpenOCDConfig,
     ResetSequence,
 )
+
+
+def _find_segger_jlink_dir() -> str | None:
+    """Return the SEGGER JLink installation directory, or None if not found.
+
+    Searches common install locations on macOS and Linux.
+    """
+    candidates = glob.glob("/Applications/SEGGER/JLink_V*")
+    if candidates:
+        # Pick the highest version (lexicographic sort works for VN format)
+        return sorted(candidates)[-1]
+    # Linux
+    for path in ("/usr/bin", "/usr/local/bin", "/opt/SEGGER/JLink"):
+        if os.path.exists(os.path.join(path, "JLinkExe")):
+            return path
+    return None
 
 
 class ZephyrProfile(ChipProfile):
@@ -391,8 +410,12 @@ class ZephyrProfile(ChipProfile):
         if build_dir:
             build_path = Path(build_dir)
         elif path.is_dir():
-            # firmware_path is the build directory
-            build_path = path
+            # Check if CMakeCache.txt is in a 'build/' subdirectory (west default)
+            if (path / "build" / "CMakeCache.txt").exists():
+                build_path = path / "build"
+            else:
+                # firmware_path is itself the build directory
+                build_path = path
         elif path.parent.name == "zephyr" and (path.parent.parent / "CMakeCache.txt").exists():
             # firmware_path is build/zephyr/zephyr.elf
             build_path = path.parent.parent
@@ -415,6 +438,16 @@ class ZephyrProfile(ChipProfile):
         zb = self._resolve_zephyr_base(build_path)
         if zb:
             env["ZEPHYR_BASE"] = zb
+
+        # Inject SEGGER JLink dir into PATH when using jlink runner (macOS).
+        # The SEGGER installer puts JLinkExe in /Applications/SEGGER/JLink_V*/
+        # which is not in the default non-interactive shell PATH.
+        if runner == "jlink":
+            segger_path = _find_segger_jlink_dir()
+            if segger_path:
+                current_path = os.environ.get("PATH", "")
+                if segger_path not in current_path:
+                    env["PATH"] = f"{segger_path}:{current_path}"
 
         return FlashCommand(
             tool="west",
@@ -946,13 +979,58 @@ class ZephyrProfile(ChipProfile):
         variant_lower = (self.variant or "").lower()
         kwargs.get("runner") or self.runner
         
-        # nRF targets: Use nrfjprog --reset (most reliable for Nordic chips)
+        # nRF targets: prefer nrfjprog --reset; fallback to JLinkExe if not installed
         if "nrf" in variant_lower:
-            return FlashCommand(
-                tool="nrfjprog",
-                args=["--reset"],
-                timeout=30.0,
-            )
+            if shutil.which("nrfjprog"):
+                return FlashCommand(
+                    tool="nrfjprog",
+                    args=["--reset"],
+                    timeout=30.0,
+                )
+            # nrfjprog not available — use JLinkExe with device auto-mapping
+            # Map short device names (nrf5340) → full JLink strings (NRF5340_XXAA_APP)
+            _NRF_JLINK_MAP = {
+                "nrf5340": "NRF5340_XXAA_APP",
+                "nrf52840": "NRF52840_XXAA",
+                "nrf52833": "NRF52833_XXAA",
+                "nrf9160": "NRF9160_XXAA",
+            }
+            jlink_device = device or ""
+            # Normalize: if already a full JLink name keep it; else map from short name
+            if jlink_device.lower() in _NRF_JLINK_MAP:
+                jlink_device = _NRF_JLINK_MAP[jlink_device.lower()]
+            elif not jlink_device:
+                # Derive from variant (e.g. "nrf5340" → NRF5340_XXAA_APP)
+                for short, full in _NRF_JLINK_MAP.items():
+                    if short in variant_lower:
+                        jlink_device = full
+                        break
+            if jlink_device:
+                script_lines = "\n".join([
+                    f"device {jlink_device}",
+                    "si SWD",
+                    "speed 4000",
+                    "r",
+                    "g",
+                    "exit",
+                    "",
+                ])
+                fd, script_path = tempfile.mkstemp(
+                    prefix="jlink_nrf_reset_", suffix=".jlink", text=True
+                )
+                with open(fd, "w") as f:
+                    f.write(script_lines)
+                env: dict[str, str] = {}
+                segger_dir = _find_segger_jlink_dir()
+                if segger_dir and segger_dir not in os.environ.get("PATH", ""):
+                    env["PATH"] = f"{segger_dir}:{os.environ.get('PATH', '')}"
+                return FlashCommand(
+                    tool="JLinkExe",
+                    args=["-CommandFile", script_path],
+                    env=env,
+                    timeout=30.0,
+                )
+            # No device info — fall through to generic JLinkExe path below
         
         # MCXN947: Use OpenOCD (default runner is linkserver which doesn't support reset command)
         if "mcx" in variant_lower:

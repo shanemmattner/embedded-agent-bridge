@@ -70,14 +70,26 @@ def parse_test(yaml_path: str) -> TestSpec:
 
 
 def _get_log_offset(device: Optional[str]) -> Optional[int]:
-    """Get current byte offset of device log file for scan-from tracking."""
+    """Get current byte offset of device log file for scan-from tracking.
+
+    Falls back to rtt-raw.log (device dir, then default dir) for RTT-only
+    targets like nRF5340 that don't have a serial daemon latest.log.
+    """
     if not device:
         return None
-    log_path = os.path.join("/tmp/eab-devices", device, "latest.log")
-    try:
-        return os.path.getsize(log_path)
-    except OSError:
-        return None
+    base = os.path.join("/tmp/eab-devices", device)
+    candidates = [
+        os.path.join(base, "latest.log"),
+        os.path.join(base, "rtt-raw.log"),
+        "/tmp/eab-devices/default/rtt-raw.log",
+    ]
+    for log_path in candidates:
+        try:
+            size = os.path.getsize(log_path)
+            return size
+        except OSError:
+            continue
+    return None
 
 
 def _run_step_with_usb_guard(

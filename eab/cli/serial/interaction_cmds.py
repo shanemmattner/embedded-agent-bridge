@@ -94,10 +94,34 @@ def cmd_send(
     return 0 if (not await_ack and not await_event) or acknowledged else 1
 
 
+def _resolve_log_path(base_dir: str) -> str:
+    """Return the best available log file for *base_dir*.
+
+    Preference order:
+    1. ``{base_dir}/latest.log``  — serial daemon log (ESP32, STM32, …)
+    2. ``{base_dir}/rtt-raw.log`` — RTT raw log in device dir
+    3. ``/tmp/eab-devices/default/rtt-raw.log`` — RTT daemon default dir
+    """
+    latest = os.path.join(base_dir, "latest.log")
+    if os.path.exists(latest):
+        return latest
+    rtt_local = os.path.join(base_dir, "rtt-raw.log")
+    if os.path.exists(rtt_local):
+        return rtt_local
+    rtt_default = "/tmp/eab-devices/default/rtt-raw.log"
+    if os.path.exists(rtt_default):
+        return rtt_default
+    # Return latest.log path even if missing — caller handles FileNotFoundError
+    return latest
+
+
 def cmd_wait(*, base_dir: str, pattern: str, timeout_s: float,
              scan_all: bool = False, scan_from: int | None = None,
              json_mode: bool) -> int:
     """Block until a regex *pattern* appears in ``latest.log`` or timeout.
+
+    Falls back to ``rtt-raw.log`` (device dir, then default dir) when
+    ``latest.log`` is absent — supports RTT-only targets like nRF5340.
 
     Args:
         base_dir: Session directory containing ``latest.log``.
@@ -110,7 +134,7 @@ def cmd_wait(*, base_dir: str, pattern: str, timeout_s: float,
     Returns:
         Exit code: 0 if matched, 1 on timeout.
     """
-    log_path = os.path.join(base_dir, "latest.log")
+    log_path = _resolve_log_path(base_dir)
     regex = re.compile(pattern)
 
     started = time.time()

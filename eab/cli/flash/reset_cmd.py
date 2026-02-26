@@ -118,11 +118,13 @@ def cmd_reset(
                     if idx + 1 < len(reset_cmd.args):
                         temp_script_path = reset_cmd.args[idx + 1]
                 
+                run_env = {**os.environ, **reset_cmd.env} if reset_cmd.env else None
                 result = subprocess.run(
                     cmd_list,
                     capture_output=True,
                     text=True,
                     timeout=reset_cmd.timeout,
+                    env=run_env,
                 )
                 success = result.returncode == 0
                 stdout = result.stdout

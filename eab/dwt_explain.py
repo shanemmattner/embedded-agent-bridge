@@ -186,7 +186,7 @@ def resolve_source_line(address: int, elf_path: str) -> SourceLocation:
 
 def capture_events(
     comparators: list[Comparator],
-    jlink: Any,
+    jlink: Any,  # pylink.JLink, but pylink is an optional dependency
     duration_s: float,
     write_to_clear: bool = False,
     poll_hz: int = 100,
@@ -277,6 +277,7 @@ def enrich_events(events: list[RawEvent], elf_path: str) -> list[EnrichedEvent]:
             :func:`resolve_source_line`).
     """
     enriched: list[EnrichedEvent] = []
+    _address_cache: dict[int, Any] = {}
     for event in events:
         try:
             address = int(event["addr"], 16)
@@ -284,7 +285,9 @@ def enrich_events(events: list[RawEvent], elf_path: str) -> list[EnrichedEvent]:
             logger.warning("Cannot parse addr from event %r: %s", event, exc)
             address = 0
 
-        location = resolve_source_line(address, elf_path)
+        if address not in _address_cache:
+            _address_cache[address] = resolve_source_line(address, elf_path)
+        location = _address_cache[address]
 
         enriched_event: EnrichedEvent = {
             "ts": event["ts"],

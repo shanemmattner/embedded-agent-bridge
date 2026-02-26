@@ -446,6 +446,24 @@ class TestCmdDwtExplainJsonMode:
         assert isinstance(parsed["suggested_watchpoints"], list)
 
     @patch("eab.cli.dwt.explain_cmd.run_dwt_explain")
+    def test_value_error_returns_rc1_and_prints_message(self, mock_run, capsys):
+        from eab.cli.dwt.explain_cmd import cmd_dwt_explain
+
+        mock_run.side_effect = ValueError("ELF file not found")
+
+        rc = cmd_dwt_explain(
+            device="NRF5340_XXAA_APP",
+            symbols="conn_interval",
+            elf="/missing/app.elf",
+            duration=1,
+            json_mode=False,
+        )
+
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "ELF file not found" in captured.out
+
+    @patch("eab.cli.dwt.explain_cmd.run_dwt_explain")
     def test_non_json_mode_prints_ai_prompt(self, mock_run, fake_result, capsys):
         from eab.cli.dwt.explain_cmd import cmd_dwt_explain
 

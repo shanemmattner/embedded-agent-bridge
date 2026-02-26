@@ -285,8 +285,12 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "Path to ELF binary with DWARF debug info.",
                 },
+                "device": {
+                    "type": "string",
+                    "description": "Device identifier (e.g., NRF5340_XXAA_APP).",
+                },
             },
-            required=["symbols", "duration_s", "elf_path"],
+            required=["symbols", "duration_s", "elf_path", "device"],
         ),
     },
 ]
@@ -427,6 +431,7 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
             symbols=arguments["symbols"],
             duration_s=arguments["duration_s"],
             elf_path=arguments["elf_path"],
+            device=arguments.get("device"),
         )
         return json.dumps(result)
 

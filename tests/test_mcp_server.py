@@ -343,10 +343,10 @@ class TestRunMcpServer:
 
         with patch("builtins.__import__", side_effect=fake_import):
             try:
-                import eab.mcp_server as ms  # noqa: PLC0415
+                import eab.mcp_server  # noqa: PLC0415
             except ImportError:
                 # Module itself failed to import — that's fine for this test
-                ms = None
+                pass
 
         # Restore
         sys.modules.update(saved)

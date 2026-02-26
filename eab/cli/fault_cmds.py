@@ -68,6 +68,8 @@ def cmd_fault_analyze(
             json_out["stacked_pc"] = f"0x{report.stacked_pc:08X}"
         if report.arch:
             json_out["arch"] = report.arch
+        if report.rtt_context:
+            json_out["rtt_context"] = report.rtt_context
         _print(json_out, json_mode=True)
     else:
         _print(format_report(report), json_mode=False)

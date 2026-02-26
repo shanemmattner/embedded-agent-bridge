@@ -29,6 +29,7 @@ class FaultReport:
     faults: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
     raw_gdb_output: str = ""
+    rtt_context: list[str] = field(default_factory=list)  # last N RTT lines before crash
 
 
 class FaultDecoder(ABC):

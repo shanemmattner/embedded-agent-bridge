@@ -17,6 +17,7 @@ Architecture:
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Optional
 
@@ -60,6 +61,43 @@ def _parse_gdb_backtrace(output: str) -> str:
             if line.strip() and not line.strip().startswith("#"):
                 break
     return "\n".join(bt_lines)
+
+
+# =============================================================================
+# RTT Context Loader
+# =============================================================================
+
+def _load_rtt_context(device: str, lines: int = 100) -> list[str]:
+    """Load the last N lines from the device RTT log before a crash.
+
+    Checks (in order):
+      /tmp/eab-devices/{device}/rtt-raw.log       (device dir, exact name)
+      /tmp/eab-devices/{device_lower}/rtt-raw.log  (lowercased chip variant)
+      /tmp/eab-devices/default/rtt-raw.log         (global RTT fallback)
+
+    Returns empty list if no RTT log is found.
+    """
+    device_lower = device.lower()
+    # NRF5340_XXAA_APP → nrf5340, MCXN947 → mcxn947
+    device_short = device_lower.split("_")[0]
+
+    candidates = [
+        os.path.join("/tmp/eab-devices", device, "rtt-raw.log"),
+        os.path.join("/tmp/eab-devices", device_lower, "rtt-raw.log"),
+        os.path.join("/tmp/eab-devices", device_short, "rtt-raw.log"),
+        "/tmp/eab-devices/default/rtt-raw.log",
+    ]
+
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    all_lines = f.readlines()
+                return [ln.rstrip() for ln in all_lines[-lines:]]
+            except OSError:
+                continue
+
+    return []
 
 
 # =============================================================================
@@ -146,6 +184,9 @@ def analyze_fault(
         report.core_regs = _parse_gdb_registers(result.stdout)
         report.backtrace = _parse_gdb_backtrace(result.stdout)
 
+        # Step 6b: Attach RTT context (last 100 log lines before crash)
+        report.rtt_context = _load_rtt_context(device)
+
     finally:
         # Step 7: Stop GDB server
         try:
@@ -206,6 +247,12 @@ def format_report(report: FaultReport) -> str:
         lines.append("BACKTRACE:")
         for bt_line in report.backtrace.splitlines():
             lines.append(f"  {bt_line}")
+
+    if report.rtt_context:
+        lines.append("")
+        lines.append(f"RTT LOG (last {len(report.rtt_context)} lines before crash):")
+        for rtt_line in report.rtt_context:
+            lines.append(f"  {rtt_line}")
 
     lines.append("")
     lines.append("=" * 60)

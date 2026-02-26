@@ -286,6 +286,7 @@ class TestHandleTool:
             symbols=["conn_interval"],
             duration_s=5,
             elf_path="/fw.elf",
+            device=None,
         )
 
     def test_dwt_stream_explain_value_error_propagates(self, mcp_module):
@@ -343,7 +344,7 @@ class TestRunMcpServer:
 
         with patch("builtins.__import__", side_effect=fake_import):
             try:
-                import eab.mcp_server  # noqa: PLC0415
+                import eab.mcp_server  # noqa: PLC0415,F401
             except ImportError:
                 # Module itself failed to import — that's fine for this test
                 pass

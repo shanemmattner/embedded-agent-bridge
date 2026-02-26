@@ -394,6 +394,10 @@ class TestRunDwtExplainInputValidation:
         with pytest.raises(ValueError, match="duration_s"):
             run_dwt_explain(["conn_interval"], -5, "/fake/app.elf", "NRF5340_XXAA_APP")
 
+    def test_raises_value_error_when_device_is_none(self):
+        with pytest.raises(ValueError, match="device"):
+            run_dwt_explain(["sym"], 1, "/fake.elf", device=None)
+
 
 # =============================================================================
 # 9. CLI JSON output
@@ -538,6 +542,7 @@ class TestMcpDwtStreamExplain:
             symbols=["tx_power"],
             duration_s=1,
             elf_path="/fake/app.elf",
+            device=None,
         )
 
     @patch("eab.mcp_server.run_dwt_explain")

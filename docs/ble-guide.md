@@ -1,5 +1,8 @@
-# BLE Interview Prep — OpenAI Embedded Device Team
-*Shane Mattner | 2026-02-25*
+# BLE & Zephyr Reference Guide
+
+Practical reference for nRF5340/Zephyr BLE development. Covers stack architecture,
+GAP/GATT patterns, SMP pairing, power management, common pitfalls, and debugging
+with EAB (RTT capture, fault-analyze, regression YAML).
 
 ---
 
@@ -38,7 +41,7 @@
 | Reliability | Battle-tested | Very good, actively developed |
 | Use when | Need prebuilt certification, legacy NCS projects | Zephyr RTOS projects, open source, newer NCS |
 
-**Interview answer**: "I use the Zephyr stack in NCS because it integrates cleanly with Zephyr's power management, kernel, and logging. SoftDevice is better when you need to ship with a pre-existing QDID."
+**When to use which**: Use the Zephyr stack in NCS when you want clean integration with Zephyr's power management, kernel, and logging. SoftDevice is better when you need to ship with a pre-existing QDID.
 
 ---
 
@@ -537,7 +540,7 @@ teardown:
 
 ---
 
-## 9. EAB — The Interview Story
+## 9. EAB + BLE — How They Fit Together
 
 ### The Problem
 LLM agents (Claude Code, Cursor, Copilot) operate in a read/write/run loop. Embedded dev requires **persistent sessions** — a serial monitor that stays open, a GDB connection, a JTAG interface. When an agent tries to run `minicom` or `GDB` directly:
@@ -574,7 +577,7 @@ eabctl fault-analyze --device NRF5340_XXAA_APP --json
 
 ---
 
-## 10. Interview Q&A
+## 10. Common BLE Q&A
 
 ### "Walk me through how a BLE connection is established"
 > Peripheral advertises using `ADV_IND` PDUs every N milliseconds. Central scans — passive (just listens) or active (sends SCAN_REQ for extra data). Central finds target by name or UUID in the advertisement payload. Central sends `CONNECT_IND`, both devices transition to connected state. They negotiate connection parameters: interval, peripheral latency, supervision timeout. The first connection event is at `T_connect + interval`. After connection, the host layer exchanges ATT MTU and optionally initiates pairing/bonding.
@@ -655,4 +658,4 @@ CONFIG_BT_DEBUG_SMP=y
 
 ---
 
-*Good luck with the OpenAI interview. The EAB story is compelling — it's the right answer to "how do you integrate AI into embedded development."*
+*EAB bridges the gap between AI coding agents and embedded hardware — the RTT + fault-analyze + regression pipeline gives agents a complete debugging loop without interactive sessions.*

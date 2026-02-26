@@ -29,12 +29,16 @@ def cmd_dwt_explain(
         0 on success.
     """
     symbols_list = [s.strip() for s in symbols.split(",")]
-    result = run_dwt_explain(
-        device=device,
-        symbols=symbols_list,
-        elf=elf,
-        duration=duration,
-    )
+    try:
+        result = run_dwt_explain(
+            device=device,
+            symbols=symbols_list,
+            elf_path=elf,
+            duration_s=duration,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}")
+        return 1
     if json_mode:
         print(json.dumps(result, indent=2))
     else:

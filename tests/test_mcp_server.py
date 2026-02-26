@@ -21,7 +21,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -150,6 +149,7 @@ class TestToolDefinitions:
             "eab_fault_analyze",
             "eab_rtt_tail",
             "eab_regression",
+            "dwt_stream_explain",
         }
         assert expected.issubset(names), f"Missing tools: {expected - names}"
 
@@ -265,6 +265,41 @@ class TestHandleTool:
         mock_fn.assert_called_once()
         _, kwargs = mock_fn.call_args
         assert kwargs["suite"] == "/tests/suite"
+
+    def test_dwt_stream_explain(self, mcp_module):
+        fake_result = {
+            "events": [],
+            "source_context": "DWT Watchpoint Hit Summary\n========================================\n",
+            "ai_prompt": "You are an expert...",
+            "suggested_watchpoints": ["conn_interval"],
+        }
+        with patch("eab.mcp_server.run_dwt_explain", return_value=fake_result) as mock_fn:
+            result = self._run(
+                mcp_module._handle_tool(
+                    "dwt_stream_explain",
+                    {"symbols": ["conn_interval"], "duration_s": 5, "elf_path": "/fw.elf"},
+                )
+            )
+        data = json.loads(result)
+        assert data["suggested_watchpoints"] == ["conn_interval"]
+        mock_fn.assert_called_once_with(
+            symbols=["conn_interval"],
+            duration_s=5,
+            elf_path="/fw.elf",
+        )
+
+    def test_dwt_stream_explain_value_error_propagates(self, mcp_module):
+        with patch(
+            "eab.mcp_server.run_dwt_explain",
+            side_effect=ValueError("ELF file not found"),
+        ):
+            with pytest.raises(ValueError, match="ELF file not found"):
+                self._run(
+                    mcp_module._handle_tool(
+                        "dwt_stream_explain",
+                        {"symbols": ["x"], "duration_s": 1, "elf_path": "/missing.elf"},
+                    )
+                )
 
     def test_unknown_tool_returns_error(self, mcp_module):
         result = self._run(mcp_module._handle_tool("nonexistent_tool", {}))

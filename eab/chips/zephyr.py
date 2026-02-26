@@ -187,6 +187,39 @@ class ZephyrProfile(ChipProfile):
 
         return None
 
+    @staticmethod
+    def detect_ble_from_kconfig(build_dir: str | Path) -> bool:
+        """Detect if the Zephyr build has BLE enabled via CONFIG_BT=y.
+
+        Reads ``build/zephyr/.config`` from *build_dir* and checks for
+        ``CONFIG_BT=y``.
+
+        Args:
+            build_dir: Path to the Zephyr build directory (the directory that
+                       contains the ``zephyr/`` subdirectory).
+
+        Returns:
+            True if CONFIG_BT=y is found, False otherwise (including when the
+            .config file is missing or unreadable).
+        """
+        build_path = Path(build_dir)
+        config_file = build_path / "zephyr" / ".config"
+
+        if not config_file.exists():
+            return False
+
+        try:
+            content = config_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+
+        for line in content.splitlines():
+            line = line.strip()
+            if line == "CONFIG_BT=y":
+                return True
+
+        return False
+
     @property
     def family(self) -> ChipFamily:
         """Infer chip family from variant string or board name."""

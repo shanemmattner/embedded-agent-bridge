@@ -17,6 +17,8 @@ from eab.cli.flash import cmd_flash, cmd_erase, cmd_reset, cmd_chip_info, cmd_pr
 from eab.cli.debug import (
     cmd_openocd_status, cmd_openocd_start, cmd_openocd_stop, cmd_openocd_cmd,
     cmd_gdb, cmd_gdb_script, cmd_inspect, cmd_threads, cmd_watch, cmd_memdump,
+    cmd_debug_monitor_enable, cmd_debug_monitor_disable, cmd_debug_monitor_status,
+    cmd_preflight_ble_safe,
 )
 from eab.cli.fault_cmds import cmd_fault_analyze
 from eab.cli.profile import cmd_profile_function, cmd_profile_region, cmd_dwt_status
@@ -68,6 +70,10 @@ __all__ = [
     "cmd_threads",
     "cmd_watch",
     "cmd_memdump",
+    "cmd_debug_monitor_enable",
+    "cmd_debug_monitor_disable",
+    "cmd_debug_monitor_status",
+    "cmd_preflight_ble_safe",
     "cmd_fault_analyze",
     "cmd_profile_function",
     "cmd_profile_region",

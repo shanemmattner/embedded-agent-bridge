@@ -132,8 +132,50 @@ def _run_flash(step: StepSpec, *, device: Optional[str],
         args.extend(["--device", device])
     rc, output = _run_eabctl(args, timeout=timeout)
     ms = int((time.monotonic() - t0) * 1000)
-    return StepResult(
+    flash_result = StepResult(
         step_type="flash", params=step.params,
+        passed=(rc == 0), duration_ms=ms, output=output,
+        error=output.get("error") if rc != 0 else None,
+    )
+
+    # If debug_mode == 'monitor', enable debug monitor after successful flash
+    debug_mode = p.get("debug_mode")
+    if flash_result.passed and debug_mode == "monitor" and device:
+        priority = int(p.get("monitor_priority", 3))
+        dm_args = ["debug-monitor", "enable", "--device", device, "--priority", str(priority)]
+        _run_eabctl(dm_args, timeout=30)
+
+    return flash_result
+
+
+def _run_debug_monitor(step: StepSpec, *, device: Optional[str],
+                       chip: Optional[str], timeout: int, **_kw: Any) -> StepResult:
+    """Enable or disable ARM debug monitor mode as a regression step."""
+    t0 = time.monotonic()
+    p = step.params
+    action = p.get("action", "enable")
+    step_device = p.get("device") or device
+    priority = int(p.get("priority", 3))
+
+    if not step_device:
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            step_type="debug_monitor", params=step.params,
+            passed=False, duration_ms=ms,
+            error="debug_monitor step requires 'device' param or global --device",
+        )
+
+    if action == "enable":
+        args = ["debug-monitor", "enable", "--device", step_device, "--priority", str(priority)]
+    elif action == "disable":
+        args = ["debug-monitor", "disable", "--device", step_device]
+    else:
+        args = ["debug-monitor", "status", "--device", step_device]
+
+    rc, output = _run_eabctl(args, timeout=timeout)
+    ms = int((time.monotonic() - t0) * 1000)
+    return StepResult(
+        step_type="debug_monitor", params=step.params,
         passed=(rc == 0), duration_ms=ms, output=output,
         error=output.get("error") if rc != 0 else None,
     )
@@ -559,6 +601,7 @@ from eab.cli.regression.trace_steps import (
 
 _STEP_DISPATCH = {
     "flash": _run_flash,
+    "debug_monitor": _run_debug_monitor,
     "reset": _run_reset,
     "send": _run_send,
     "wait": _run_wait,

@@ -135,6 +135,26 @@ def analyze_fault(
     if decoder is None:
         decoder = get_fault_decoder(chip)
 
+    # Check if debug monitor mode is active — warn but don't block analysis
+    try:
+        from eab.debug_monitor import DebugMonitor
+        import pylink as _pylink_fa
+        _jl_fa = _pylink_fa.JLink()
+        _jl_fa.open()
+        _jl_fa.set_tif(_pylink_fa.enums.JLinkInterfaces.SWD)
+        _jl_fa.connect(device)
+        _dm_fa = DebugMonitor(_jl_fa)
+        _dm_status = _dm_fa.status()
+        if _dm_status.enabled:
+            logger.warning(
+                "Debug Monitor mode is active (MON_EN set in DEMCR=0x%08X). "
+                "Fault analysis via GDB halt-mode will co-exist with monitor mode — "
+                "this is safe but breakpoints may fire as exceptions instead of halts.",
+                _dm_status.raw_demcr,
+            )
+    except Exception:
+        pass  # pylink not available or device not connected — not a blocker
+
     effective_port = probe.gdb_port
 
     report = FaultReport()

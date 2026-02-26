@@ -205,6 +205,60 @@ def analyze_fault(
 
 
 # =============================================================================
+# AI Prompt Generator
+# =============================================================================
+
+def generate_ai_prompt(report: FaultReport) -> str:
+    """Generate a structured LLM prompt for root-cause analysis.
+
+    Returns a ready-to-send prompt that includes all available fault data.
+    The caller can pipe this to any LLM API or `eabctl ai` command.
+    """
+    arch_label = report.arch.upper() or "Cortex-M"
+    lines = [
+        f"You are an expert embedded systems engineer debugging a {arch_label} firmware crash.",
+        "Analyze the following fault data and provide:",
+        "1. Root cause hypothesis (be specific — register values, addresses, code path)",
+        "2. Most likely source of the bug (driver, RTOS, application code, memory corruption)",
+        "3. Suggested fix or next debugging step",
+        "",
+        "--- FAULT REGISTERS ---",
+    ]
+
+    for name, val in report.fault_registers.items():
+        lines.append(f"{name} = 0x{val:08X}")
+    if report.stacked_pc is not None:
+        lines.append(f"Stacked PC = 0x{report.stacked_pc:08X}")
+
+    if report.faults:
+        lines.append("")
+        lines.append("--- DECODED FAULT FLAGS ---")
+        for f in report.faults:
+            lines.append(f"- {f}")
+
+    if report.core_regs:
+        lines.append("")
+        lines.append("--- CORE REGISTERS ---")
+        for name, val in sorted(report.core_regs.items()):
+            lines.append(f"{name} = 0x{val:08X}")
+
+    if report.backtrace:
+        lines.append("")
+        lines.append("--- BACKTRACE ---")
+        lines.append(report.backtrace)
+
+    if report.rtt_context:
+        lines.append("")
+        lines.append(f"--- RTT LOG (last {len(report.rtt_context)} lines before crash) ---")
+        lines.extend(report.rtt_context)
+
+    lines.append("")
+    lines.append("What is the root cause of this crash?")
+
+    return "\n".join(lines)
+
+
+# =============================================================================
 # Report Formatter
 # =============================================================================
 

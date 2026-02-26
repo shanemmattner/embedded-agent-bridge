@@ -6,7 +6,7 @@ from typing import Optional
 
 from eab.debug_probes import get_debug_probe
 from eab.chips.zephyr import ZephyrProfile
-from eab.fault_analyzer import analyze_fault, format_report
+from eab.fault_analyzer import analyze_fault, format_report, generate_ai_prompt
 from eab.cli.helpers import _print
 
 
@@ -70,6 +70,7 @@ def cmd_fault_analyze(
             json_out["arch"] = report.arch
         if report.rtt_context:
             json_out["rtt_context"] = report.rtt_context
+        json_out["ai_prompt"] = generate_ai_prompt(report)
         _print(json_out, json_mode=True)
     else:
         _print(format_report(report), json_mode=False)

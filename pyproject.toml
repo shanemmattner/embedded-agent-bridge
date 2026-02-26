@@ -41,11 +41,18 @@ jlink = [
 mcp = [
     "mcp>=1.0",
 ]
+hil = [
+    "pytest>=7",
+]
 dev = [
     "pytest>=9",
     "pytest-cov>=6",
     "pytest-asyncio>=1",
+    "pytest-html>=4",
 ]
+
+[project.entry-points."pytest11"]
+eab = "eab.pytest_plugin"
 
 [project.scripts]
 eab = "eab.daemon:main"
@@ -70,6 +77,10 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 addopts = "-v --tb=short"
+markers = [
+    "hil: requires physical hardware (use --hil-device)",
+    "hil_autofault: auto assert_no_fault in teardown",
+]
 
 [tool.coverage.run]
 source = ["eab"]

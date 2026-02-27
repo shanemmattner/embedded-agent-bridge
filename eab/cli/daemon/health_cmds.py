@@ -6,8 +6,8 @@ import json
 import os
 from typing import Any, Optional
 
-from eab.singleton import check_singleton
 from eab.cli.helpers import _now_iso, _print, _read_text
+from eab.singleton import check_singleton
 
 
 def cmd_diagnose(*, base_dir: str, json_mode: bool) -> int:

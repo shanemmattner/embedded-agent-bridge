@@ -186,7 +186,7 @@ class TestThreadsCLI:
 
         assert result == 0
         call_kwargs = mock_inspect.call_args[1]
-        assert call_kwargs["device"] == "NRF5340_XXAA_APP"
+        assert call_kwargs["target"] == "NRF5340_XXAA_APP"
 
 
 class TestWatchCLI:

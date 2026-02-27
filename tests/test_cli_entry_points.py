@@ -674,8 +674,8 @@ class TestGDBCommandEntryPoints:
             assert mock_inspect.called
             call_kwargs = mock_inspect.call_args[1]
 
-            assert call_kwargs["device"] == "MCXN947"
-            assert call_kwargs["elf_path"] == "/path/to/mcxn.elf"
+            assert call_kwargs["target"] == "MCXN947"
+            assert call_kwargs["elf"] == "/path/to/mcxn.elf"
 
     def test_threads_default_rtos(self):
         """threads snapshot subcommand is callable with required args."""

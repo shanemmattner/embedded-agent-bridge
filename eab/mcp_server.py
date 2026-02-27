@@ -264,6 +264,27 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "get_thread_state",
+        "description": (
+            "Inspect Zephyr RTOS threads on a live target via GDB and return "
+            "thread state information including name, state, priority, and "
+            "stack usage for each thread."
+        ),
+        "inputSchema": _schema(
+            {
+                "device": {
+                    "type": "string",
+                    "description": "GDB remote target string (e.g., 'localhost:3333').",
+                },
+                "elf_path": {
+                    "type": "string",
+                    "description": "Path to ELF file with DWARF debug symbols.",
+                },
+            },
+            required=["device", "elf_path"],
+        ),
+    },
+    {
         "name": "dwt_stream_explain",
         "description": (
             "Arm DWT watchpoints on the requested symbols, capture hit events "
@@ -425,6 +446,12 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
             timeout=arguments.get("timeout"),
             json_mode=arguments.get("json_mode", True),
         )
+
+    if name == "get_thread_state":
+        from eab.thread_inspector import inspect_threads  # noqa: PLC0415
+
+        threads = inspect_threads(arguments["device"], arguments["elf_path"])
+        return json.dumps({"threads": [t.to_dict() for t in threads]})
 
     if name == "dwt_stream_explain":
         result = run_dwt_explain(

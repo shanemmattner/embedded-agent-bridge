@@ -7,11 +7,12 @@ import os
 import struct
 import subprocess
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional, cast
 
 from eab.cli.regression.models import StepResult, StepSpec
 from eab.cli.usb_reset import reset_usb_device
 from eab.snapshot import capture_snapshot
+from eab.thread_inspector import inspect_threads
 
 
 def _graceful_kill(proc: subprocess.Popen, timeout: int = 5, usb_delay: float = 2.0):
@@ -83,7 +84,9 @@ def run_step(
     log_offset: Optional[int] = None,
 ) -> StepResult:
     """Execute a single test step and return the result."""
-    fn = _STEP_DISPATCH.get(step.step_type)
+    fn: Optional[Callable[..., StepResult]] = cast(
+        Optional[Callable[..., StepResult]], _STEP_DISPATCH.get(step.step_type)
+    )
     if fn is None:
         return StepResult(
             step_type=step.step_type,
@@ -746,6 +749,57 @@ def _run_anomaly_watch(
     )
 
 
+def _run_stack_headroom_assert(
+    step: StepSpec,
+    *,
+    device: Optional[str],
+    chip: Optional[str],
+    timeout: int,
+    **_kw: Any,
+) -> StepResult:
+    t0 = time.monotonic()
+    p = step.params
+    min_free_bytes = int(p.get("min_free_bytes", 0))
+    step_device: str = str(p.get("device") or device or "")
+    elf = p.get("elf", "")
+
+    try:
+        threads = inspect_threads(step_device, elf)
+    except Exception as exc:
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            step_type="stack_headroom_assert",
+            params=step.params,
+            passed=False,
+            duration_ms=ms,
+            error=str(exc),
+        )
+
+    offenders = [t for t in threads if t.stack_free < min_free_bytes]
+    ms = int((time.monotonic() - t0) * 1000)
+
+    if offenders:
+        parts = [
+            f"thread '{t.name}' has stack_free={t.stack_free} < min_free_bytes={min_free_bytes}" for t in offenders
+        ]
+        return StepResult(
+            step_type="stack_headroom_assert",
+            params=step.params,
+            passed=False,
+            duration_ms=ms,
+            error="; ".join(parts),
+        )
+
+    return StepResult(
+        step_type="stack_headroom_assert",
+        params=step.params,
+        passed=True,
+        duration_ms=ms,
+    )
+
+
+# Late import to avoid circular dependency: trace_steps imports _run_eabctl from this module
+
 def _run_snapshot(
     step: StepSpec, *, device: Optional[str], chip: Optional[str], timeout: int, **_kw: Any
 ) -> StepResult:
@@ -903,6 +957,7 @@ _STEP_DISPATCH = {
     "trace_export": _run_trace_export,
     "trace_validate": _run_trace_validate,
     "anomaly_watch": _run_anomaly_watch,
+    "stack_headroom_assert": _run_stack_headroom_assert,
     "snapshot": _run_snapshot,
 }
 

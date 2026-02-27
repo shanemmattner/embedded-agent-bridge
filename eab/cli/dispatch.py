@@ -207,16 +207,21 @@ def main(argv: Optional[list[str]] = None) -> int:
             json_mode=args.json,
         )
     if args.cmd == "threads":
-        return cli.cmd_threads(
-            base_dir=base_dir,
-            device=args.device,
-            elf=args.elf,
-            chip=args.chip,
-            rtos=args.rtos,
-            probe_type=args.probe,
-            port=args.port,
-            json_mode=args.json,
-        )
+        from eab.cli.threads import cmd_threads_snapshot, cmd_threads_watch
+
+        if args.threads_action == "snapshot":
+            return cmd_threads_snapshot(
+                device=args.device,
+                elf=args.elf,
+                json_mode=args.json,
+            )
+        if args.threads_action == "watch":
+            return cmd_threads_watch(
+                device=args.device,
+                elf=args.elf,
+                interval=args.interval,
+                json_mode=args.json,
+            )
     if args.cmd == "watch":
         return cli.cmd_watch(
             base_dir=base_dir,

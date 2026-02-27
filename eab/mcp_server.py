@@ -21,6 +21,8 @@ import json
 import logging
 from typing import Any
 
+from eab.dwt_explain import run_dwt_explain
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -262,29 +264,33 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         ),
     },
     {
-        "name": "capture_snapshot",
+        "name": "dwt_stream_explain",
         "description": (
-            "Capture a full memory snapshot (ELF core file) from a live embedded "
-            "target via a debug probe.  Halts the target, reads all Cortex-M "
-            "registers and RAM regions, and writes an ELF32 ET_CORE file."
+            "Arm DWT watchpoints on the requested symbols, capture hit events "
+            "for a given duration, resolve addresses to source locations, and "
+            "return an LLM-ready explanation of the access pattern."
         ),
         "inputSchema": _schema(
             {
-                "device": {
-                    "type": "string",
-                    "description": "J-Link / probe device identifier (e.g., NRF5340_XXAA_APP).",
+                "symbols": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of symbol names to watch.",
+                },
+                "duration_s": {
+                    "type": "integer",
+                    "description": "Capture duration in seconds.",
                 },
                 "elf_path": {
                     "type": "string",
-                    "description": "Path to the firmware ELF file used to identify memory regions.",
+                    "description": "Path to ELF binary with DWARF debug info.",
                 },
-                "output_path": {
+                "device": {
                     "type": "string",
-                    "description": "Destination path for the generated ELF core file.",
-                    "default": "snapshot.core",
+                    "description": "Device identifier (e.g., NRF5340_XXAA_APP).",
                 },
             },
-            required=["device", "elf_path"],
+            required=["symbols", "duration_s", "elf_path", "device"],
         ),
     },
 ]
@@ -420,22 +426,14 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
             json_mode=arguments.get("json_mode", True),
         )
 
-    if name == "capture_snapshot":
-        from eab.snapshot import capture_snapshot as _capture_snapshot  # noqa: PLC0415
-
-        result = _capture_snapshot(
-            device=arguments["device"],
+    if name == "dwt_stream_explain":
+        result = run_dwt_explain(
+            symbols=arguments["symbols"],
+            duration_s=arguments["duration_s"],
             elf_path=arguments["elf_path"],
-            output_path=arguments.get("output_path", "snapshot.core"),
+            device=arguments.get("device"),
         )
-        return json.dumps(
-            {
-                "path": result.output_path,
-                "regions": [{"start": r.start, "size": r.size} for r in result.regions],
-                "registers": result.registers,
-                "size_bytes": result.total_size,
-            }
-        )
+        return json.dumps(result)
 
     return json.dumps({"error": f"Unknown tool: {name}"})
 

@@ -154,7 +154,7 @@ class TestToolDefinitions:
             "eab_fault_analyze",
             "eab_rtt_tail",
             "eab_regression",
-            "capture_snapshot",
+            "dwt_stream_explain",
         }
         assert expected.issubset(names), f"Missing tools: {expected - names}"
 
@@ -266,63 +266,41 @@ class TestHandleTool:
         _, kwargs = mock_fn.call_args
         assert kwargs["suite"] == "/tests/suite"
 
-    def test_capture_snapshot(self, mcp_module):
-        mock_region = MagicMock()
-        mock_region.start = 0x20000000
-        mock_region.size = 0x40000
-        mock_result = MagicMock()
-        mock_result.output_path = "/tmp/snap.bin"
-        mock_result.regions = [mock_region]
-        mock_result.registers = {"r0": 0, "pc": 0x12345678}
-        mock_result.total_size = 65536
-
-        mock_fn = MagicMock(return_value=mock_result)
-        with patch("eab.snapshot.capture_snapshot", mock_fn):
+    def test_dwt_stream_explain(self, mcp_module):
+        fake_result = {
+            "events": [],
+            "source_context": "DWT Watchpoint Hit Summary\n========================================\n",
+            "ai_prompt": "You are an expert...",
+            "suggested_watchpoints": ["conn_interval"],
+        }
+        with patch("eab.mcp_server.run_dwt_explain", return_value=fake_result) as mock_fn:
             result = self._run(
                 mcp_module._handle_tool(
-                    "capture_snapshot",
-                    {
-                        "device": "NRF5340_XXAA_APP",
-                        "elf_path": "/fw/app.elf",
-                        "output_path": "/tmp/snap.bin",
-                    },
+                    "dwt_stream_explain",
+                    {"symbols": ["conn_interval"], "duration_s": 5, "elf_path": "/fw.elf"},
                 )
             )
         data = json.loads(result)
-        assert data["path"] == "/tmp/snap.bin"
-        assert "regions" in data
-        assert len(data["regions"]) == 1
-        assert data["regions"][0]["start"] == 0x20000000
-        assert data["regions"][0]["size"] == 0x40000
-        assert "registers" in data
-        assert data["registers"]["pc"] == 0x12345678
-        assert data["size_bytes"] == 65536
+        assert data["suggested_watchpoints"] == ["conn_interval"]
         mock_fn.assert_called_once_with(
-            device="NRF5340_XXAA_APP",
-            elf_path="/fw/app.elf",
-            output_path="/tmp/snap.bin",
+            symbols=["conn_interval"],
+            duration_s=5,
+            elf_path="/fw.elf",
+            device=None,
         )
 
-    def test_capture_snapshot_default_output_path(self, mcp_module):
-        mock_region = MagicMock()
-        mock_region.start = 0x20000000
-        mock_region.size = 0x40000
-        mock_result = MagicMock()
-        mock_result.output_path = "snapshot.core"
-        mock_result.regions = [mock_region]
-        mock_result.registers = {"r0": 0}
-        mock_result.total_size = 65536
-
-        mock_fn = MagicMock(return_value=mock_result)
-        with patch("eab.snapshot.capture_snapshot", mock_fn):
-            self._run(
-                mcp_module._handle_tool(
-                    "capture_snapshot",
-                    {"device": "NRF5340_XXAA_APP", "elf_path": "/fw/app.elf"},
+    def test_dwt_stream_explain_value_error_propagates(self, mcp_module):
+        with patch(
+            "eab.mcp_server.run_dwt_explain",
+            side_effect=ValueError("ELF file not found"),
+        ):
+            with pytest.raises(ValueError, match="ELF file not found"):
+                self._run(
+                    mcp_module._handle_tool(
+                        "dwt_stream_explain",
+                        {"symbols": ["x"], "duration_s": 1, "elf_path": "/missing.elf"},
+                    )
                 )
-            )
-        _, kwargs = mock_fn.call_args
-        assert kwargs["output_path"] == "snapshot.core"
 
     def test_unknown_tool_returns_error(self, mcp_module):
         result = self._run(mcp_module._handle_tool("nonexistent_tool", {}))
@@ -366,7 +344,7 @@ class TestRunMcpServer:
 
         with patch("builtins.__import__", side_effect=fake_import):
             try:
-                import eab.mcp_server as ms  # noqa: PLC0415, F401
+                import eab.mcp_server  # noqa: PLC0415,F401
             except ImportError:
                 # Module itself failed to import — that's fine for this test
                 pass

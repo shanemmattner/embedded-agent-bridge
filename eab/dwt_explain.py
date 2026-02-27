@@ -419,9 +419,6 @@ def run_dwt_explain(
     if duration_s <= 0:
         raise ValueError(f"duration_s must be a positive number, got {duration_s!r}")
 
-    # Lazy import to avoid circular dependency via eab.cli.dwt.__init__
-    from eab.cli.dwt._helpers import _open_jlink, _resolve_symbol  # noqa: PLC0415
-
     if device is None:
         raise ValueError(
             "A J-Link device string must be provided (e.g. 'NRF5340_XXAA_APP'). Pass it via the device= argument."
@@ -429,6 +426,9 @@ def run_dwt_explain(
 
     if not os.path.isfile(elf_path):
         raise ValueError(f"ELF file not found: {elf_path!r}")
+
+    # Lazy import to avoid circular dependency via eab.cli.dwt.__init__
+    from eab.cli.dwt._helpers import _open_jlink, _resolve_symbol  # noqa: PLC0415
 
     # Resolve all symbols before opening hardware
     resolved: list[tuple[str, int, int]] = []  # (label, address, size_bytes)

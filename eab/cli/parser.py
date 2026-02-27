@@ -722,6 +722,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_dwt_clear.add_argument("--device", required=True, help="J-Link device string")
     p_dwt_clear.add_argument("--probe-selector", default=None)
 
+    # dwt explain
+    p_dwt_explain = dwt_sub.add_parser("explain", help="Capture DWT data and produce an AI narrative")
+    p_dwt_explain.add_argument("--device", default=None, help="Device identifier, e.g. NRF5340_XXAA_APP")
+    p_dwt_explain.add_argument(
+        "--symbols", required=True, help="Comma-separated list of symbol names, e.g. conn_interval,mtu_size"
+    )
+    p_dwt_explain.add_argument("--elf", required=True, help="Path to the ELF file")
+    p_dwt_explain.add_argument("--duration", type=int, default=5, help="Capture duration in seconds (default: 5)")
+
     # --- MCP server ---
     sub.add_parser(
         "mcp-server",
@@ -808,5 +817,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--duration", type=float, default=None, help="Stop after N seconds (default: run until Ctrl-C)"
     )
     p_anom_wat.add_argument("--log-source", default=None, help="Override log file path")
+
+    # --- snapshot ---
+    p_snapshot = sub.add_parser("snapshot", help="Capture a core snapshot from a running device")
+    p_snapshot.add_argument("--device", required=True, help="Target device name (e.g. NRF5340_XXAA_APP)")
+    p_snapshot.add_argument("--elf", required=True, help="Path to the firmware ELF file")
+    p_snapshot.add_argument("--output", required=True, help="Output path for the .core file")
 
     return parser

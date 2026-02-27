@@ -11,6 +11,7 @@ from typing import Any, Callable, Optional, cast
 
 from eab.cli.regression.models import StepResult, StepSpec
 from eab.cli.usb_reset import reset_usb_device
+from eab.snapshot import capture_snapshot
 from eab.thread_inspector import inspect_threads
 
 
@@ -798,6 +799,138 @@ def _run_stack_headroom_assert(
 
 
 # Late import to avoid circular dependency: trace_steps imports _run_eabctl from this module
+
+def _run_snapshot(
+    step: StepSpec, *, device: Optional[str], chip: Optional[str], timeout: int, **_kw: Any
+) -> StepResult:
+    """Capture a core snapshot from the target, conditioned on a trigger mode.
+
+    Trigger modes:
+      - ``manual``    (default): always capture.
+      - ``on_fault``:  capture only if a fault is detected via fault-analyze.
+      - ``on_anomaly``: capture only if anomaly_count >= 1 via anomaly compare.
+
+    Args:
+        step:    Step specification with params: output, elf, trigger,
+                 and (for on_anomaly) baseline.
+        device:  Target device identifier.
+        chip:    Chip family string.
+        timeout: Subprocess timeout in seconds.
+
+    Returns:
+        StepResult with passed=True when no capture was needed or when
+        the capture succeeded; passed=False on validation or capture error.
+    """
+    t0 = time.monotonic()
+    p = step.params
+
+    output_path = p.get("output")
+    if not output_path:
+        return StepResult(
+            step_type="snapshot",
+            params=step.params,
+            passed=False,
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            error="snapshot step requires 'output' param",
+        )
+
+    elf = p.get("elf")
+    if not elf:
+        return StepResult(
+            step_type="snapshot",
+            params=step.params,
+            passed=False,
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            error="snapshot step requires 'elf' param",
+        )
+
+    trigger = p.get("trigger", "manual")
+    should_capture = False
+
+    if trigger == "on_fault":
+        args = ["fault-analyze", "--elf", elf]
+        if p.get("device") or device:
+            args.extend(["--device", p.get("device") or device])
+        if p.get("chip") or chip:
+            args.extend(["--chip", p.get("chip") or chip])
+        _, fault_output = _run_eabctl(args, timeout=timeout)
+        has_fault = fault_output.get("fault_detected", False) or fault_output.get("faulted", False)
+        should_capture = has_fault
+
+    elif trigger == "on_anomaly":
+        baseline = p.get("baseline")
+        if not baseline:
+            return StepResult(
+                step_type="snapshot",
+                params=step.params,
+                passed=False,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                error="snapshot step with on_anomaly trigger requires 'baseline' param",
+            )
+        duration = float(p.get("duration", 30))
+        max_sigma = float(p.get("max_sigma", 3.0))
+        log_source = p.get("log_source")
+        anomaly_args = [
+            "anomaly",
+            "compare",
+            "--baseline",
+            baseline,
+            "--duration",
+            str(duration),
+            "--sigma",
+            str(max_sigma),
+        ]
+        if log_source:
+            anomaly_args.extend(["--log-source", log_source])
+        _, anomaly_output = _run_eabctl(anomaly_args, device=device, timeout=int(duration) + 15)
+        should_capture = anomaly_output.get("anomaly_count", 0) >= 1
+
+    else:
+        # manual or unrecognised trigger — always capture
+        should_capture = True
+
+    if not should_capture:
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            step_type="snapshot",
+            params=step.params,
+            passed=True,
+            duration_ms=ms,
+            output={"captured": False, "trigger": trigger},
+        )
+
+    try:
+        result = capture_snapshot(
+            device=device or "",
+            elf_path=elf,
+            output_path=output_path,
+            chip=chip or "nrf5340",
+        )
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            step_type="snapshot",
+            params=step.params,
+            passed=True,
+            duration_ms=ms,
+            output={
+                "captured": True,
+                "trigger": trigger,
+                "output_path": result.output_path,
+                "total_size": result.total_size,
+                "region_count": len(result.regions),
+            },
+        )
+    except Exception as exc:
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            step_type="snapshot",
+            params=step.params,
+            passed=False,
+            duration_ms=ms,
+            error=f"capture_snapshot failed: {exc}",
+        )
+
+
 from eab.cli.regression.trace_steps import (  # noqa: E402
     _run_trace_export,
     _run_trace_start,
@@ -825,6 +958,7 @@ _STEP_DISPATCH = {
     "trace_validate": _run_trace_validate,
     "anomaly_watch": _run_anomaly_watch,
     "stack_headroom_assert": _run_stack_headroom_assert,
+    "snapshot": _run_snapshot,
 }
 
 # Register BLE step executors — late import to avoid circular dependency

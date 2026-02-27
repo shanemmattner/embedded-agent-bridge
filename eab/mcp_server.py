@@ -21,6 +21,8 @@ import json
 import logging
 from typing import Any
 
+from eab.dwt_explain import run_dwt_explain
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -282,6 +284,36 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             required=["device", "elf_path"],
         ),
     },
+    {
+        "name": "dwt_stream_explain",
+        "description": (
+            "Arm DWT watchpoints on the requested symbols, capture hit events "
+            "for a given duration, resolve addresses to source locations, and "
+            "return an LLM-ready explanation of the access pattern."
+        ),
+        "inputSchema": _schema(
+            {
+                "symbols": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of symbol names to watch.",
+                },
+                "duration_s": {
+                    "type": "integer",
+                    "description": "Capture duration in seconds.",
+                },
+                "elf_path": {
+                    "type": "string",
+                    "description": "Path to ELF binary with DWARF debug info.",
+                },
+                "device": {
+                    "type": "string",
+                    "description": "Device identifier (e.g., NRF5340_XXAA_APP).",
+                },
+            },
+            required=["symbols", "duration_s", "elf_path", "device"],
+        ),
+    },
 ]
 
 
@@ -420,6 +452,15 @@ async def _handle_tool(name: str, arguments: dict[str, Any]) -> str:
 
         threads = inspect_threads(arguments["device"], arguments["elf_path"])
         return json.dumps({"threads": [t.to_dict() for t in threads]})
+
+    if name == "dwt_stream_explain":
+        result = run_dwt_explain(
+            symbols=arguments["symbols"],
+            duration_s=arguments["duration_s"],
+            elf_path=arguments["elf_path"],
+            device=arguments.get("device"),
+        )
+        return json.dumps(result)
 
     return json.dumps({"error": f"Unknown tool: {name}"})
 

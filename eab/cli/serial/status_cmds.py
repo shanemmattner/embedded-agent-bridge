@@ -77,7 +77,13 @@ def cmd_status(*, base_dir: str, json_mode: bool) -> int:
             print("status.json:")
             print(json.dumps(status, indent=2, sort_keys=True))
 
-    return 0 if (existing and existing.is_alive) else 1
+    healthy = (
+        status is not None
+        and "error" not in status
+        and status.get("connection", {}).get("status") == "connected"
+        and status.get("health", {}).get("status") in {"healthy", "idle"}
+    )
+    return 0 if healthy else 1
 
 
 def cmd_tail(*, base_dir: str, lines: int, json_mode: bool) -> int:

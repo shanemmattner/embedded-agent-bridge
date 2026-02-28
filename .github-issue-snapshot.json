@@ -1,12 +1,12 @@
 {
   "assignees": [],
-  "body": "## Summary\n\nNew MCP tool `dwt_stream_explain(symbols, duration_s)` that arms DWT watchpoints, captures N seconds of the JSONL event stream, enriches with ELF source line info, and returns an LLM-friendly narrative of what the firmware is doing.\n\n## What to build\n\n1. New MCP tool in `eab/mcp_server.py`: `dwt_stream_explain`\n   - Parameters: `symbols: list[str]`, `duration_s: int`, `elf_path: str`\n   - Arms DWT watchpoints on specified symbols (reuse existing `eabctl dwt watch` logic)\n   - Captures JSONL events for `duration_s` seconds\n   - Enriches each event with ELF source line info (addr2line / pyelftools)\n   - Formats a structured prompt with the event stream + source context\n   - Returns narrative text + suggested follow-up watchpoints\n\n2. New CLI command `eabctl dwt explain` as a non-MCP entry point\n   - `eabctl dwt explain --device NRF5340_XXAA_APP --symbols conn_interval,mtu_size --elf zephyr.elf --duration 10 --json`\n   - Output: JSON with `events`, `source_context`, `ai_prompt` fields\n\n3. Unit tests in `tests/unit/test_dwt_explain.py`\n   - Mock DWT watchpoint arming, JSONL capture, ELF symbol resolution\n   - Test prompt formatting, edge cases (no events, unknown symbols)\n\n## Existing code to reuse\n\n- `eab/dwt_profiler.py` \u2014 DWT register access via pylink\n- `eab/mcp_server.py` \u2014 existing MCP server with 8 tools\n- `eab/cli/parser.py` \u2014 `dwt` subparser already exists (watch/halt/list/clear)\n- DWT watchpoint JSONL format already defined\n\n## Acceptance criteria\n\n- MCP tool callable from Claude Desktop\n- CLI command works standalone\n- All new tests pass\n- Existing 1403 tests still pass",
+  "body": "## Bug\n\n`eabctl --device c2000-launchpad status --json` returns **exit code 1** even when the daemon is healthy and connected.\n\nThe JSON output clearly shows the daemon is alive:\n```json\n{\n  \"status\": {\n    \"connection\": { \"status\": \"connected\", \"baud\": 9600 },\n    \"health\": { \"status\": \"healthy\", \"uptime_seconds\": 52 },\n    \"counters\": { \"bytes_received\": 7553, \"commands_sent\": 1 }\n  }\n}\n```\n\nYet the exit code is 1, which causes `check=True` subprocess calls to raise `CalledProcessError`.\n\n## Impact\n\nAny script checking daemon status with `returncode != 0` incorrectly concludes the daemon isn't running. Hit this in `fpga_hil_ops.py` \u2014 `cmd_send()` tried to re-start an already-running daemon, which then failed with \"Daemon already running\".\n\n## Expected\n\n`eabctl status --json` should return exit code 0 when daemon is running and healthy.\n\n## Workaround\n\nParse the JSON body instead of relying on exit code:\n```python\ndata = json.loads(result.stdout)\nconn = data.get(\"status\", {}).get(\"connection\", {})\nis_running = conn.get(\"status\") == \"connected\"\n```\n\n## Environment\n\n- eabctl 1.0.0 installed via uv\n- Device: c2000-launchpad (serial)\n- macOS Darwin 25.3.0",
   "comments": [],
-  "createdAt": "2026-02-26T22:28:44Z",
+  "createdAt": "2026-02-27T07:16:49Z",
   "labels": [],
-  "number": 134,
-  "title": "LLM DWT Stream Interpreter \u2014 new MCP tool",
-  "updatedAt": "2026-02-26T22:28:44Z",
-  "url": "https://github.com/shanemmattner/embedded-agent-bridge/issues/134",
-  "fetched_at": "2026-02-26T22:29:29.954618+00:00"
+  "number": 148,
+  "title": "eabctl status --json returns exit code 1 when daemon is running",
+  "updatedAt": "2026-02-27T07:16:49Z",
+  "url": "https://github.com/shanemmattner/embedded-agent-bridge/issues/148",
+  "fetched_at": "2026-02-28T09:14:46.145592+00:00"
 }

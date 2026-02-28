@@ -1,0 +1,18 @@
+{
+  "subtasks": [
+    {
+      "id": "1",
+      "description": "Find and fix the exit code logic for the `eabctl status --json` command. The bug: the status subcommand returns exit code 1 even when the daemon is running, healthy, and connected. The expected behavior is exit code 0 when the daemon status is healthy/connected, and exit code 1 only when the daemon is not running or unhealthy.\n\nSearch the codebase for the status command handler \u2014 likely in a CLI entry point or subcommand module (e.g., files related to `eabctl`, `status`, or `cli`). Look for where the exit code or return code is set after producing JSON output for the status command. The root cause is likely one of: (a) the function always returns/exits with code 1 regardless of status, (b) a flag or condition is inverted, or (c) the JSON output path doesn't set a successful exit code.\n\nFix the logic so that when the daemon reports healthy status and connected state, the process exits with code 0. When the daemon is not running or unhealthy, it should exit with code 1.\n\nAcceptance criteria: running `eabctl status --json` against a healthy, connected daemon returns exit code 0. An unhealthy or disconnected daemon still returns exit code 1.",
+      "files": [],
+      "confidence": "UNCERTAIN - no file analysis provided; implementer must search for the CLI status command handler"
+    },
+    {
+      "id": "2",
+      "description": "Add or update tests for the `eabctl status --json` exit code behavior. Find the existing test file for the eabctl CLI or status command (search for test files related to `eabctl`, `status`, or `cli`).\n\nAdd test cases that verify:\n1. When the daemon is healthy and connected, `status --json` returns exit code 0.\n2. When the daemon is not running or unhealthy, `status --json` returns exit code 1.\n3. The JSON body is still correctly output in both cases.\n\nFollow existing test patterns \u2014 use whatever mocking/fixture approach is already in place for CLI tests. Use pytest conventions per project standards.\n\nAcceptance criteria: new tests pass with `python3 -m pytest` and cover both healthy (exit 0) and unhealthy (exit 1) status scenarios.",
+      "files": [],
+      "confidence": "UNCERTAIN - no file analysis provided; implementer must locate existing test files for the CLI"
+    }
+  ],
+  "strategy": "execute",
+  "deferred_work": ""
+}

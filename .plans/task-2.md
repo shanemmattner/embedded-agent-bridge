@@ -1,12 +1,13 @@
-Now I have enough information to write the plan.
+Now I have enough information. Let me verify the exact structure of `_print` and how it integrates:
+I have all the information needed. Here is the plan:
 
 ---
 
 ## Files to Modify
 
-### `tests/test_cli_status_cmds.py` (new file)
+### `tests/test_cli_status_cmds.py`
 
-Create a new test file in the top-level `tests/` directory. The file does not exist yet and must be created from scratch.
+Add a new class `TestCmdStatusJsonBody` at the end of the file, after the existing `TestCmdStatusExitCodes` class. The new class introduces test methods that capture stdout via `capsys` and verify the JSON payload structure for both healthy (exit 0) and unhealthy (exit 1) scenarios.
 
 ---
 
@@ -14,44 +15,39 @@ Create a new test file in the top-level `tests/` directory. The file does not ex
 
 ### `tests/test_cli_status_cmds.py`
 
-Create a new test file with a class `TestCmdStatus` containing tests for `cmd_status` from `eab.cli.serial.status_cmds`. The function `cmd_status` reads `check_singleton()` (imported at the module level via `from eab.singleton import check_singleton`) and returns `0` if `existing and existing.is_alive` is true, else `1`. The full logic is in `eab/cli/serial/status_cmds.py`, lines 35–80.
+A new class `TestCmdStatusJsonBody` should be appended after the last line of `TestCmdStatusExitCodes`. Each test method in the new class will call `cmd_status` with `json_mode=True`, then call `capsys.readouterr()` on its `.out` attribute, parse the captured string with `json.loads`, and assert on the structure.
 
-The tests must patch `check_singleton` at the location where it is bound in the target module: `"eab.cli.serial.status_cmds.check_singleton"`. This is the same pattern used in `tests/test_cli_daemon_cmds.py` with `monkeypatch.setattr("eab.cli.daemon.lifecycle_cmds.check_singleton", ...)`.
+**For the healthy (exit 0) case:** write `status.json` via `_write_status(tmp_path, "connected", "healthy")`, monkeypatch `check_singleton` to return `_make_existing(is_alive=True)`, call `cmd_status`, capture stdout, parse JSON, then assert all of: `schema_version == 1`, `"daemon"` key is present and not `{"running": False}`, `"status"` key equals the written status dict, and that the return code is 0.
 
-For the healthy scenario: patch `check_singleton` to return an `ExistingDaemon` instance with `is_alive=True`; call `cmd_status(base_dir=str(tmp_path), json_mode=True)` and assert `result == 0`. Repeat the assertion with `json_mode=False`.
+**For the unhealthy (exit 1, not running) case:** monkeypatch `check_singleton` to return `None` (no daemon), call `cmd_status` with `json_mode=True`, capture stdout, parse JSON, then assert `daemon == {"running": False}`, `"status"` key is `None`, and the return code is 1.
 
-For the unhealthy/not-running scenarios: patch `check_singleton` to return `None` (daemon not running), call `cmd_status` and assert `result == 1`. A second unhealthy variant patches `check_singleton` to return an `ExistingDaemon` with `is_alive=False` (stale PID file), and also asserts `result == 1`.
+**For the unhealthy (exit 1, disconnected) case:** write `status.json` with `"disconnected"/"error"`, monkeypatch `check_singleton` to return `_make_existing(is_alive=True)`, call `cmd_status` with `json_mode=True`, capture stdout, parse JSON, then assert `"status"` key contains `connection.status == "disconnected"` and the return code is 1.
 
-The `tmp_path` pytest fixture is used as `base_dir` so that the `status.json` read inside `cmd_status` gracefully returns `None` (file not found), which is an already-handled code path in the function. No actual `status.json` file needs to be present for the exit-code tests.
+The `capsys` fixture is a built-in pytest fixture — no imports needed; add it as a parameter to the method signature, following the exact pattern seen in `tests/unit/test_dwt_explain.py` at `test_json_mode_prints_valid_json` and `tests/unit/test_thread_inspector.py` at `test_json_output_is_valid_array`.
 
-Place each scenario in its own test method. Follow the class-based test structure used in `tests/test_cli_daemon_cmds.py` (`class TestClearSessionFiles`) and the `monkeypatch` + `tmp_path` usage pattern seen there and in `tests/test_cli_helpers.py`.
+The `_write_status` helper and `_make_existing` helper already exist at module level in `test_cli_status_cmds.py` and must be reused as-is.
 
 ---
 
 ## Patterns to Follow
 
-1. **`tests/test_cli_daemon_cmds.py` → `TestClearSessionFiles.test_cmd_start_clears_session_files`** — Shows how to use `monkeypatch.setattr` with the full dotted module path to patch `check_singleton`, and how to use `tmp_path` as the `base_dir`.
-
-2. **`tests/test_cli_daemon_cmds.py` → `TestClearSessionFiles.test_cmd_start_early_return_does_not_clear_files`** — Shows patching `check_singleton` to return a mock object with `.pid` and `.is_alive` attributes when you want to simulate a running daemon.
-
-3. **`tests/test_cli_entry_points.py` → `TestControlEntryPoint.test_control_status_json`** — Shows calling `cmd_status`-level functionality through `main(["status", "--json"])` and asserting `isinstance(result, int)`, a lighter integration pattern that can complement the unit tests.
-
-4. **`eab/cli/serial/status_cmds.py` → `cmd_status`** — The exact return logic at line 80: `return 0 if (existing and existing.is_alive) else 1`. Tests should exercise all three branches: `existing is None`, `existing.is_alive is False`, and `existing.is_alive is True`.
-
-5. **`eab/singleton.py` → `ExistingDaemon`** — Dataclass with required fields `pid`, `is_alive`, `port`, `base_dir`, `started`; optional fields `device_name`, `device_type`, `chip`. Tests must construct instances with at minimum the required fields to avoid `TypeError`.
+- **`tests/unit/test_dwt_explain.py` → `TestCmdDwtExplainJsonMode.test_json_mode_prints_valid_json`**: captures stdout with `capsys`, calls `capsys.readouterr()`, passes `.out` to `json.loads`, then asserts on keys in the parsed dict. Mirror this exactly.
+- **`tests/unit/test_thread_inspector.py` → `TestCliSnapshotJsonOutput.test_json_output_is_valid_array`**: same `capsys.readouterr().out` pattern, demonstrates the `capsys` fixture as a method parameter alongside `_mock`.
+- **`tests/test_cli_status_cmds.py` → `TestCmdStatusExitCodes.test_json_mode_returns_0_when_running_and_healthy`**: the monkeypatching of `eab.cli.serial.status_cmds.check_singleton` and the invocation of `cmd_status(base_dir=str(tmp_path), json_mode=True)` must be followed identically in the new class.
+- **`tests/test_cli_status_cmds.py` → `_write_status`** and **`_make_existing`**: reuse the existing module-level helper functions rather than duplicating status dict construction.
 
 ---
 
 ## Watch Out For
 
-- **Patch target must be `"eab.cli.serial.status_cmds.check_singleton"`**, not `"eab.singleton.check_singleton"`, because `cmd_status` uses a bound name from its own module's import (`from eab.singleton import check_singleton`).
-- **`ExistingDaemon` is a dataclass** — it requires positional-or-keyword arguments for all non-defaulted fields (`pid`, `is_alive`, `port`, `base_dir`, `started`). Do not construct it with only `is_alive=True`; supply all required fields.
-- **`cmd_status` reads `status.json` inside `tmp_path`** — using `tmp_path` as `base_dir` means `FileNotFoundError` is raised and caught, setting `status` to `None`. This is safe and already handled; do not create a `status.json` unless a specific test needs to validate JSON-output content rather than exit code.
-- **The non-JSON `status` command** (plain-text mode) is tested by calling `cmd_status(..., json_mode=False)` — it prints to stdout, but the exit-code logic is identical to JSON mode (line 80 is outside any branch). No additional mocking of `print` is needed; use `capsys` only if verifying output, which is not required for exit-code tests.
-- **Do not modify `eab/cli/serial/status_cmds.py`** — the exit-code behavior is already implemented correctly at line 80 and no source changes are needed.
+- `cmd_status` in `status_cmds.py` calls `check_singleton()` with **no arguments** (line 35), so the lambda patch `lambda **kwargs: ...` works (the call passes zero arguments), but ensure the new tests follow the exact same patch target string `"eab.cli.serial.status_cmds.check_singleton"`.
+- When `check_singleton` returns `None`, the payload's `"daemon"` field is set to `{"running": False}` (not `None`). Assert against this literal dict, not `None`.
+- When `status.json` is absent, `status` in the payload is `None` — `json.dumps` will serialize this as `null`, so `json.loads` will give Python `None`. Assert `parsed["status"] is None`.
+- The JSON output is produced by `_print` via `json.dumps(obj, indent=2, sort_keys=True)`. Keys in the output will be in alphabetical order. This doesn't affect key-presence assertions but is worth knowing if asserting exact string fragments.
+- Do **not** modify `test_cli_status_cmd.py` — it is a separate, parallel test file and is not the right place for additions per project convention (the `test_cli_status_cmds.py` file is the more complete and better-documented one).
 
 ---
 
 ## Uncertainty
 
-- **UNCERTAIN: where the test file should live** — the task says "follow existing test patterns and fixtures in the test suite," and both `tests/` (top-level) and `eab/tests/` (inline) directories exist. The top-level `tests/` directory is the primary location for CLI tests (all `test_cli_*.py` files live there), making `tests/test_cli_status_cmds.py` the most consistent choice, but the task does not explicitly state this.
+**UNCERTAIN**: It is not immediately clear whether the task expects the new tests to live in `test_cli_status_cmds.py` (the more complete file) or whether a brand new third file should be created. Given the task says "find the existing test file" and both files exist, `test_cli_status_cmds.py` is the better match because its module docstring already explicitly mentions the `status --json` behavior the task is focused on.

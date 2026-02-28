@@ -247,3 +247,78 @@ class TestCmdStatusExitCodes:
         r_text = cmd_status(base_dir=str(tmp2), json_mode=False)
 
         assert r_json == r_text == 1
+
+
+class TestCmdStatusJsonBody:
+    """Verify that `status --json` outputs valid JSON in both healthy and unhealthy scenarios."""
+
+    # ------------------------------------------------------------------
+    # Healthy — exit 0, JSON body present and well-formed
+    # ------------------------------------------------------------------
+
+    def test_json_body_healthy_exit_0(self, tmp_path, monkeypatch, capsys):
+        """status --json outputs valid JSON with expected keys and returns exit code 0."""
+        from eab.cli.serial.status_cmds import cmd_status
+
+        _write_status(tmp_path, "connected", "healthy")
+        monkeypatch.setattr(
+            "eab.cli.serial.status_cmds.check_singleton",
+            lambda **kwargs: _make_existing(is_alive=True),
+        )
+
+        result = cmd_status(base_dir=str(tmp_path), json_mode=True)
+
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+
+        assert result == 0
+        assert parsed["schema_version"] == 1
+        assert "daemon" in parsed
+        assert parsed["daemon"] != {"running": False}
+        assert parsed["status"] is not None
+        assert parsed["status"]["connection"]["status"] == "connected"
+        assert parsed["status"]["health"]["status"] == "healthy"
+
+    # ------------------------------------------------------------------
+    # Unhealthy — exit 1, JSON body still present
+    # ------------------------------------------------------------------
+
+    def test_json_body_daemon_not_running_exit_1(self, tmp_path, monkeypatch, capsys):
+        """status --json outputs JSON with daemon={"running": False} and returns exit code 1."""
+        from eab.cli.serial.status_cmds import cmd_status
+
+        monkeypatch.setattr(
+            "eab.cli.serial.status_cmds.check_singleton",
+            lambda **kwargs: None,
+        )
+
+        result = cmd_status(base_dir=str(tmp_path), json_mode=True)
+
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+
+        assert result == 1
+        assert parsed["schema_version"] == 1
+        assert parsed["daemon"] == {"running": False}
+        assert parsed["status"] is None
+
+    def test_json_body_disconnected_exit_1(self, tmp_path, monkeypatch, capsys):
+        """status --json outputs JSON with status.connection.status=='disconnected' and exits 1."""
+        from eab.cli.serial.status_cmds import cmd_status
+
+        _write_status(tmp_path, "disconnected", "error")
+        monkeypatch.setattr(
+            "eab.cli.serial.status_cmds.check_singleton",
+            lambda **kwargs: _make_existing(is_alive=True),
+        )
+
+        result = cmd_status(base_dir=str(tmp_path), json_mode=True)
+
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+
+        assert result == 1
+        assert parsed["schema_version"] == 1
+        assert "daemon" in parsed
+        assert parsed["daemon"] != {"running": False}
+        assert parsed["status"]["connection"]["status"] == "disconnected"

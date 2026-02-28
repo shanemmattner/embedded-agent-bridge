@@ -1,0 +1,18 @@
+{
+  "subtasks": [
+    {
+      "id": "1",
+      "description": "Fix the exit code returned by the `eabctl status --json` command. Currently, the status command returns exit code 1 even when the daemon is running and healthy. Find the status command handler (likely in a CLI module handling `eabctl status`) and fix the logic so that: (1) exit code 0 is returned when the daemon status indicates it is healthy/connected, (2) exit code 1 is returned only when the daemon is not running or unhealthy. The bug is likely one of: the function always returns a non-zero code, a sys.exit(1) is called unconditionally, or the return value from a subprocess or function is not properly mapped to the CLI exit code. Also check if the `--json` flag path has a different return path than non-JSON that might be missing a `return 0` or equivalent. Success criteria: `eabctl status --json` returns exit code 0 when daemon is healthy and connected, and exit code 1 when daemon is not running.",
+      "files": [],
+      "confidence": "UNCERTAIN - no file analysis was provided; the implementer must locate the status command handler in the eabctl CLI codebase"
+    },
+    {
+      "id": "2",
+      "description": "Add or update tests for the `eabctl status` command's exit code behavior. Write tests that verify: (1) when the daemon is running and healthy, `status --json` returns exit code 0, (2) when the daemon is not running or unhealthy, `status --json` returns exit code 1, (3) the non-JSON `status` command also returns correct exit codes in both scenarios. Follow existing test patterns and fixtures in the test suite. Use pytest. Success criteria: new tests pass and cover both healthy (exit 0) and unhealthy/not-running (exit 1) scenarios for the status command.",
+      "files": [],
+      "confidence": "UNCERTAIN - no file analysis was provided; the implementer must locate the existing test files for eabctl CLI commands"
+    }
+  ],
+  "strategy": "execute",
+  "deferred_work": ""
+}

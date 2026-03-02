@@ -227,16 +227,19 @@ function classifyRtt(line) {
 function classifyBle(line) {
   const ll = line.toLowerCase();
   if (ll.includes('error')) return 'ble-error';
-  if (ll.includes('pass')) return 'ble-pass';
-  if (ll.includes('fail')) return 'ble-fail';
-  if (ll.startsWith('===')) return 'ble-test';
-  if (ll.includes('scan')) return 'ble-scan';
-  if (ll.includes('connect') && !ll.includes('disconnect')) return 'ble-conn';
-  if (ll.includes('disconnect')) return 'ble-disc';
-  if (ll.includes('write')) return 'ble-write';
-  if (ll.includes('read')) return 'ble-read';
-  if (ll.includes('notif')) return 'ble-notify';
-  if (ll.includes('subscri')) return 'ble-sub';
+  if (ll.includes('  pass')) return 'ble-pass';
+  if (ll.includes('  fail')) return 'ble-fail';
+  if (ll.startsWith('===') || ll.startsWith('─')) return 'ble-test';
+  if (ll.includes('test suite') || ll.includes('nrf5340')) return 'ble-test';
+  if (/\d+\/\d+ passed/.test(ll)) return ll.includes('fail') ? 'ble-fail' : 'ble-pass';
+  if (ll.includes('  scan') || ll.includes('  found')) return 'ble-scan';
+  if (ll.includes('  conn') && !ll.includes('discon')) return 'ble-conn';
+  if (ll.includes('  discon')) return 'ble-disc';
+  if (ll.includes('  write')) return 'ble-write';
+  if (ll.includes('  read')) return 'ble-read';
+  if (ll.includes('  notify')) return 'ble-notify';
+  if (ll.includes('  sub') || ll.includes('  unsub')) return 'ble-sub';
+  if (/\[\d+\/\d+\]/.test(ll)) return 'ble-test';
   return 'ble-default';
 }
 

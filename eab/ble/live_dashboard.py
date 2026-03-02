@@ -165,40 +165,101 @@ async def tail_rtt_log(path: str, queue: asyncio.Queue, poll_interval: float = 0
 class BleController:
     """Wraps BleakCentral and pushes events to the broadcast queue."""
 
+    # Friendly names for known characteristic UUIDs
+    _CHAR_NAMES = {
+        "eab10001": "Counter",
+        "eab10002": "Control",
+        "eab10003": "Command",
+        "eab10004": "Status",
+    }
+
     def __init__(self, queue: asyncio.Queue, target_name: str, notify_uuid: str, write_uuid: str):
         self._queue = queue
         self._target_name = target_name
         self._notify_uuid = notify_uuid
         self._write_uuid = write_uuid
         self._central = BleakCentral(event_callback=self._on_event)
+        self._notify_count = 0
+
+    def _char_name(self, uuid: str) -> str:
+        """Map UUID to friendly name."""
+        prefix = uuid[:8].lower()
+        return self._CHAR_NAMES.get(prefix, uuid[:13] + "...")
+
+    def _ts(self) -> str:
+        """Short timestamp for log lines."""
+        from datetime import datetime
+        return datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
+    def _decode_counter(self, hex_payload: str) -> int | None:
+        """Decode little-endian uint32 counter from hex string."""
+        try:
+            return int.from_bytes(bytes.fromhex(hex_payload), byteorder="little")
+        except (ValueError, TypeError):
+            return None
 
     def _on_event(self, event: dict):
-        _enqueue(self._queue, {
-            "type": "ble_log",
-            "line": f"[{event['type']}] {event['detail']}",
-            "ts": event["ts"],
-        })
+        etype = event["type"]
+        detail = event["detail"]
+        ts = self._ts()
 
-        # Parse notification hex payload → chart data (little-endian uint32 counter)
-        if event["type"] == "notification":
-            try:
-                # detail format: "uuid: hex_payload"
-                hex_part = event["detail"].split(": ", 1)[1].strip()
-                value = int.from_bytes(bytes.fromhex(hex_part), byteorder="little")
+        if etype == "notification":
+            self._notify_count += 1
+            # Parse "uuid: hex_payload"
+            parts = detail.split(": ", 1)
+            uuid_part = parts[0] if len(parts) > 1 else ""
+            hex_part = parts[1].strip() if len(parts) > 1 else detail
+            name = self._char_name(uuid_part)
+            value = self._decode_counter(hex_part)
+            if value is not None:
+                self._log(f"{ts}  NOTIFY  {name} = {value}  (0x{hex_part})")
                 _enqueue(self._queue, {
-                    "type": "data",
-                    "series": "counter",
-                    "value": value,
-                    "ts": event["ts"],
+                    "type": "data", "series": "counter",
+                    "value": value, "ts": event["ts"],
                 })
-            except (IndexError, ValueError):
-                pass
+            else:
+                self._log(f"{ts}  NOTIFY  {name}: {hex_part}")
 
-        # Connection events → chart
-        if event["type"] == "connected":
+        elif etype == "scan_found":
+            self._log(f"{ts}  FOUND   {detail}")
+
+        elif etype == "connected":
+            addr_short = detail[:8] + "..." if len(detail) > 12 else detail
+            self._log(f"{ts}  CONN    {self._target_name} ({addr_short})")
             _enqueue(self._queue, {"type": "data", "series": "conn_event", "value": 1, "ts": event["ts"]})
-        elif event["type"] == "disconnected":
+
+        elif etype == "disconnected":
+            self._log(f"{ts}  DISCON  link terminated")
             _enqueue(self._queue, {"type": "data", "series": "conn_event", "value": 0, "ts": event["ts"]})
+
+        elif etype == "subscribed":
+            name = self._char_name(detail)
+            self._log(f"{ts}  SUB     notifications enabled on {name}")
+
+        elif etype == "write":
+            parts = detail.split(": ", 1)
+            uuid_part = parts[0] if len(parts) > 1 else ""
+            val = parts[1].strip() if len(parts) > 1 else detail
+            name = self._char_name(uuid_part)
+            decoded = self._decode_counter(val)
+            if decoded is not None:
+                self._log(f"{ts}  WRITE   {name} <- {decoded}  (0x{val})")
+            else:
+                self._log(f"{ts}  WRITE   {name} <- 0x{val}")
+
+        elif etype == "read":
+            parts = detail.split(": ", 1)
+            uuid_part = parts[0] if len(parts) > 1 else ""
+            val = parts[1].strip() if len(parts) > 1 else detail
+            name = self._char_name(uuid_part)
+            decoded = self._decode_counter(val)
+            if decoded is not None:
+                self._log(f"{ts}  READ    {name} = {decoded}  (0x{val})")
+            else:
+                self._log(f"{ts}  READ    {name} = 0x{val}")
+
+        else:
+            self._log(f"{ts}  {etype.upper():7s} {detail}")
 
     def _log(self, msg: str):
         _enqueue(self._queue, {"type": "ble_log", "line": msg, "ts": time.time()})
@@ -209,55 +270,66 @@ class BleController:
     async def handle_command(self, cmd: dict) -> dict:
         """Handle a command from the browser. Returns {ok, message}."""
         action = cmd.get("action", "")
+        ts = self._ts()
         try:
             if action == "scan":
-                self._log(f"Scanning for '{self._target_name}'...")
+                self._log(f"{ts}  SCAN    searching for '{self._target_name}'...")
                 self._status("Scanning...")
                 addr = await self._central.scan(self._target_name, timeout=15)
-                self._status(f"Found: {addr}")
-                return {"ok": True, "message": f"Found at {addr}"}
+                addr_short = addr[:8] + "..." if len(addr) > 12 else addr
+                self._status(f"Found: {self._target_name}")
+                return {"ok": True, "message": f"Found {self._target_name} ({addr_short})"}
 
             elif action == "connect":
-                self._log("Connecting...")
+                self._log(f"{ts}  CONN    initiating BLE connection...")
                 self._status("Connecting...")
                 await self._central.connect()
                 self._status("Connected")
                 return {"ok": True, "message": "Connected"}
 
             elif action == "disconnect":
-                self._log("Disconnecting...")
+                self._log(f"{ts}  DISCON  requesting disconnect...")
                 await self._central.disconnect()
+                self._notify_count = 0
                 self._status("Disconnected")
                 return {"ok": True, "message": "Disconnected"}
 
             elif action == "subscribe":
                 uuid = cmd.get("uuid", self._notify_uuid)
-                self._log(f"Subscribing to {uuid}...")
+                name = self._char_name(uuid)
+                self._log(f"{ts}  SUB     enabling notifications on {name}...")
+                self._notify_count = 0
                 await self._central.subscribe(uuid)
-                return {"ok": True, "message": f"Subscribed to {uuid}"}
+                return {"ok": True, "message": f"Subscribed to {name}"}
 
             elif action == "unsubscribe":
                 uuid = cmd.get("uuid", self._notify_uuid)
-                self._log(f"Unsubscribing from {uuid}...")
+                name = self._char_name(uuid)
+                self._log(f"{ts}  UNSUB   disabling notifications on {name}...")
                 if self._central._client:
                     await self._central._client.stop_notify(uuid)
                     self._central._notifications.pop(uuid.lower(), None)
                     self._central._notify_events.pop(uuid.lower(), None)
-                self._log(f"Unsubscribed from {uuid}")
-                return {"ok": True, "message": f"Unsubscribed from {uuid}"}
+                self._log(f"{ts}  UNSUB   {name} stopped ({self._notify_count} received)")
+                self._notify_count = 0
+                return {"ok": True, "message": f"Unsubscribed from {name}"}
 
             elif action == "write_cmd":
                 uuid = cmd.get("uuid", self._write_uuid)
                 value = cmd.get("value", "00")
-                self._log(f"Writing {value} to {uuid}...")
+                name = self._char_name(uuid)
+                self._log(f"{ts}  WRITE   {name} <- 0x{value} (reset counter)")
                 await self._central.write(uuid, value)
-                return {"ok": True, "message": f"Wrote {value}"}
+                return {"ok": True, "message": f"Wrote to {name}"}
 
             elif action == "read":
                 uuid = cmd.get("uuid", self._notify_uuid)
+                name = self._char_name(uuid)
                 val = await self._central.read(uuid)
-                self._log(f"Read from {uuid}: {val}")
-                return {"ok": True, "message": f"Value: {val}"}
+                decoded = self._decode_counter(val)
+                display = f"{decoded} (0x{val})" if decoded is not None else f"0x{val}"
+                self._log(f"{ts}  READ    {name} = {display}")
+                return {"ok": True, "message": f"{name}: {display}"}
 
             elif action == "run_tests":
                 return await self._run_test_suite()
@@ -266,50 +338,82 @@ class BleController:
                 return {"ok": False, "message": f"Unknown action: {action}"}
 
         except BleakCentralError as e:
-            self._log(f"ERROR: {e}")
+            self._log(f"{ts}  ERROR   {e}")
             self._status(f"Error: {e}")
             return {"ok": False, "message": str(e)}
         except Exception as e:
-            self._log(f"ERROR: {e}")
+            self._log(f"{ts}  ERROR   {e}")
             return {"ok": False, "message": str(e)}
 
     async def _run_test_suite(self) -> dict:
         """Run the standard BLE test sequence."""
-        self._log("=== Running BLE Test Suite ===")
+        ts = self._ts()
+        self._log(f"")
+        self._log(f"{'='*52}")
+        self._log(f"  BLE Integration Test Suite — {self._target_name}")
+        self._log(f"  nRF5340 DK  ←BLE→  Mac (bleak)")
+        self._log(f"{'='*52}")
 
         # Disconnect first if already connected (clean slate)
         if self._central.is_connected:
-            self._log("  (disconnecting existing session for clean test)")
+            self._log(f"{ts}  SETUP   teardown existing connection")
             await self._central.disconnect()
             import asyncio as _aio
             await _aio.sleep(1.0)
 
+        counter_name = self._char_name(self._notify_uuid)
+        control_name = self._char_name(self._write_uuid)
         steps = [
-            ("Scan", lambda: self._central.scan(self._target_name, timeout=15)),
-            ("Connect", lambda: self._central.connect()),
-            ("Subscribe", lambda: self._central.subscribe(self._notify_uuid)),
-            ("Wait for notifications", lambda: self._central.assert_notify(self._notify_uuid, count=3, timeout=15)),
-            ("Read", lambda: self._central.read(self._notify_uuid)),
-            ("Write reset", lambda: self._central.write(self._write_uuid, "00")),
-            ("Wait after reset", lambda: self._central.assert_notify(self._notify_uuid, count=2, timeout=10)),
-            ("Disconnect", lambda: self._central.disconnect()),
+            ("BLE scan", f"find '{self._target_name}' in advertisements",
+             lambda: self._central.scan(self._target_name, timeout=15)),
+            ("Connect", "establish GATT connection",
+             lambda: self._central.connect()),
+            ("Subscribe", f"enable {counter_name} notifications",
+             lambda: self._central.subscribe(self._notify_uuid)),
+            ("Rx notifications", f"receive 3 {counter_name} values",
+             lambda: self._central.assert_notify(self._notify_uuid, count=3, timeout=15)),
+            ("GATT read", f"read {counter_name} characteristic",
+             lambda: self._central.read(self._notify_uuid)),
+            ("GATT write", f"write 0x00 to {control_name} (reset)",
+             lambda: self._central.write(self._write_uuid, "00")),
+            ("Rx after reset", f"verify {counter_name} resumes",
+             lambda: self._central.assert_notify(self._notify_uuid, count=2, timeout=10)),
+            ("Disconnect", "clean BLE disconnect",
+             lambda: self._central.disconnect()),
         ]
 
         passed = 0
         failed = 0
-        for name, coro_fn in steps:
-            self._log(f"  [{passed + failed + 1}/{len(steps)}] {name}...")
+        t0 = time.time()
+        for name, desc, coro_fn in steps:
+            step_num = passed + failed + 1
+            self._log(f"")
+            self._log(f"  [{step_num}/{len(steps)}] {name} — {desc}")
+            step_t0 = time.time()
             try:
                 result = await coro_fn()
-                self._log(f"  PASS: {name}" + (f" → {result}" if result else ""))
+                elapsed_ms = (time.time() - step_t0) * 1000
+                result_str = ""
+                if isinstance(result, str) and len(result) <= 40:
+                    decoded = self._decode_counter(result)
+                    result_str = f" = {decoded}" if decoded is not None else f" = {result}"
+                elif isinstance(result, list):
+                    vals = [self._decode_counter(v) for v in result[:3]]
+                    result_str = f" values: {vals}"
+                self._log(f"  PASS  {name}{result_str}  ({elapsed_ms:.0f} ms)")
                 passed += 1
             except Exception as e:
-                self._log(f"  FAIL: {name} — {e}")
+                elapsed_ms = (time.time() - step_t0) * 1000
+                self._log(f"  FAIL  {name} — {e}  ({elapsed_ms:.0f} ms)")
                 failed += 1
-                break  # Stop on first failure
+                break
 
-        summary = f"=== Results: {passed} passed, {failed} failed ==="
-        self._log(summary)
+        total_ms = (time.time() - t0) * 1000
+        self._log(f"")
+        self._log(f"{'─'*52}")
+        summary = f"{passed}/{passed + failed} passed" if failed == 0 else f"{passed}/{passed + failed} passed, {failed} FAILED"
+        self._log(f"  {summary}  ({total_ms:.0f} ms total)")
+        self._log(f"{'─'*52}")
         self._status(summary)
         return {"ok": failed == 0, "message": summary}
 

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BLE Test Lab — Live Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 14px; font-weight: 600; color: #e94560; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  #ws-status { font-size: 11px; padding: 2px 8px; border-radius: 3px; }
+  .ws-connected { background: #1b4332; color: #95d5b2; }
+  .ws-disconnected { background: #5c1a1a; color: #f4a0a0; }
+  #ble-status {
+    font-size: 11px; padding: 2px 8px; border-radius: 3px;
+    background: #2a2a4a; color: #888;
+  }
+  .ble-connected { background: #1b4332 !important; color: #95d5b2 !important; }
+  .ble-scanning { background: #3a3a1a !important; color: #f4d08f !important; }
+  .ble-error { background: #5c1a1a !important; color: #f4a0a0 !important; }
+
+  /* Controls bar */
+  #controls {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 16px; background: #16213e;
+    border-bottom: 1px solid #0f3460; flex-shrink: 0;
+  }
+  #controls button {
+    font-size: 11px; padding: 4px 12px;
+    border: 1px solid #0f3460; border-radius: 3px;
+    background: #1a1a2e; color: #e0e0e0;
+    cursor: pointer; transition: all 0.15s;
+  }
+  #controls button:hover { background: #2a2a4a; border-color: #00d2ff; }
+  #controls button:active { background: #0f3460; }
+  #controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #controls button.primary { border-color: #00d2ff; color: #00d2ff; }
+  #controls button.danger { border-color: #e94560; color: #e94560; }
+  #controls button.success { border-color: #53d769; color: #53d769; }
+  .controls-sep { width: 1px; height: 20px; background: #0f3460; }
+  #cmd-result { font-size: 11px; color: #888; margin-left: 8px; }
+
+  /* Banner */
+  #banner {
+    display: none; padding: 6px 16px; font-size: 12px;
+    border-bottom: 1px solid; flex-shrink: 0;
+  }
+  #banner.info  { background: #1b3a4b; color: #7ec8e3; border-color: #2a5a6b; }
+  #banner.error { background: #4a1a1a; color: #f4a0a0; border-color: #6a2a2a; }
+  #banner.warn  { background: #4a3a1a; color: #f4d08f; border-color: #6a5a2a; }
+
+  /* Split log panes */
+  #log-area {
+    display: flex; flex: 1; min-height: 0;
+    border-bottom: 1px solid #0f3460;
+  }
+  .log-pane {
+    flex: 1; display: flex; flex-direction: column;
+    min-width: 0;
+  }
+  .log-pane:first-child { border-right: 1px solid #0f3460; }
+  .log-header {
+    padding: 4px 12px; font-size: 11px; font-weight: 600;
+    background: #16213e; border-bottom: 1px solid #0f3460;
+    color: #888; text-transform: uppercase; letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+  .log-header .count { color: #555; font-weight: 400; }
+  .log-body {
+    flex: 1; overflow-y: auto; padding: 4px 8px;
+    font-size: 11px; line-height: 1.6;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  }
+  .log-line { white-space: pre-wrap; word-break: break-all; }
+
+  /* RTT color coding */
+  .rtt-ble { color: #00d2ff; }
+  .rtt-connected { color: #53d769; font-weight: 600; }
+  .rtt-disconnected { color: #e94560; font-weight: 600; }
+  .rtt-notify { color: #ff9f43; }
+  .rtt-error { color: #e94560; }
+  .rtt-default { color: #ccc; }
+
+  /* BLE log colors */
+  .ble-scan { color: #a29bfe; }
+  .ble-conn { color: #53d769; }
+  .ble-disc { color: #e94560; }
+  .ble-write { color: #ff9f43; }
+  .ble-read { color: #74b9ff; }
+  .ble-notify { color: #ffeaa7; }
+  .ble-sub { color: #fd79a8; }
+  .ble-error { color: #e94560; font-weight: 600; }
+  .ble-test { color: #00d2ff; font-weight: 600; }
+  .ble-pass { color: #53d769; }
+  .ble-fail { color: #e94560; font-weight: 600; }
+  .ble-default { color: #ccc; }
+
+  /* Chart area */
+  #chart-area {
+    height: 220px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 4px;
+  }
+  .u-wrap { background: #1a1a2e !important; }
+
+  /* Stats bar */
+  #stats {
+    display: flex; align-items: center; gap: 16px;
+    padding: 4px 16px; background: #16213e;
+    border-top: 1px solid #0f3460; font-size: 11px;
+    flex-shrink: 0;
+  }
+  .stat { color: #666; }
+  .stat b { color: #aaa; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BLE Test Lab</h1>
+  <div class="header-right">
+    <span id="ble-status">idle</span>
+    <span id="ws-status" class="ws-disconnected">ws: disconnected</span>
+  </div>
+</header>
+
+<div id="controls">
+  <button id="btn-scan" class="primary" onclick="sendCmd('scan')">Scan</button>
+  <button id="btn-connect" onclick="sendCmd('connect')">Connect</button>
+  <button id="btn-disconnect" class="danger" onclick="sendCmd('disconnect')">Disconnect</button>
+  <div class="controls-sep"></div>
+  <button id="btn-subscribe" onclick="sendCmd('subscribe')">Subscribe</button>
+  <button id="btn-read" onclick="sendCmd('read')">Read</button>
+  <button id="btn-reset-ctr" onclick="sendCmd('write_cmd', {value:'00'})">Reset Counter</button>
+  <div class="controls-sep"></div>
+  <button id="btn-run-tests" class="success" onclick="sendCmd('run_tests')">Run All Tests</button>
+  <span id="cmd-result"></span>
+</div>
+
+<div id="banner"></div>
+
+<div id="log-area">
+  <div class="log-pane">
+    <div class="log-header">RTT (Firmware) <span class="count" id="rtt-count">0</span></div>
+    <div class="log-body" id="rtt-log"></div>
+  </div>
+  <div class="log-pane">
+    <div class="log-header">BLE (Python) <span class="count" id="ble-count">0</span></div>
+    <div class="log-body" id="ble-log"></div>
+  </div>
+</div>
+
+<div id="chart-area"></div>
+
+<div id="stats">
+  <span class="stat">RTT lines: <b id="rtt-total">0</b></span>
+  <span class="stat">BLE events: <b id="ble-total">0</b></span>
+  <span class="stat">Chart pts: <b id="chart-pts">0</b></span>
+</div>
+
+<script>
+// --- Config ---
+const MAX_LOG_LINES = 500;
+const MAX_CHART_PTS = 500;
+const WS_URL = `ws://${location.host}`;
+const COLORS = {counter:'#ff9f43', rssi:'#00d2ff', conn_event:'#53d769'};
+
+// --- State ---
+let ws = null;
+let rttCount = 0;
+let bleCount = 0;
+let chartPts = 0;
+let lastHb = 0;
+let bannerTm = null;
+let busy = false;
+
+// Chart data: [timestamps, counter, rssi, conn_event]
+let seriesNames = ['counter', 'rssi', 'conn_event'];
+let chartData = [[], [], [], []];
+let plot = null;
+
+// --- Banner ---
+function showBanner(msg, sev) {
+  const el = document.getElementById('banner');
+  el.textContent = msg;
+  el.className = sev || 'info';
+  el.style.display = 'block';
+  if (bannerTm) clearTimeout(bannerTm);
+  if (sev !== 'error') bannerTm = setTimeout(() => el.style.display = 'none', 8000);
+}
+
+// --- RTT log line classification ---
+function classifyRtt(line) {
+  const ll = line.toLowerCase();
+  if (ll.includes('[ble]') && ll.includes('connected') && !ll.includes('disconnect')) return 'rtt-connected';
+  if (ll.includes('disconnect')) return 'rtt-disconnected';
+  if (ll.includes('notify') || ll.includes('counter')) return 'rtt-notify';
+  if (ll.includes('error') || ll.includes('fault')) return 'rtt-error';
+  if (ll.includes('[ble]')) return 'rtt-ble';
+  return 'rtt-default';
+}
+
+// --- BLE log line classification ---
+function classifyBle(line) {
+  const ll = line.toLowerCase();
+  if (ll.includes('error')) return 'ble-error';
+  if (ll.includes('pass')) return 'ble-pass';
+  if (ll.includes('fail')) return 'ble-fail';
+  if (ll.startsWith('===')) return 'ble-test';
+  if (ll.includes('scan')) return 'ble-scan';
+  if (ll.includes('connect') && !ll.includes('disconnect')) return 'ble-conn';
+  if (ll.includes('disconnect')) return 'ble-disc';
+  if (ll.includes('write')) return 'ble-write';
+  if (ll.includes('read')) return 'ble-read';
+  if (ll.includes('notif')) return 'ble-notify';
+  if (ll.includes('subscri')) return 'ble-sub';
+  return 'ble-default';
+}
+
+// --- Append log line ---
+function appendLog(paneId, line, classifier) {
+  const pane = document.getElementById(paneId);
+  const div = document.createElement('div');
+  div.className = 'log-line ' + classifier(line);
+  div.textContent = line;
+  pane.appendChild(div);
+
+  // Trim old lines
+  while (pane.children.length > MAX_LOG_LINES) {
+    pane.removeChild(pane.firstChild);
+  }
+
+  // Auto-scroll if near bottom
+  const atBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 60;
+  if (atBottom) pane.scrollTop = pane.scrollHeight;
+}
+
+// --- uPlot setup ---
+function makeChartOpts(w, h) {
+  return {
+    width: w,
+    height: h,
+    cursor: { show: true },
+    scales: {
+      x: { time: false },
+      y: { auto: true },
+      rssi: { auto: true, range: [-100, 0] },
+    },
+    axes: [
+      { stroke: '#666', grid: { stroke: '#2a2a4a', width: 1 } },
+      { stroke: '#666', grid: { stroke: '#2a2a4a', width: 1 }, scale: 'y', label: 'Counter / Conn' },
+      { stroke: '#666', grid: { show: false }, side: 1, scale: 'rssi', label: 'RSSI (dBm)' },
+    ],
+    series: [
+      {},
+      { label: 'Counter', stroke: COLORS.counter, width: 2, scale: 'y' },
+      { label: 'RSSI', stroke: COLORS.rssi, width: 1.5, scale: 'rssi' },
+      { label: 'Connected', stroke: COLORS.conn_event, width: 2, scale: 'y',
+        paths: uPlot.paths.stepped({align: 1}) },
+    ],
+    legend: { show: true },
+  };
+}
+
+function rebuildChart() {
+  const el = document.getElementById('chart-area');
+  if (plot) { plot.destroy(); plot = null; }
+  const w = el.clientWidth - 8;
+  const h = el.clientHeight - 8;
+  if (w < 10 || h < 10) return;
+  plot = new uPlot(makeChartOpts(w, h), chartData, el);
+}
+
+function pushChartData(series, value) {
+  const idx = seriesNames.indexOf(series);
+  if (idx < 0) return;
+
+  chartPts++;
+  chartData[0].push(chartPts);
+  for (let i = 0; i < seriesNames.length; i++) {
+    if (i === idx) {
+      chartData[i + 1].push(value);
+    } else {
+      // Carry forward last value for other series
+      const arr = chartData[i + 1];
+      chartData[i + 1].push(arr.length > 0 ? arr[arr.length - 1] : null);
+    }
+  }
+
+  // Trim
+  if (chartData[0].length > MAX_CHART_PTS) {
+    for (let i = 0; i < chartData.length; i++) {
+      chartData[i] = chartData[i].slice(-MAX_CHART_PTS);
+    }
+  }
+}
+
+// Throttled chart update
+let chartDirty = false;
+let lastChartRender = 0;
+function chartRenderLoop(ts) {
+  if (chartDirty && ts - lastChartRender > 150) {
+    if (plot) plot.setData(chartData);
+    document.getElementById('chart-pts').textContent = chartPts;
+    chartDirty = false;
+    lastChartRender = ts;
+  }
+  requestAnimationFrame(chartRenderLoop);
+}
+requestAnimationFrame(chartRenderLoop);
+
+// --- BLE status update ---
+function updateBleStatus(msg) {
+  const el = document.getElementById('ble-status');
+  const ml = msg.toLowerCase();
+  el.textContent = msg;
+  el.className = '';
+  if (ml.includes('connected') && !ml.includes('dis')) el.className = 'ble-connected';
+  else if (ml.includes('scan')) el.className = 'ble-scanning';
+  else if (ml.includes('error') || ml.includes('fail')) el.className = 'ble-error';
+}
+
+// --- Send command to server ---
+function sendCmd(action, extra) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (busy) return;
+
+  const cmd = {action, ...extra};
+  ws.send(JSON.stringify(cmd));
+
+  // Disable buttons while running
+  busy = true;
+  document.querySelectorAll('#controls button').forEach(b => b.disabled = true);
+  document.getElementById('cmd-result').textContent = `${action}...`;
+}
+
+// --- WebSocket ---
+function connect() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    document.getElementById('ws-status').textContent = 'ws: connected';
+    document.getElementById('ws-status').className = 'ws-connected';
+    lastHb = Date.now();
+  };
+
+  ws.onclose = () => {
+    document.getElementById('ws-status').textContent = 'ws: disconnected';
+    document.getElementById('ws-status').className = 'ws-disconnected';
+    setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    switch (msg.type) {
+      case 'rtt_log':
+        rttCount++;
+        document.getElementById('rtt-count').textContent = rttCount;
+        document.getElementById('rtt-total').textContent = rttCount;
+        appendLog('rtt-log', msg.line, classifyRtt);
+        break;
+
+      case 'ble_log':
+        bleCount++;
+        document.getElementById('ble-count').textContent = bleCount;
+        document.getElementById('ble-total').textContent = bleCount;
+        appendLog('ble-log', msg.line, classifyBle);
+        break;
+
+      case 'data':
+        pushChartData(msg.series, msg.value);
+        chartDirty = true;
+        break;
+
+      case 'status':
+        updateBleStatus(msg.message);
+        const m = msg.message.toLowerCase();
+        const sev = m.includes('error') || m.includes('fail') ? 'error'
+                  : m.includes('disconnect') ? 'warn' : 'info';
+        showBanner(msg.message, sev);
+        break;
+
+      case 'cmd_result':
+        busy = false;
+        document.querySelectorAll('#controls button').forEach(b => b.disabled = false);
+        document.getElementById('cmd-result').textContent = msg.message;
+        setTimeout(() => {
+          document.getElementById('cmd-result').textContent = '';
+        }, 5000);
+        break;
+
+      case 'heartbeat':
+        lastHb = Date.now();
+        break;
+    }
+  };
+}
+connect();
+
+// --- Heartbeat check ---
+setInterval(() => {
+  if (lastHb > 0 && Date.now() - lastHb > 6000) {
+    showBanner('No heartbeat from server', 'warn');
+  }
+}, 2000);
+
+// --- Resize ---
+const ro = new ResizeObserver(() => {
+  if (plot) {
+    const el = document.getElementById('chart-area');
+    plot.setSize({ width: el.clientWidth - 8, height: el.clientHeight - 8 });
+  }
+});
+
+// Init chart on load
+window.addEventListener('load', () => {
+  rebuildChart();
+  ro.observe(document.getElementById('chart-area'));
+});
+</script>
+</body>
+</html>

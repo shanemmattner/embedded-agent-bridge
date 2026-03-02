@@ -236,6 +236,16 @@ class BleController:
                 await self._central.subscribe(uuid)
                 return {"ok": True, "message": f"Subscribed to {uuid}"}
 
+            elif action == "unsubscribe":
+                uuid = cmd.get("uuid", self._notify_uuid)
+                self._log(f"Unsubscribing from {uuid}...")
+                if self._central._client:
+                    await self._central._client.stop_notify(uuid)
+                    self._central._notifications.pop(uuid.lower(), None)
+                    self._central._notify_events.pop(uuid.lower(), None)
+                self._log(f"Unsubscribed from {uuid}")
+                return {"ok": True, "message": f"Unsubscribed from {uuid}"}
+
             elif action == "write_cmd":
                 uuid = cmd.get("uuid", self._write_uuid)
                 value = cmd.get("value", "00")
@@ -266,6 +276,14 @@ class BleController:
     async def _run_test_suite(self) -> dict:
         """Run the standard BLE test sequence."""
         self._log("=== Running BLE Test Suite ===")
+
+        # Disconnect first if already connected (clean slate)
+        if self._central.is_connected:
+            self._log("  (disconnecting existing session for clean test)")
+            await self._central.disconnect()
+            import asyncio as _aio
+            await _aio.sleep(1.0)
+
         steps = [
             ("Scan", lambda: self._central.scan(self._target_name, timeout=15)),
             ("Connect", lambda: self._central.connect()),

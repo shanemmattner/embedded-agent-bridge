@@ -141,6 +141,15 @@ class BleakCentral:
         if self._client is None:
             return
         try:
+            # Stop all active notifications before disconnecting
+            for uuid_key in list(self._notifications.keys()):
+                try:
+                    await self._client.stop_notify(uuid_key)
+                except Exception:
+                    pass
+            self._notifications.clear()
+            self._notify_events.clear()
+
             logger.info("Disconnecting...")
             await self._client.disconnect()
             logger.info("Disconnected")

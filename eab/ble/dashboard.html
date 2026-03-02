@@ -18,7 +18,7 @@
     overflow: hidden;
   }
 
-  /* Header */
+  /* ── Header ─────────────────────────────────────── */
   header {
     display: flex;
     align-items: center;
@@ -41,14 +41,28 @@
   .ble-scanning { background: #3a3a1a !important; color: #f4d08f !important; }
   .ble-error { background: #5c1a1a !important; color: #f4a0a0 !important; }
 
-  /* Controls bar */
+  /* ── Device Status Indicators (Feature 4) ───────── */
+  .status-indicators {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .status-flag {
+    font-size: 10px; padding: 1px 6px; border-radius: 2px;
+    background: #2a2a4a; color: #555;
+    text-transform: uppercase; letter-spacing: 0.3px;
+    transition: all 0.3s;
+  }
+  .status-flag.active { background: #1b4332; color: #95d5b2; }
+  .status-flag.active.warn { background: #3a3a1a; color: #f4d08f; }
+
+  /* ── Controls bar ───────────────────────────────── */
   #controls {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 6px;
     padding: 6px 16px; background: #16213e;
     border-bottom: 1px solid #0f3460; flex-shrink: 0;
+    flex-wrap: wrap;
   }
   #controls button {
-    font-size: 11px; padding: 4px 12px;
+    font-size: 11px; padding: 4px 10px;
     border: 1px solid #0f3460; border-radius: 3px;
     background: #1a1a2e; color: #e0e0e0;
     cursor: pointer; transition: all 0.15s;
@@ -59,10 +73,22 @@
   #controls button.primary { border-color: #00d2ff; color: #00d2ff; }
   #controls button.danger { border-color: #e94560; color: #e94560; }
   #controls button.success { border-color: #53d769; color: #53d769; }
+  #controls button.warn { border-color: #ff9f43; color: #ff9f43; }
   .controls-sep { width: 1px; height: 20px; background: #0f3460; }
+  .controls-label {
+    font-size: 10px; color: #666;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  #controls select {
+    font-size: 11px; padding: 3px 8px;
+    border: 1px solid #0f3460; border-radius: 3px;
+    background: #1a1a2e; color: #e0e0e0;
+    cursor: pointer;
+  }
+  #controls select:hover { border-color: #00d2ff; }
   #cmd-result { font-size: 11px; color: #888; margin-left: 8px; }
 
-  /* Banner */
+  /* ── Banner ─────────────────────────────────────── */
   #banner {
     display: none; padding: 6px 16px; font-size: 12px;
     border-bottom: 1px solid; flex-shrink: 0;
@@ -71,7 +97,7 @@
   #banner.error { background: #4a1a1a; color: #f4a0a0; border-color: #6a2a2a; }
   #banner.warn  { background: #4a3a1a; color: #f4d08f; border-color: #6a5a2a; }
 
-  /* Split log panes */
+  /* ── Split log panes ────────────────────────────── */
   #log-area {
     display: flex; flex: 1; min-height: 0;
     border-bottom: 1px solid #0f3460;
@@ -100,6 +126,8 @@
   .rtt-connected { color: #53d769; font-weight: 600; }
   .rtt-disconnected { color: #e94560; font-weight: 600; }
   .rtt-notify { color: #ff9f43; }
+  .rtt-write { color: #74b9ff; }
+  .rtt-ccc { color: #fd79a8; }
   .rtt-error { color: #e94560; }
   .rtt-default { color: #ccc; }
 
@@ -111,13 +139,17 @@
   .ble-read { color: #74b9ff; }
   .ble-notify { color: #ffeaa7; }
   .ble-sub { color: #fd79a8; }
+  .ble-cmd { color: #00d2ff; }
+  .ble-config { color: #a29bfe; }
+  .ble-status { color: #81ecec; }
+  .ble-stats { color: #636e72; }
   .ble-error { color: #e94560; font-weight: 600; }
   .ble-test { color: #00d2ff; font-weight: 600; }
   .ble-pass { color: #53d769; }
   .ble-fail { color: #e94560; font-weight: 600; }
   .ble-default { color: #ccc; }
 
-  /* Chart area */
+  /* ── Chart area ─────────────────────────────────── */
   #chart-area {
     height: 220px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
@@ -125,7 +157,7 @@
   }
   .u-wrap { background: #1a1a2e !important; }
 
-  /* Stats bar */
+  /* ── Stats bar (Feature 6: Connection Stats) ────── */
   #stats {
     display: flex; align-items: center; gap: 16px;
     padding: 4px 16px; background: #16213e;
@@ -134,33 +166,69 @@
   }
   .stat { color: #666; }
   .stat b { color: #aaa; }
+  .stat b.highlight { color: #00d2ff; }
 </style>
 </head>
 <body>
 
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- Header — title, device status flags (Feature 4), WebSocket status     -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
 <header>
   <h1>BLE Test Lab</h1>
   <div class="header-right">
+    <!-- Feature 4: Device status indicators (decoded from EAB10004 bitfield) -->
+    <div class="status-indicators" id="device-flags">
+      <span class="status-flag" id="flag-adv" title="BIT(0): Firmware is advertising">ADV</span>
+      <span class="status-flag" id="flag-conn" title="BIT(1): BLE connection active">CONN</span>
+      <span class="status-flag" id="flag-notify" title="BIT(2): CCC notifications enabled">NTFY</span>
+    </div>
     <span id="ble-status">idle</span>
     <span id="ws-status" class="ws-disconnected">ws: disconnected</span>
   </div>
 </header>
 
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- Controls bar — connection, notifications, features 1-4 buttons        -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
 <div id="controls">
-  <button id="btn-scan" class="primary" onclick="sendCmd('scan')">Scan</button>
-  <button id="btn-connect" onclick="sendCmd('connect')">Connect</button>
-  <button id="btn-disconnect" class="danger" onclick="sendCmd('disconnect')">Disconnect</button>
+  <!-- Connection group -->
+  <span class="controls-label">Link</span>
+  <button data-action="scan" class="primary" onclick="sendCmd('scan')">Scan</button>
+  <button data-action="connect" onclick="sendCmd('connect')">Connect</button>
+  <button data-action="disconnect" class="danger" onclick="sendCmd('disconnect')">Disconnect</button>
   <div class="controls-sep"></div>
-  <button id="btn-subscribe" onclick="sendCmd('subscribe')">Subscribe</button>
-  <button id="btn-unsubscribe" onclick="sendCmd('unsubscribe')">Unsubscribe</button>
-  <button id="btn-read" onclick="sendCmd('read')">Read</button>
-  <button id="btn-reset-ctr" onclick="sendCmd('write_cmd', {value:'00'})">Reset Counter</button>
+
+  <span class="controls-label">Notify</span>
+  <button data-action="subscribe" onclick="sendCmd('subscribe')">Subscribe</button>
+  <button data-action="unsubscribe" onclick="sendCmd('unsubscribe')">Unsubscribe</button>
+  <button data-action="read" onclick="sendCmd('read')">Read</button>
   <div class="controls-sep"></div>
-  <button id="btn-run-tests" class="success" onclick="sendCmd('run_tests')">Run All Tests</button>
+
+  <span class="controls-label">Cmds</span>
+  <button data-action="burst" class="warn" onclick="sendCmd('burst')">Burst (10x)</button>
+  <button data-action="read_status" onclick="sendCmd('read_status')">Status</button>
+  <div class="controls-sep"></div>
+
+  <span class="controls-label">Rate</span>
+  <select id="rate-select" data-action="set_rate" onchange="sendCmd('set_rate', {rate: this.value})">
+    <option value="00" selected>100 ms</option>
+    <option value="01">500 ms</option>
+    <option value="02">1000 ms</option>
+  </select>
+  <div class="controls-sep"></div>
+
+  <button data-action="run_tests" class="success" onclick="sendCmd('run_tests')">Run All Tests</button>
   <span id="cmd-result"></span>
 </div>
 
 <div id="banner"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- Log panes — RTT (firmware, left) + BLE (Python, right)                -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 
 <div id="log-area">
   <div class="log-pane">
@@ -173,22 +241,39 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- Chart — uPlot: Counter, RSSI, Connection state                        -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
 <div id="chart-area"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- Stats bar (Feature 6: Connection Stats + counters)                    -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 
 <div id="stats">
   <span class="stat">RTT lines: <b id="rtt-total">0</b></span>
   <span class="stat">BLE events: <b id="ble-total">0</b></span>
   <span class="stat">Chart pts: <b id="chart-pts">0</b></span>
+  <span class="stat">MTU: <b id="stat-mtu" class="highlight">—</b></span>
+  <span class="stat">Services: <b id="stat-svcs">—</b></span>
+  <span class="stat">Chars: <b id="stat-chars">—</b></span>
 </div>
 
 <script>
-// --- Config ---
+// ═══════════════════════════════════════════════════════════════════════════
+// Configuration
+// ═══════════════════════════════════════════════════════════════════════════
+
 const MAX_LOG_LINES = 500;
 const MAX_CHART_PTS = 500;
 const WS_URL = `ws://${location.host}`;
-const COLORS = {counter:'#ff9f43', rssi:'#00d2ff', conn_event:'#53d769'};
+const COLORS = {sin:'#ff9f43', cos:'#00d2ff', conn_event:'#53d769'};
 
-// --- State ---
+// ═══════════════════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════════════════
+
 let ws = null;
 let rttCount = 0;
 let bleCount = 0;
@@ -197,12 +282,15 @@ let lastHb = 0;
 let bannerTm = null;
 let busy = false;
 
-// Chart data: [timestamps, counter, rssi, conn_event]
-let seriesNames = ['counter', 'rssi', 'conn_event'];
+// Chart data: [timestamps, sin, cos, conn_event]
+let seriesNames = ['sin', 'cos', 'conn_event'];
 let chartData = [[], [], [], []];
 let plot = null;
 
-// --- Banner ---
+// ═══════════════════════════════════════════════════════════════════════════
+// Banner — temporary notification bar below controls
+// ═══════════════════════════════════════════════════════════════════════════
+
 function showBanner(msg, sev) {
   const el = document.getElementById('banner');
   el.textContent = msg;
@@ -212,18 +300,26 @@ function showBanner(msg, sev) {
   if (sev !== 'error') bannerTm = setTimeout(() => el.style.display = 'none', 8000);
 }
 
-// --- RTT log line classification ---
+// ═══════════════════════════════════════════════════════════════════════════
+// RTT log line classification — color-codes firmware log output
+// ═══════════════════════════════════════════════════════════════════════════
+
 function classifyRtt(line) {
   const ll = line.toLowerCase();
   if (ll.includes('[ble]') && ll.includes('connected') && !ll.includes('disconnect')) return 'rtt-connected';
   if (ll.includes('disconnect')) return 'rtt-disconnected';
   if (ll.includes('notify') || ll.includes('counter')) return 'rtt-notify';
-  if (ll.includes('error') || ll.includes('fault')) return 'rtt-error';
+  if (ll.includes('write') || ll.includes('read')) return 'rtt-write';
+  if (ll.includes('ccc')) return 'rtt-ccc';
+  if (ll.includes('error') || ll.includes('fault') || ll.includes('crash')) return 'rtt-error';
   if (ll.includes('[ble]')) return 'rtt-ble';
   return 'rtt-default';
 }
 
-// --- BLE log line classification ---
+// ═══════════════════════════════════════════════════════════════════════════
+// BLE log line classification — color-codes Python-side log output
+// ═══════════════════════════════════════════════════════════════════════════
+
 function classifyBle(line) {
   const ll = line.toLowerCase();
   if (ll.includes('error')) return 'ble-error';
@@ -232,6 +328,10 @@ function classifyBle(line) {
   if (ll.startsWith('===') || ll.startsWith('─')) return 'ble-test';
   if (ll.includes('test suite') || ll.includes('nrf5340')) return 'ble-test';
   if (/\d+\/\d+ passed/.test(ll)) return ll.includes('fail') ? 'ble-fail' : 'ble-pass';
+  if (ll.includes('  cmd') || ll.includes('reset counter') || ll.includes('burst')) return 'ble-cmd';
+  if (ll.includes('  config') || ll.includes('set notification rate')) return 'ble-config';
+  if (ll.includes('  status') || ll.includes('status flags')) return 'ble-status';
+  if (ll.includes('  stats') || ll.includes('mtu=')) return 'ble-stats';
   if (ll.includes('  scan') || ll.includes('  found')) return 'ble-scan';
   if (ll.includes('  conn') && !ll.includes('discon')) return 'ble-conn';
   if (ll.includes('  discon')) return 'ble-disc';
@@ -243,7 +343,10 @@ function classifyBle(line) {
   return 'ble-default';
 }
 
-// --- Append log line ---
+// ═══════════════════════════════════════════════════════════════════════════
+// Log pane — append lines with auto-scroll and overflow trimming
+// ═══════════════════════════════════════════════════════════════════════════
+
 function appendLog(paneId, line, classifier) {
   const pane = document.getElementById(paneId);
   const div = document.createElement('div');
@@ -251,17 +354,20 @@ function appendLog(paneId, line, classifier) {
   div.textContent = line;
   pane.appendChild(div);
 
-  // Trim old lines
+  // Trim old lines to prevent memory bloat
   while (pane.children.length > MAX_LOG_LINES) {
     pane.removeChild(pane.firstChild);
   }
 
-  // Auto-scroll if near bottom
+  // Auto-scroll if user is near the bottom (within 60px)
   const atBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 60;
   if (atBottom) pane.scrollTop = pane.scrollHeight;
 }
 
-// --- uPlot setup ---
+// ═══════════════════════════════════════════════════════════════════════════
+// uPlot chart — Sine/Cosine waveforms and connection state
+// ═══════════════════════════════════════════════════════════════════════════
+
 function makeChartOpts(w, h) {
   return {
     width: w,
@@ -269,18 +375,16 @@ function makeChartOpts(w, h) {
     cursor: { show: true },
     scales: {
       x: { time: false },
-      y: { auto: true },
-      rssi: { auto: true, range: [-100, 0] },
+      y: { auto: true, range: [-120, 120] },
     },
     axes: [
       { stroke: '#666', grid: { stroke: '#2a2a4a', width: 1 } },
-      { stroke: '#666', grid: { stroke: '#2a2a4a', width: 1 }, scale: 'y', label: 'Counter / Conn' },
-      { stroke: '#666', grid: { show: false }, side: 1, scale: 'rssi', label: 'RSSI (dBm)' },
+      { stroke: '#666', grid: { stroke: '#2a2a4a', width: 1 }, scale: 'y', label: 'Sensor Value' },
     ],
     series: [
       {},
-      { label: 'Counter', stroke: COLORS.counter, width: 2, scale: 'y' },
-      { label: 'RSSI', stroke: COLORS.rssi, width: 1.5, scale: 'rssi' },
+      { label: 'Sensor A (sin)', stroke: COLORS.sin, width: 2, scale: 'y' },
+      { label: 'Sensor B (cos)', stroke: COLORS.cos, width: 2, scale: 'y' },
       { label: 'Connected', stroke: COLORS.conn_event, width: 2, scale: 'y',
         paths: uPlot.paths.stepped({align: 1}) },
     ],
@@ -307,13 +411,13 @@ function pushChartData(series, value) {
     if (i === idx) {
       chartData[i + 1].push(value);
     } else {
-      // Carry forward last value for other series
+      // Carry forward last value for other series (smooth lines)
       const arr = chartData[i + 1];
       chartData[i + 1].push(arr.length > 0 ? arr[arr.length - 1] : null);
     }
   }
 
-  // Trim
+  // Trim oldest points to prevent memory bloat
   if (chartData[0].length > MAX_CHART_PTS) {
     for (let i = 0; i < chartData.length; i++) {
       chartData[i] = chartData[i].slice(-MAX_CHART_PTS);
@@ -321,7 +425,7 @@ function pushChartData(series, value) {
   }
 }
 
-// Throttled chart update
+// Throttled chart rendering (max ~7 fps to avoid GPU thrashing)
 let chartDirty = false;
 let lastChartRender = 0;
 function chartRenderLoop(ts) {
@@ -335,18 +439,84 @@ function chartRenderLoop(ts) {
 }
 requestAnimationFrame(chartRenderLoop);
 
-// --- BLE status update ---
-function updateBleStatus(msg) {
-  const el = document.getElementById('ble-status');
-  const ml = msg.toLowerCase();
-  el.textContent = msg;
-  el.className = '';
-  if (ml.includes('connected') && !ml.includes('dis')) el.className = 'ble-connected';
-  else if (ml.includes('scan')) el.className = 'ble-scanning';
-  else if (ml.includes('error') || ml.includes('fail')) el.className = 'ble-error';
+// ═══════════════════════════════════════════════════════════════════════════
+// Feature 4: Device status indicator update
+// ═══════════════════════════════════════════════════════════════════════════
+
+function updateDeviceFlags(flags) {
+  // flags is an array like ["advertising", "connected", "notifying"]
+  const flagMap = {
+    'advertising': 'flag-adv',
+    'connected':   'flag-conn',
+    'notifying':   'flag-notify',
+  };
+  // Reset all flags to inactive
+  Object.values(flagMap).forEach(id => {
+    document.getElementById(id).classList.remove('active', 'warn');
+  });
+  // Activate present flags
+  flags.forEach(f => {
+    const id = flagMap[f];
+    if (id) document.getElementById(id).classList.add('active');
+  });
 }
 
-// --- Send command to server ---
+// ═══════════════════════════════════════════════════════════════════════════
+// Feature 6: Connection stats update in footer bar
+// ═══════════════════════════════════════════════════════════════════════════
+
+function updateConnStats(stats) {
+  if (!stats) return;
+  document.getElementById('stat-mtu').textContent = stats.mtu || '—';
+  document.getElementById('stat-svcs').textContent = stats.services || '—';
+  document.getElementById('stat-chars').textContent = stats.characteristics || '—';
+  if (stats.mtu) {
+    document.getElementById('stat-mtu').classList.add('highlight');
+  }
+}
+
+function clearConnStats() {
+  document.getElementById('stat-mtu').textContent = '—';
+  document.getElementById('stat-svcs').textContent = '—';
+  document.getElementById('stat-chars').textContent = '—';
+  document.getElementById('stat-mtu').classList.remove('highlight');
+}
+
+// updateBleStatus removed — applyState handles header status badge
+
+// ═══════════════════════════════════════════════════════════════════════════
+// State machine — enables/disables buttons based on server state
+// ═══════════════════════════════════════════════════════════════════════════
+
+let currentState = 'idle';
+
+// Mirror of server-side STATES — which actions each state allows
+const STATE_ACTIONS = {
+  idle:       new Set(['scan', 'run_tests']),
+  scanned:    new Set(['scan', 'connect', 'run_tests']),
+  connected:  new Set(['disconnect', 'subscribe', 'read', 'read_status',
+                       'set_rate', 'burst', 'get_conn_stats', 'run_tests']),
+  subscribed: new Set(['disconnect', 'unsubscribe', 'read', 'read_status',
+                       'set_rate', 'burst', 'get_conn_stats', 'run_tests']),
+};
+
+function applyState(state) {
+  currentState = state;
+  const allowed = STATE_ACTIONS[state] || new Set();
+  document.querySelectorAll('#controls [data-action]').forEach(el => {
+    el.disabled = !allowed.has(el.dataset.action);
+  });
+  const el = document.getElementById('ble-status');
+  el.textContent = state;
+  el.className = '';
+  if (state === 'connected' || state === 'subscribed') el.className = 'ble-connected';
+  else if (state === 'scanned') el.className = 'ble-scanning';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Send command to server via WebSocket
+// ═══════════════════════════════════════════════════════════════════════════
+
 function sendCmd(action, extra) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   if (busy) return;
@@ -354,14 +524,17 @@ function sendCmd(action, extra) {
   const cmd = {action, ...extra};
   ws.send(JSON.stringify(cmd));
 
-  // Disable buttons while running
+  // Disable all while command is in flight (prevents double-sends)
   busy = true;
-  document.querySelectorAll('#controls button').forEach(b => b.disabled = true);
+  document.querySelectorAll('#controls [data-action]').forEach(el => el.disabled = true);
   document.getElementById('cmd-result').textContent = `${action}...`;
 }
 
-// --- WebSocket ---
-function connect() {
+// ═══════════════════════════════════════════════════════════════════════════
+// WebSocket — connect, receive messages, auto-reconnect
+// ═══════════════════════════════════════════════════════════════════════════
+
+function wsConnect() {
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
@@ -373,7 +546,7 @@ function connect() {
   ws.onclose = () => {
     document.getElementById('ws-status').textContent = 'ws: disconnected';
     document.getElementById('ws-status').className = 'ws-disconnected';
-    setTimeout(connect, 2000);
+    setTimeout(wsConnect, 2000);  // Auto-reconnect after 2s
   };
 
   ws.onerror = () => ws.close();
@@ -381,6 +554,8 @@ function connect() {
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     switch (msg.type) {
+
+      // ── RTT log line from firmware (real or simulated) ──
       case 'rtt_log':
         rttCount++;
         document.getElementById('rtt-count').textContent = rttCount;
@@ -388,6 +563,7 @@ function connect() {
         appendLog('rtt-log', msg.line, classifyRtt);
         break;
 
+      // ── BLE log line from Python central ──
       case 'ble_log':
         bleCount++;
         document.getElementById('ble-count').textContent = bleCount;
@@ -395,44 +571,67 @@ function connect() {
         appendLog('ble-log', msg.line, classifyBle);
         break;
 
+      // ── Chart data point ──
       case 'data':
         pushChartData(msg.series, msg.value);
         chartDirty = true;
         break;
 
+      // ── BLE status update (banner only — state machine handles buttons) ──
       case 'status':
-        updateBleStatus(msg.message);
         const m = msg.message.toLowerCase();
         const sev = m.includes('error') || m.includes('fail') ? 'error'
                   : m.includes('disconnect') ? 'warn' : 'info';
         showBanner(msg.message, sev);
         break;
 
+      // ── Feature 4: Device status flags from EAB10004 ──
+      case 'device_status':
+        updateDeviceFlags(msg.flags || []);
+        break;
+
+      // ── State change — enable/disable buttons ──
+      case 'state_change':
+        applyState(msg.state);
+        break;
+
+      // ── Command result (re-enable based on state) ──
       case 'cmd_result':
         busy = false;
-        document.querySelectorAll('#controls button').forEach(b => b.disabled = false);
+        applyState(msg.state || currentState);
         document.getElementById('cmd-result').textContent = msg.message;
         setTimeout(() => {
           document.getElementById('cmd-result').textContent = '';
         }, 5000);
+        if (msg.conn_stats) updateConnStats(msg.conn_stats);
+        if (msg.status_flags) updateDeviceFlags(msg.status_flags.flags || []);
+        // Clear stats on disconnect
+        if (msg.state === 'idle') { clearConnStats(); updateDeviceFlags([]); }
         break;
 
+      // ── Heartbeat (keep-alive check) ──
       case 'heartbeat':
         lastHb = Date.now();
         break;
     }
   };
 }
-connect();
+wsConnect();
 
-// --- Heartbeat check ---
+// ═══════════════════════════════════════════════════════════════════════════
+// Heartbeat watchdog — warn if no heartbeat for 6 seconds
+// ═══════════════════════════════════════════════════════════════════════════
+
 setInterval(() => {
   if (lastHb > 0 && Date.now() - lastHb > 6000) {
     showBanner('No heartbeat from server', 'warn');
   }
 }, 2000);
 
-// --- Resize ---
+// ═══════════════════════════════════════════════════════════════════════════
+// Responsive chart resize
+// ═══════════════════════════════════════════════════════════════════════════
+
 const ro = new ResizeObserver(() => {
   if (plot) {
     const el = document.getElementById('chart-area');
@@ -440,10 +639,11 @@ const ro = new ResizeObserver(() => {
   }
 });
 
-// Init chart on load
+// Init chart and state on page load
 window.addEventListener('load', () => {
   rebuildChart();
   ro.observe(document.getElementById('chart-area'));
+  applyState('idle');  // Start with only Scan + Run Tests enabled
 });
 </script>
 </body>

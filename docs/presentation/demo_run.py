@@ -16,12 +16,35 @@ Open dashboard separately:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Debug logger — writes to /tmp/demo_run_debug.log + stderr if DEBUG=1
+# ---------------------------------------------------------------------------
+
+_log = logging.getLogger("demo_run")
+_log.setLevel(logging.DEBUG)
+
+# Always write to /tmp/demo_run_debug.log (full debug)
+_fh = logging.FileHandler("/tmp/demo_run_debug.log", mode="w")
+_fh.setLevel(logging.DEBUG)
+_fh.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-7s  %(message)s",
+                                   datefmt="%H:%M:%S"))
+_log.addHandler(_fh)
+
+# Optionally also echo to stderr when DEBUG=1
+if os.environ.get("DEBUG"):
+    _sh = logging.StreamHandler(sys.stderr)
+    _sh.setLevel(logging.DEBUG)
+    _sh.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-7s  %(message)s",
+                                       datefmt="%H:%M:%S"))
+    _log.addHandler(_sh)
 
 # ---------------------------------------------------------------------------
 # Config
@@ -60,6 +83,9 @@ def banner(text: str):
     print(f"{BOLD}{CYAN}{'═' * width}{RESET}\n")
 
 def step(n: int, label: str):
+    _log.info("=" * 60)
+    _log.info("STEP %d: %s  (rtt_pos=%d  serial_pos=%d)", n, label, _rtt_pos, _serial_pos)
+    _log.info("=" * 60)
     STEP_FILE.write_text(json.dumps({"step": n, "label": label}))
     print(f"\n{BOLD}{BLUE}▶ STEP {n}: {label}{RESET}")
     print(f"{GRAY}{'─' * 60}{RESET}")
@@ -114,6 +140,46 @@ def reset_stream_cursors():
     serial  = Path(BASE_DIR) / "latest.log"
     _rtt_pos    = rtt_raw.stat().st_size if rtt_raw.exists() else 0
     _serial_pos = serial.stat().st_size  if serial.exists()  else 0
+    _log.info("reset_stream_cursors: rtt_pos=%d  serial_pos=%d", _rtt_pos, _serial_pos)
+
+
+def wait_for_rtt_truncate(timeout: float = 8.0):
+    """Wait for JLinkRTTLogger to truncate rtt-raw.log after a board reset.
+
+    After a board reset or fault, JLinkRTTLogger reconnects and truncates
+    rtt-raw.log to zero bytes. We wait for that truncation so the global
+    cursor can be reset to 0 — ensuring we only stream the fresh boot log.
+    """
+    global _rtt_pos
+    rtt_raw  = Path(BASE_DIR) / "rtt-raw.log"
+    deadline = time.time() + timeout
+    prev_size = rtt_raw.stat().st_size if rtt_raw.exists() else 0
+
+    _log.debug("wait_for_rtt_truncate: starting  prev_size=%d  timeout=%.1f", prev_size, timeout)
+
+    while time.time() < deadline:
+        cur_size = rtt_raw.stat().st_size if rtt_raw.exists() else 0
+        _log.debug("wait_for_rtt_truncate: poll  prev=%d  cur=%d", prev_size, cur_size)
+        # Truncation detected: file shrank to <200 bytes (JLinkRTTLogger header only)
+        if prev_size > 200 and cur_size < 200:
+            _rtt_pos = 0
+            elapsed = timeout - (deadline - time.time())
+            _log.info("wait_for_rtt_truncate: truncated  prev=%d  cur=%d  elapsed=%.2fs",
+                      prev_size, cur_size, elapsed)
+            info(f"RTT log truncated ({prev_size} → {cur_size} bytes) — cursor reset")
+            return True
+        if cur_size < 200 and prev_size < 200:
+            # Already small at start — reset immediately
+            _rtt_pos = 0
+            _log.info("wait_for_rtt_truncate: already small (%d bytes) — cursor reset", cur_size)
+            return True
+        prev_size = cur_size
+        time.sleep(0.1)
+
+    _log.warning("wait_for_rtt_truncate: timeout after %.1f s  final_size=%d", timeout, prev_size)
+    warn(f"RTT truncation not detected within {timeout:.0f}s — resetting cursor anyway")
+    _rtt_pos = 0
+    return False
 
 
 def stream_rtt(seconds: float = 4.0, label: str = "RTT stream", max_lines: int = 40,
@@ -128,18 +194,26 @@ def stream_rtt(seconds: float = 4.0, label: str = "RTT stream", max_lines: int =
 
     rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
     if from_start:
+        _log.info("stream_rtt: from_start=True, resetting cursor to 0")
         _rtt_pos = 0
     pos      = _rtt_pos
     deadline = time.time() + seconds
     shown    = 0
 
+    _log.info("stream_rtt: START  label=%r  seconds=%.1f  start_pos=%d  file_size=%d",
+              label, seconds, pos,
+              rtt_raw.stat().st_size if rtt_raw.exists() else -1)
+
     while time.time() < deadline:
         if rtt_raw.exists():
             cur_size = rtt_raw.stat().st_size
             if cur_size > pos:
+                new_bytes = cur_size - pos
+                _log.debug("stream_rtt: new data  pos=%d  cur_size=%d  new_bytes=%d",
+                           pos, cur_size, new_bytes)
                 with open(rtt_raw, errors="replace") as f:
                     f.seek(pos)
-                    chunk = f.read(cur_size - pos)
+                    chunk = f.read(new_bytes)
                 pos = cur_size
                 for raw in chunk.splitlines():
                     line = raw.strip()
@@ -147,11 +221,14 @@ def stream_rtt(seconds: float = 4.0, label: str = "RTT stream", max_lines: int =
                         continue
                     if shown >= max_lines:
                         break
+                    _log.debug("stream_rtt: line  %r", line[:100])
                     print(_colorize_rtt(line))
                     shown += 1
                     sys.stdout.flush()
         time.sleep(0.15)
 
+    _log.info("stream_rtt: END  shown=%d  final_pos=%d  global_was=%d",
+              shown, pos, _rtt_pos)
     _rtt_pos = pos  # advance global cursor
     if shown == 0:
         print(f"    {GRAY}(no new RTT data in {seconds:.0f}s){RESET}")
@@ -168,18 +245,26 @@ def stream_serial(seconds: float = 3.0, label: str = "Serial log"):
     deadline = time.time() + seconds
     shown    = 0
 
+    _log.info("stream_serial: START  label=%r  seconds=%.1f  start_pos=%d  file_size=%d",
+              label, seconds, pos,
+              log.stat().st_size if log.exists() else -1)
+
     while time.time() < deadline:
         if log.exists():
             cur_size = log.stat().st_size
             if cur_size > pos:
+                new_bytes = cur_size - pos
+                _log.debug("stream_serial: new data  pos=%d  cur_size=%d  new_bytes=%d",
+                           pos, cur_size, new_bytes)
                 with open(log, errors="replace") as f:
                     f.seek(pos)
-                    chunk = f.read(cur_size - pos)
+                    chunk = f.read(new_bytes)
                 pos = cur_size
                 for raw in chunk.splitlines():
                     line = raw.strip()
                     if not line:
                         continue
+                    _log.debug("stream_serial: line  %r", line[:100])
                     if ">>>" in line:
                         print(f"    {CYAN}{line}{RESET}")
                     elif "Booting" in line or "booting" in line:
@@ -192,6 +277,7 @@ def stream_serial(seconds: float = 3.0, label: str = "Serial log"):
                     sys.stdout.flush()
         time.sleep(0.15)
 
+    _log.info("stream_serial: END  shown=%d  final_pos=%d", shown, pos)
     _serial_pos = pos
     if shown == 0:
         print(f"    {GRAY}(no new serial data in {seconds:.0f}s){RESET}")
@@ -208,8 +294,16 @@ def eabctl(*args, check: bool = False) -> dict | str:
     no_json_cmds = {"start", "stop", "rtt"}
     if args and args[0] not in no_json_cmds:
         cmd.append("--json")
+    _log.info("eabctl: %s", " ".join(cmd))
+    t0 = time.time()
     result = subprocess.run(cmd, capture_output=True, text=True)
+    elapsed = time.time() - t0
     out = result.stdout.strip()
+    if result.returncode != 0:
+        _log.warning("eabctl: rc=%d  stderr=%r  (%.2fs)", result.returncode,
+                     result.stderr.strip()[:200], elapsed)
+    else:
+        _log.debug("eabctl: rc=0  out=%r  (%.2fs)", out[:200], elapsed)
     if out:
         try:
             return json.loads(out)
@@ -221,8 +315,13 @@ def eabctl(*args, check: bool = False) -> dict | str:
 def eabctl_raw(*args) -> str:
     """Run eabctl, return raw stdout."""
     cmd = ["eabctl", "--base-dir", BASE_DIR] + list(args)
+    _log.info("eabctl_raw: %s", " ".join(cmd))
+    t0 = time.time()
     result = subprocess.run(cmd, capture_output=True, text=True)
-    return result.stdout.strip()
+    elapsed = time.time() - t0
+    out = result.stdout.strip()
+    _log.debug("eabctl_raw: rc=%d  out=%r  (%.2fs)", result.returncode, out[:200], elapsed)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -288,9 +387,9 @@ def step2_rtt():
     except Exception:
         warn(f"RTT start output: {result[:120]}")
 
-    # rtt start truncates rtt-raw.log to zero — reset cursor so we stream from byte 0
-    global _rtt_pos
-    _rtt_pos = 0
+    # rtt start truncates rtt-raw.log to zero — wait for truncation then stream from 0
+    info("Waiting for RTT log to reset (JLinkRTTLogger truncates on connect)...")
+    wait_for_rtt_truncate(timeout=6.0)
 
     info("Streaming Zephyr boot messages...")
     stream_rtt(7.0, "RTT boot stream — live")
@@ -405,8 +504,9 @@ def step5_fault():
     eabctl("send", "fault null")
     info("Streaming RTT — watch for crash + reboot sequence...")
     # Board reboots → JLinkRTTLogger reconnects and truncates rtt-raw.log
-    global _rtt_pos
-    _rtt_pos = 0
+    # Wait for truncation so we only show the fresh boot, not stale history
+    info("Waiting for board reboot + RTT log truncation...")
+    wait_for_rtt_truncate(timeout=8.0)
 
     # Stream live — crash and reboot happen within ~2-4s
     stream_rtt(7.0, "RTT — crash + reboot sequence")
@@ -497,8 +597,9 @@ def step7_reset():
 
     info("Hardware reset via J-Link")
     result = eabctl("reset", "--chip", "nrf5340")
-    global _rtt_pos
-    _rtt_pos = 0   # reset truncates/restarts RTT — stream from byte 0
+    # Board reset causes JLinkRTTLogger to reconnect + truncate rtt-raw.log
+    info("Waiting for RTT log to reset after board reset...")
+    wait_for_rtt_truncate(timeout=8.0)
     if isinstance(result, dict):
         summary = {
             "method":      result.get("method", "hard"),
@@ -560,9 +661,11 @@ STEPS = [
 ]
 
 def run_all():
+    _log.info("demo_run.py started  log=/tmp/demo_run_debug.log")
     banner("Embedded Agent Bridge — Live Demo")
     print(f"  {GRAY}nRF5340 DK  •  Zephyr OS  •  BLE 5.4  •  Cortex-M33{RESET}")
-    print(f"  {GRAY}Dashboard:  http://0.0.0.0:8050{RESET}\n")
+    print(f"  {GRAY}Dashboard:  http://0.0.0.0:8050{RESET}")
+    print(f"  {GRAY}Debug log:  tail -f /tmp/demo_run_debug.log{RESET}\n")
 
     for fn in STEPS:
         fn()

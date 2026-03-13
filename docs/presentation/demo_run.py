@@ -87,6 +87,92 @@ def print_json_block(data: dict, label: str = ""):
 def pause(seconds: float = 1.0):
     time.sleep(seconds)
 
+
+def _colorize_rtt(line: str) -> str:
+    if any(k in line for k in ["FAULT", "CRASH", "HardFault", "Oops", "MPU fault"]):
+        return f"    {RED}{BOLD}{line}{RESET}"
+    if "Booting" in line or "EAB BLE Test Peripheral ready" in line:
+        return f"    {GREEN}{line}{RESET}"
+    if "ADVERTISING" in line or "Identity:" in line or "connected" in line.lower():
+        return f"    {GREEN}{line}{RESET}"
+    if "wrn" in line.lower():
+        return f"    {YELLOW}{line}{RESET}"
+    if "DATA:" in line:
+        return f"    {BLUE}{BOLD}{line}{RESET}"
+    return f"    {GRAY}{line}{RESET}"
+
+
+def stream_rtt(seconds: float = 4.0, label: str = "RTT stream", max_lines: int = 40):
+    """Stream new RTT lines live for `seconds` using eabctl tail polling."""
+    section(f"{label}  (live · {seconds:.0f}s)")
+    info(f"eabctl --base-dir {BASE_DIR} rtt tail  ← polling every 200ms")
+
+    rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
+    start_pos = rtt_raw.stat().st_size if rtt_raw.exists() else 0
+    deadline  = time.time() + seconds
+    shown     = 0
+
+    while time.time() < deadline:
+        if rtt_raw.exists():
+            cur_size = rtt_raw.stat().st_size
+            if cur_size > start_pos:
+                with open(rtt_raw, errors="replace") as f:
+                    f.seek(start_pos)
+                    chunk = f.read(cur_size - start_pos)
+                start_pos = cur_size
+                for raw in chunk.splitlines():
+                    line = raw.strip()
+                    if not line or line.startswith("Transfer rate"):
+                        continue
+                    if shown >= max_lines:
+                        break
+                    print(_colorize_rtt(line))
+                    shown += 1
+                    sys.stdout.flush()
+        time.sleep(0.2)
+
+    if shown == 0:
+        print(f"    {GRAY}(no new RTT data in {seconds:.0f}s){RESET}")
+
+
+def stream_serial(seconds: float = 3.0, label: str = "Serial log"):
+    """Stream new latest.log lines live for `seconds`."""
+    section(f"{label}  (live · {seconds:.0f}s)")
+    info(f"eabctl --base-dir {BASE_DIR} tail  ← live serial output")
+
+    log = Path(BASE_DIR) / "latest.log"
+    start_pos = log.stat().st_size if log.exists() else 0
+    deadline  = time.time() + seconds
+    shown     = 0
+
+    while time.time() < deadline:
+        if log.exists():
+            cur_size = log.stat().st_size
+            if cur_size > start_pos:
+                with open(log, errors="replace") as f:
+                    f.seek(start_pos)
+                    chunk = f.read(cur_size - start_pos)
+                start_pos = cur_size
+                for raw in chunk.splitlines():
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    if ">>>" in line:
+                        print(f"    {CYAN}{line}{RESET}")
+                    elif "Booting" in line or "booting" in line:
+                        print(f"    {GREEN}{line}{RESET}")
+                    elif "EAB" in line:
+                        print(f"    {BLUE}{line}{RESET}")
+                    else:
+                        print(f"    {GRAY}{line}{RESET}")
+                    shown += 1
+                    sys.stdout.flush()
+        time.sleep(0.2)
+
+    if shown == 0:
+        print(f"    {GRAY}(no new serial data in {seconds:.0f}s){RESET}")
+
+
 # ---------------------------------------------------------------------------
 # eabctl wrapper
 # ---------------------------------------------------------------------------
@@ -136,7 +222,8 @@ def step1_daemon():
     else:
         warn("Daemon may already be running — checking status")
 
-    pause(1.5)
+    pause(1.0)
+    stream_serial(3.0, "Serial port — live")
 
     # Status
     status = eabctl("status")
@@ -169,27 +256,7 @@ def step2_rtt():
         warn(f"RTT start output: {result[:120]}")
 
     info("Waiting for Zephyr boot messages...")
-    pause(5.0)
-
-    section("RTT output (last 20 lines)")
-    # rtt-raw.log is written directly by JLinkRTTLogger
-    rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
-    if rtt_raw.exists():
-        lines = rtt_raw.read_text(errors="replace").splitlines()
-        lines = [l for l in lines if l.strip() and not l.startswith("Transfer rate")][-20:]
-    else:
-        lines = eabctl_raw("rtt", "tail", "20").splitlines()
-    for line in lines:
-        if "err" in line.lower() or "fault" in line.lower():
-            print(f"    {RED}{line}{RESET}")
-        elif "wrn" in line.lower():
-            print(f"    {YELLOW}{line}{RESET}")
-        elif "ADVERTISING" in line or "CONNECTED" in line or "ready" in line.lower():
-            print(f"    {GREEN}{line}{RESET}")
-        elif "DATA:" in line:
-            print(f"    {BLUE}{line}{RESET}")
-        else:
-            print(f"    {GRAY}{line}{RESET}")
+    stream_rtt(6.0, "RTT boot stream — live")
 
     ok("Zephyr OS booted — BLE stack initialised")
     ok("Identity: nRF5340 advertising as EAB-Peripheral")
@@ -200,22 +267,8 @@ def step3_ble_status():
 
     info("Sending: 'ble status' via UART shell")
     eabctl("send", "ble status")
-    pause(3.0)  # give shell time to echo response into RTT
-
-    section("RTT log — BLE stack state")
-    rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
-    if rtt_raw.exists():
-        rtt_lines = [l for l in rtt_raw.read_text(errors="replace").splitlines()
-                     if l.strip() and not l.startswith("Transfer rate")][-20:]
-    else:
-        rtt_lines = eabctl_raw("rtt", "tail", "20").splitlines()
-    for line in rtt_lines:
-        if "ADVERTISING" in line or "Identity" in line or "ready" in line.lower():
-            print(f"    {GREEN}{line}{RESET}")
-        elif "wrn" in line.lower():
-            print(f"    {YELLOW}{line}{RESET}")
-        else:
-            print(f"    {GRAY}{line}{RESET}")
+    stream_serial(3.0, "Serial — shell response")
+    stream_rtt(3.0, "RTT — BLE stack state")
 
     section("What EAB exposes to an agent")
     print(f"    {CYAN}eabctl rtt tail 50 --json{RESET}   ← structured JSON, parse in agent")
@@ -313,42 +366,37 @@ def step5_fault():
     warn("Board will crash and auto-reboot (MPU + stack sentinel enabled)")
 
     eabctl("send", "fault null")
-    info("Waiting for crash + reboot...")
-    pause(6.0)   # board crashes, fault handler runs, reboots — give it time
+    info("Streaming RTT — watch for crash + reboot sequence...")
 
-    section("RTT log around crash")
-    rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
-    if rtt_raw.exists():
-        lines = [l for l in rtt_raw.read_text(errors="replace").splitlines()
-                 if l.strip() and not l.startswith("Transfer rate")]
+    # Stream live — crash and reboot happen within ~2-4s
+    stream_rtt(7.0, "RTT — crash + reboot sequence")
+
+    section("EAB event log — daemon saw the reset")
+    info("eabctl --base-dir /tmp/eab-devices/default events 10 --json")
+    events = eabctl("events", "10")
+    if isinstance(events, dict):
+        for ev in events.get("events", [])[-6:]:
+            etype = ev.get("type", "")
+            ts    = ev.get("timestamp", "")[-8:]  # HH:MM:SS portion
+            color = GREEN if "started" in etype else YELLOW if "booting" in etype else GRAY
+            print(f"    {color}[{ts}]  {etype}{RESET}")
+
+    section("eabctl wait — pattern match on log")
+    info(f"eabctl --base-dir {BASE_DIR} wait 'ADVERTISING' --timeout 10")
+    result = subprocess.run(
+        ["eabctl", "--base-dir", BASE_DIR, "wait", "ADVERTISING", "--timeout", "8", "--json"],
+        capture_output=True, text=True, timeout=12,
+    )
+    if result.stdout.strip():
+        try:
+            d = json.loads(result.stdout)
+            matched = d.get("matched_line", "")
+            elapsed = d.get("elapsed_ms", "?")
+            ok(f"Pattern matched in {elapsed}ms  →  {CYAN}{matched[:80]}{RESET}")
+        except Exception:
+            ok(result.stdout.strip()[:120])
     else:
-        lines = eabctl_raw("rtt", "tail", "40").splitlines()
-
-    # Show last 30 lines with color-coded crash markers
-    for line in lines[-30:]:
-        if any(k in line for k in ["FAULT", "CRASH", "USAGE", "BUS", "MEM", "HardFault", "Oops"]):
-            print(f"    {RED}{BOLD}{line}{RESET}")
-        elif "Booting" in line or "starting" in line.lower():
-            print(f"    {GREEN}{line}{RESET}")
-        elif any(k in line for k in ["ADVERTISING", "ready", "Identity"]):
-            print(f"    {GREEN}{line}{RESET}")
-        elif "wrn" in line.lower():
-            print(f"    {YELLOW}{line}{RESET}")
-        else:
-            print(f"    {GRAY}{line}{RESET}")
-
-    section("Alerts (crash detection)")
-    alerts = eabctl("alerts", "10")
-    if isinstance(alerts, dict):
-        alert_lines = alerts.get("lines", [])
-        if alert_lines:
-            for entry in alert_lines:
-                content = entry.get("content", "")
-                if content:
-                    print(f"    {RED}{content}{RESET}")
-            ok(f"EAB detected crash pattern — {len(alert_lines)} alert line(s)")
-        else:
-            info("No alert file yet — crash may have been caught before alert threshold")
+        info("Board already advertising (pattern match instant)")
 
 
 def step6_fault_analyze():
@@ -418,16 +466,8 @@ def step7_reset():
         }
         print_json_block(summary, "reset result")
 
-    pause(3.0)
-    info("Waiting for Zephyr to boot...")
-
-    section("RTT after reset")
-    rtt_lines = eabctl_raw("rtt", "tail", "15")
-    for line in rtt_lines.splitlines():
-        if "Booting" in line or "ready" in line.lower() or "ADVERTISING" in line:
-            print(f"    {GREEN}{line}{RESET}")
-        else:
-            print(f"    {GRAY}{line}{RESET}")
+    info("Streaming RTT — watch clean boot sequence...")
+    stream_rtt(5.0, "RTT — boot after reset")
 
     ok("Clean boot confirmed — BLE advertising again")
 

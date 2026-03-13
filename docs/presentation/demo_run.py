@@ -143,12 +143,31 @@ def reset_stream_cursors():
     _log.info("reset_stream_cursors: rtt_pos=%d  serial_pos=%d", _rtt_pos, _serial_pos)
 
 
-def wait_for_rtt_truncate(timeout: float = 8.0):
-    """Wait for JLinkRTTLogger to truncate rtt-raw.log after a board reset.
+def snap_rtt_cursor():
+    """Snapshot the current rtt-raw.log EOF as the new stream cursor.
 
-    After a board reset or fault, JLinkRTTLogger reconnects and truncates
-    rtt-raw.log to zero bytes. We wait for that truncation so the global
-    cursor can be reset to 0 — ensuring we only stream the fresh boot log.
+    Call this immediately before a board reset or fault inject.
+    JLinkRTTLogger APPENDS after board reconnect — it does NOT truncate.
+    Only `eabctl rtt start` truncates (EAB writes b"" before launching logger).
+
+    By snapping the cursor to current EOF, the next stream_rtt call will
+    only show lines written after the snap — i.e. the fresh boot log only.
+    """
+    global _rtt_pos
+    rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
+    old_pos = _rtt_pos
+    _rtt_pos = rtt_raw.stat().st_size if rtt_raw.exists() else 0
+    _log.info("snap_rtt_cursor: %d → %d", old_pos, _rtt_pos)
+    info(f"RTT cursor snapped to {_rtt_pos} bytes — next stream shows only new data")
+
+
+def wait_for_rtt_truncate(timeout: float = 8.0):
+    """Wait for EAB to truncate rtt-raw.log after `eabctl rtt start`.
+
+    `eabctl rtt start` truncates rtt-raw.log to zero before launching
+    JLinkRTTLogger — wait for that truncation then reset cursor to 0.
+    Board resets do NOT truncate (JLinkRTTLogger appends); use
+    snap_rtt_cursor() for those instead.
     """
     global _rtt_pos
     rtt_raw  = Path(BASE_DIR) / "rtt-raw.log"
@@ -157,28 +176,31 @@ def wait_for_rtt_truncate(timeout: float = 8.0):
 
     _log.debug("wait_for_rtt_truncate: starting  prev_size=%d  timeout=%.1f", prev_size, timeout)
 
+    # If the file is already small (freshly truncated before we got here)
+    if prev_size < 200:
+        _rtt_pos = 0
+        _log.info("wait_for_rtt_truncate: already small (%d bytes) — cursor=0", prev_size)
+        return True
+
     while time.time() < deadline:
         cur_size = rtt_raw.stat().st_size if rtt_raw.exists() else 0
         _log.debug("wait_for_rtt_truncate: poll  prev=%d  cur=%d", prev_size, cur_size)
-        # Truncation detected: file shrank to <200 bytes (JLinkRTTLogger header only)
-        if prev_size > 200 and cur_size < 200:
+        if cur_size < 200:
             _rtt_pos = 0
             elapsed = timeout - (deadline - time.time())
             _log.info("wait_for_rtt_truncate: truncated  prev=%d  cur=%d  elapsed=%.2fs",
                       prev_size, cur_size, elapsed)
-            info(f"RTT log truncated ({prev_size} → {cur_size} bytes) — cursor reset")
-            return True
-        if cur_size < 200 and prev_size < 200:
-            # Already small at start — reset immediately
-            _rtt_pos = 0
-            _log.info("wait_for_rtt_truncate: already small (%d bytes) — cursor reset", cur_size)
+            info(f"RTT log truncated ({prev_size} → {cur_size} bytes) — cursor reset to 0")
             return True
         prev_size = cur_size
         time.sleep(0.1)
 
-    _log.warning("wait_for_rtt_truncate: timeout after %.1f s  final_size=%d", timeout, prev_size)
-    warn(f"RTT truncation not detected within {timeout:.0f}s — resetting cursor anyway")
+    # Truncation never happened within timeout — still reset to 0 so we at
+    # least show the current boot log rather than nothing.
     _rtt_pos = 0
+    _log.warning("wait_for_rtt_truncate: timeout  final_size=%d  falling back to cursor=0",
+                 rtt_raw.stat().st_size if rtt_raw.exists() else -1)
+    info(f"RTT truncation not detected within {timeout:.0f}s — cursor set to 0")
     return False
 
 
@@ -501,12 +523,13 @@ def step5_fault():
     info("Sending: 'fault null'  → triggers NULL pointer dereference")
     warn("Board will crash and auto-reboot (MPU + stack sentinel enabled)")
 
+    # Snap cursor BEFORE sending fault — JLinkRTTLogger appends after reboot
+    snap_rtt_cursor()
     eabctl("send", "fault null")
     info("Streaming RTT — watch for crash + reboot sequence...")
-    # Board reboots → JLinkRTTLogger reconnects and truncates rtt-raw.log
-    # Wait for truncation so we only show the fresh boot, not stale history
-    info("Waiting for board reboot + RTT log truncation...")
-    wait_for_rtt_truncate(timeout=8.0)
+    # Wait a moment for board to crash + reboot + JLink to reconnect
+    info("Waiting ~3s for board reboot + J-Link reconnect...")
+    pause(3.0)
 
     # Stream live — crash and reboot happen within ~2-4s
     stream_rtt(7.0, "RTT — crash + reboot sequence")
@@ -596,10 +619,11 @@ def step7_reset():
     step(7, "Reset board — verify clean boot")
 
     info("Hardware reset via J-Link")
+    # Snap cursor BEFORE reset — JLinkRTTLogger appends after reconnect
+    snap_rtt_cursor()
     result = eabctl("reset", "--chip", "nrf5340")
-    # Board reset causes JLinkRTTLogger to reconnect + truncate rtt-raw.log
-    info("Waiting for RTT log to reset after board reset...")
-    wait_for_rtt_truncate(timeout=8.0)
+    # Wait for board to come back up + J-Link RTT reconnect
+    pause(2.0)
     if isinstance(result, dict):
         summary = {
             "method":      result.get("method", "hard"),

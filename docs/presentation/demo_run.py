@@ -33,6 +33,11 @@ BASE_DIR  = "/tmp/eab-devices/default"
 STEP_FILE = Path("/tmp/demo_step.txt")
 ELF_PATH  = Path("/Users/shane/zephyrproject/build/zephyr/zephyr.elf")
 
+# Global streaming cursor — steps advance this forward so each step only
+# shows lines that arrived since the previous step ended.
+_rtt_pos    = 0   # byte offset in rtt-raw.log
+_serial_pos = 0   # byte offset in latest.log
+
 # ---------------------------------------------------------------------------
 # Terminal formatting
 # ---------------------------------------------------------------------------
@@ -102,24 +107,40 @@ def _colorize_rtt(line: str) -> str:
     return f"    {GRAY}{line}{RESET}"
 
 
-def stream_rtt(seconds: float = 4.0, label: str = "RTT stream", max_lines: int = 40):
-    """Stream new RTT lines live for `seconds` using eabctl tail polling."""
+def reset_stream_cursors():
+    """Call at demo start: set cursors to current EOF so streams only show NEW data."""
+    global _rtt_pos, _serial_pos
+    rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
+    serial  = Path(BASE_DIR) / "latest.log"
+    _rtt_pos    = rtt_raw.stat().st_size if rtt_raw.exists() else 0
+    _serial_pos = serial.stat().st_size  if serial.exists()  else 0
+
+
+def stream_rtt(seconds: float = 4.0, label: str = "RTT stream", max_lines: int = 40,
+               from_start: bool = False):
+    """Stream RTT lines live for `seconds`, advancing the global cursor.
+
+    from_start=True: replay from beginning of current rtt-raw.log (use after board reset).
+    """
+    global _rtt_pos
     section(f"{label}  (live · {seconds:.0f}s)")
-    info(f"eabctl --base-dir {BASE_DIR} rtt tail  ← polling every 200ms")
+    info(f"$ eabctl --base-dir {BASE_DIR} rtt tail  ← streaming")
 
     rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
-    start_pos = rtt_raw.stat().st_size if rtt_raw.exists() else 0
-    deadline  = time.time() + seconds
-    shown     = 0
+    if from_start:
+        _rtt_pos = 0
+    pos      = _rtt_pos
+    deadline = time.time() + seconds
+    shown    = 0
 
     while time.time() < deadline:
         if rtt_raw.exists():
             cur_size = rtt_raw.stat().st_size
-            if cur_size > start_pos:
+            if cur_size > pos:
                 with open(rtt_raw, errors="replace") as f:
-                    f.seek(start_pos)
-                    chunk = f.read(cur_size - start_pos)
-                start_pos = cur_size
+                    f.seek(pos)
+                    chunk = f.read(cur_size - pos)
+                pos = cur_size
                 for raw in chunk.splitlines():
                     line = raw.strip()
                     if not line or line.startswith("Transfer rate"):
@@ -129,30 +150,32 @@ def stream_rtt(seconds: float = 4.0, label: str = "RTT stream", max_lines: int =
                     print(_colorize_rtt(line))
                     shown += 1
                     sys.stdout.flush()
-        time.sleep(0.2)
+        time.sleep(0.15)
 
+    _rtt_pos = pos  # advance global cursor
     if shown == 0:
         print(f"    {GRAY}(no new RTT data in {seconds:.0f}s){RESET}")
 
 
 def stream_serial(seconds: float = 3.0, label: str = "Serial log"):
-    """Stream new latest.log lines live for `seconds`."""
+    """Stream latest.log live for `seconds`, advancing the global cursor."""
+    global _serial_pos
     section(f"{label}  (live · {seconds:.0f}s)")
-    info(f"eabctl --base-dir {BASE_DIR} tail  ← live serial output")
+    info(f"$ eabctl --base-dir {BASE_DIR} tail  ← streaming")
 
-    log = Path(BASE_DIR) / "latest.log"
-    start_pos = log.stat().st_size if log.exists() else 0
-    deadline  = time.time() + seconds
-    shown     = 0
+    log      = Path(BASE_DIR) / "latest.log"
+    pos      = _serial_pos
+    deadline = time.time() + seconds
+    shown    = 0
 
     while time.time() < deadline:
         if log.exists():
             cur_size = log.stat().st_size
-            if cur_size > start_pos:
+            if cur_size > pos:
                 with open(log, errors="replace") as f:
-                    f.seek(start_pos)
-                    chunk = f.read(cur_size - start_pos)
-                start_pos = cur_size
+                    f.seek(pos)
+                    chunk = f.read(cur_size - pos)
+                pos = cur_size
                 for raw in chunk.splitlines():
                     line = raw.strip()
                     if not line:
@@ -167,8 +190,9 @@ def stream_serial(seconds: float = 3.0, label: str = "Serial log"):
                         print(f"    {GRAY}{line}{RESET}")
                     shown += 1
                     sys.stdout.flush()
-        time.sleep(0.2)
+        time.sleep(0.15)
 
+    _serial_pos = pos
     if shown == 0:
         print(f"    {GRAY}(no new serial data in {seconds:.0f}s){RESET}")
 
@@ -222,8 +246,17 @@ def step1_daemon():
     else:
         warn("Daemon may already be running — checking status")
 
-    pause(1.0)
-    stream_serial(3.0, "Serial port — live")
+    # Reset stream cursors AFTER daemon starts (so latest.log exists)
+    pause(0.5)
+    reset_stream_cursors()
+
+    # Reset the board now — RTT will have fresh data during step 2
+    info("Hard-resetting board so RTT boot log flows fresh...")
+    eabctl("reset", "--chip", "nrf5340")
+    pause(0.5)
+    reset_stream_cursors()   # reset again after board reset clears logs
+
+    stream_serial(3.0, "Serial port — live (board booting)")
 
     # Status
     status = eabctl("status")
@@ -251,12 +284,16 @@ def step2_rtt():
     try:
         rdata = json.loads(result)
         ok(f"RTT started  channels={rdata.get('num_up_channels', '?')}")
-        info(f"Log: {rdata.get('log_path', BASE_DIR + '/rtt.log')}")
+        info(f"Log: {BASE_DIR}/rtt-raw.log  (truncated, filling now)")
     except Exception:
         warn(f"RTT start output: {result[:120]}")
 
-    info("Waiting for Zephyr boot messages...")
-    stream_rtt(6.0, "RTT boot stream — live")
+    # rtt start truncates rtt-raw.log to zero — reset cursor so we stream from byte 0
+    global _rtt_pos
+    _rtt_pos = 0
+
+    info("Streaming Zephyr boot messages...")
+    stream_rtt(7.0, "RTT boot stream — live")
 
     ok("Zephyr OS booted — BLE stack initialised")
     ok("Identity: nRF5340 advertising as EAB-Peripheral")
@@ -367,6 +404,9 @@ def step5_fault():
 
     eabctl("send", "fault null")
     info("Streaming RTT — watch for crash + reboot sequence...")
+    # Board reboots → JLinkRTTLogger reconnects and truncates rtt-raw.log
+    global _rtt_pos
+    _rtt_pos = 0
 
     # Stream live — crash and reboot happen within ~2-4s
     stream_rtt(7.0, "RTT — crash + reboot sequence")
@@ -457,6 +497,8 @@ def step7_reset():
 
     info("Hardware reset via J-Link")
     result = eabctl("reset", "--chip", "nrf5340")
+    global _rtt_pos
+    _rtt_pos = 0   # reset truncates/restarts RTT — stream from byte 0
     if isinstance(result, dict):
         summary = {
             "method":      result.get("method", "hard"),

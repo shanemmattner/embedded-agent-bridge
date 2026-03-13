@@ -175,11 +175,26 @@ def _process_message(msg: str, ts: float):
 
 
 def _poll_step():
-    """Read current demo step from file written by demo_run.py."""
+    """Read current demo step from file written by demo_run.py.
+    When step resets to 1, clear all log/graph state so the dashboard starts fresh."""
+    global _rtt_pos, _log_pos, _alert_pos
     if STEP_FILE.exists():
         try:
-            data = json.loads(STEP_FILE.read_text())
-            current_step["n"]     = data.get("step", 0)
+            data  = json.loads(STEP_FILE.read_text())
+            new_n = data.get("step", 0)
+            # Demo restarted — clear everything
+            if new_n == 1 and current_step["n"] > 1:
+                log_lines.clear()
+                alert_lines.clear()
+                temps.clear()
+                times.clear()
+                counters.clear()
+                ble_state.update({"connected": False, "peer": "", "mtu": 23,
+                                  "notify_count": 0, "conn_count": 0})
+                _rtt_pos = 0
+                _log_pos = 0
+                _alert_pos = 0
+            current_step["n"]     = new_n
             current_step["label"] = data.get("label", "")
         except Exception:
             pass

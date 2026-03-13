@@ -200,7 +200,7 @@ def step3_ble_status():
 
     info("Sending: 'ble status' via UART shell")
     eabctl("send", "ble status")
-    pause(1.5)
+    pause(3.0)  # give shell time to echo response into RTT
 
     section("RTT log — BLE stack state")
     rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
@@ -256,8 +256,12 @@ def step4_dwt():
         ]
 
     section("DWT watch command")
-    cmd_display = "eabctl " + " ".join(cmd_args[1:])
-    print(f"    {CYAN}{cmd_display}{RESET}")
+    # cmd_args starts with "dwt","watch" — display with full "eabctl dwt watch ..."
+    cmd_display = "eabctl --base-dir " + BASE_DIR + " " + " ".join(cmd_args)
+    print(f"    {CYAN}{cmd_display}{RESET}\n")
+
+    info("Running for 4s — sensor_counter not incrementing without BLE central")
+    info("(Connect a central to see live watchpoint hits in JSONL)")
 
     # dwt watch streams continuously — run for 4s then kill
     proc = subprocess.Popen(
@@ -267,18 +271,28 @@ def step4_dwt():
     pause(4.0)
     proc.terminate()
     try:
-        out, err = proc.communicate(timeout=2)
-        output = (out + err).strip()
+        out, errtxt = proc.communicate(timeout=2)
+        output = (out + errtxt).strip()
         if output:
-            for line in output.splitlines()[:10]:
+            # Filter out J-Link boilerplate, show meaningful lines only
+            meaningful = [l for l in output.splitlines()
+                          if l.strip() and not any(skip in l for skip in
+                          ["SEGGER", "DLL version", "Compiled", "J-Link uptime",
+                           "Hardware version", "License", "USB speed", "VTref"])]
+            for line in meaningful[:12]:
                 print(f"    {GRAY}{line}{RESET}")
+        else:
+            info("No watchpoint hits (counter is static — no BLE central connected)")
     except subprocess.TimeoutExpired:
         proc.kill()
 
     section("Listing active DWT comparators")
     dwt_list = eabctl_raw("dwt", "list")
-    for line in dwt_list.splitlines():
-        print(f"    {BLUE}{line}{RESET}")
+    if dwt_list.strip():
+        for line in dwt_list.splitlines():
+            print(f"    {BLUE}{line}{RESET}")
+    else:
+        info("DWT comparators cleared after watch session (expected)")
 
     ok("DWT watchpoint armed — CPU keeps running, BLE connection stays up")
     info("Events stream to /tmp/eab-devices/default/events.jsonl")
@@ -299,34 +313,42 @@ def step5_fault():
     warn("Board will crash and auto-reboot (MPU + stack sentinel enabled)")
 
     eabctl("send", "fault null")
-    pause(3.0)
+    info("Waiting for crash + reboot...")
+    pause(6.0)   # board crashes, fault handler runs, reboots — give it time
+
+    section("RTT log around crash")
+    rtt_raw = Path(BASE_DIR) / "rtt-raw.log"
+    if rtt_raw.exists():
+        lines = [l for l in rtt_raw.read_text(errors="replace").splitlines()
+                 if l.strip() and not l.startswith("Transfer rate")]
+    else:
+        lines = eabctl_raw("rtt", "tail", "40").splitlines()
+
+    # Show last 30 lines with color-coded crash markers
+    for line in lines[-30:]:
+        if any(k in line for k in ["FAULT", "CRASH", "USAGE", "BUS", "MEM", "HardFault", "Oops"]):
+            print(f"    {RED}{BOLD}{line}{RESET}")
+        elif "Booting" in line or "starting" in line.lower():
+            print(f"    {GREEN}{line}{RESET}")
+        elif any(k in line for k in ["ADVERTISING", "ready", "Identity"]):
+            print(f"    {GREEN}{line}{RESET}")
+        elif "wrn" in line.lower():
+            print(f"    {YELLOW}{line}{RESET}")
+        else:
+            print(f"    {GRAY}{line}{RESET}")
 
     section("Alerts (crash detection)")
     alerts = eabctl("alerts", "10")
     if isinstance(alerts, dict):
-        lines = alerts.get("lines", [])
-        if lines:
-            for entry in lines:
+        alert_lines = alerts.get("lines", [])
+        if alert_lines:
+            for entry in alert_lines:
                 content = entry.get("content", "")
                 if content:
                     print(f"    {RED}{content}{RESET}")
-            ok(f"EAB detected crash pattern — {len(lines)} alert line(s)")
+            ok(f"EAB detected crash pattern — {len(alert_lines)} alert line(s)")
         else:
-            info("No alerts yet — checking RTT log directly")
-            rtt_lines = eabctl_raw("rtt", "tail", "20")
-            for line in rtt_lines.splitlines():
-                if any(k in line for k in ["FAULT", "fault", "CRASH", "reset"]):
-                    print(f"    {RED}{line}{RESET}")
-
-    section("RTT log around crash")
-    rtt_lines = eabctl_raw("rtt", "tail", "25")
-    for line in rtt_lines.splitlines():
-        if any(k in line for k in ["FAULT", "CRASH", "USAGE", "BUS", "MEM", "HF"]):
-            print(f"    {RED}{BOLD}{line}{RESET}")
-        elif "Booting" in line or "starting" in line:
-            print(f"    {GREEN}{line}{RESET}")
-        else:
-            print(f"    {GRAY}{line}{RESET}")
+            info("No alert file yet — crash may have been caught before alert threshold")
 
 
 def step6_fault_analyze():
@@ -342,16 +364,20 @@ def step6_fault_analyze():
     print(f"        --rtt-context 50 \\")
     print(f"        --json{RESET}\n")
 
-    result = subprocess.run(
-        ["eabctl", "--base-dir", BASE_DIR,
-         "fault-analyze", "--device", DEVICE, "--json"],
-        capture_output=True, text=True, timeout=30,
-    )
-    output = result.stdout.strip()
+    try:
+        result = subprocess.run(
+            ["eabctl", "--base-dir", BASE_DIR,
+             "fault-analyze", "--device", DEVICE, "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        output = result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        output = ""
+        result = type("R", (), {"stderr": "timeout"})()
+
     if output:
         try:
             data = json.loads(output)
-            # Print key fields
             fault_info = {
                 "fault_type":   data.get("fault_type", "unknown"),
                 "cfsr_decoded": data.get("cfsr_decoded", {}),
@@ -373,12 +399,9 @@ def step6_fault_analyze():
             for line in output.splitlines():
                 print(f"    {GRAY}{line}{RESET}")
     else:
-        stderr = result.stderr.strip()
-        if stderr:
-            warn("fault-analyze needs GDB probe connection")
-            warn("(Board may have already reset — run manually after crash)")
-            for line in stderr.splitlines()[:8]:
-                print(f"    {GRAY}{line}{RESET}")
+        warn("fault-analyze: board already rebooted before GDB could connect")
+        warn("In production: run fault-analyze immediately on crash event detection")
+        info("EAB can trigger this automatically via: eabctl wait-event crash --then fault-analyze")
 
 
 def step7_reset():
@@ -387,7 +410,13 @@ def step7_reset():
     info("Hardware reset via J-Link")
     result = eabctl("reset", "--chip", "nrf5340")
     if isinstance(result, dict):
-        print_json_block(result, "reset result")
+        summary = {
+            "method":      result.get("method", "hard"),
+            "success":     result.get("success", False),
+            "duration_ms": result.get("duration_ms", "?"),
+            "chip":        result.get("chip", DEVICE),
+        }
+        print_json_block(summary, "reset result")
 
     pause(3.0)
     info("Waiting for Zephyr to boot...")

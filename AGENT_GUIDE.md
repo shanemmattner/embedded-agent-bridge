@@ -127,7 +127,7 @@ eabctl send "i"
 eabctl send "help"
 
 # Wait for specific output pattern
-eabctl wait "Ready" 30
+eabctl wait "Ready" --timeout 30
 
 # Wait for a system event (example: command sent)
 eabctl wait-event --type command_sent --timeout 10

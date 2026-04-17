@@ -373,6 +373,32 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("diagnose", help="Run basic health checks and print recommendations")
 
+    # Dockerized ESP-IDF build wrapper — no hardware interaction.
+    p_build = sub.add_parser(
+        "build",
+        help="Build ESP-IDF project via Docker (espressif/idf image)",
+    )
+    p_build.add_argument(
+        "--target",
+        default="esp32c6",
+        help="ESP chip target (esp32c6, esp32s3, esp32h2, etc.). Default: esp32c6",
+    )
+    p_build.add_argument(
+        "--idf-version",
+        default="v5.4.1",
+        help="ESP-IDF docker tag (default: v5.4.1)",
+    )
+    p_build.add_argument(
+        "--project-dir",
+        default=None,
+        help="Path to ESP-IDF project (default: current working directory)",
+    )
+    p_build.add_argument(
+        "--no-pull",
+        action="store_true",
+        help="Pass --pull=never to docker run (use local image only)",
+    )
+
     # Flash operations (chip-agnostic)
     p_flash = sub.add_parser("flash", help="Flash firmware to device")
     p_flash.add_argument("firmware", help="Path to firmware binary (.bin/.hex/.elf) or ESP-IDF project directory")

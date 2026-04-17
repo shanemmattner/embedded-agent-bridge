@@ -201,7 +201,7 @@ class ESP32Profile(ChipProfile):
 
     @property
     def flash_tool(self) -> str:
-        return "esptool"
+        return "esptool.py"
 
     @staticmethod
     def find_espressif_openocd() -> str | None:
@@ -321,12 +321,14 @@ class ESP32Profile(ChipProfile):
         if no_stub:
             args.append("--no-stub")
 
+        if port:
+            args += ["--port", port]
+
         args += [
-            "--port", port,
             "--baud", str(baud),
             "--before", before_mode,
             "--after", "hard-reset",
-            "write-flash",
+            "write_flash",
             "--flash-mode", "dio",
             "--flash-size", "detect",
         ]
@@ -356,30 +358,35 @@ class ESP32Profile(ChipProfile):
         timeout = 300.0 if no_stub else 120.0
 
         return FlashCommand(
-            tool="esptool",
+            tool="esptool.py",
             args=args,
             timeout=timeout,
         )
 
     def get_erase_command(self, port: str, **kwargs) -> FlashCommand:
-        """Build esptool erase-flash command."""
+        """Build esptool erase_flash command."""
         chip = kwargs.get("chip") or self.variant or "auto"
 
+        args = ["--chip", chip]
+        if port:
+            args += ["--port", port]
+        args.append("erase_flash")
+
         return FlashCommand(
-            tool="esptool",
-            args=[
-                "--chip", chip,
-                "--port", port,
-                "erase-flash",
-            ],
+            tool="esptool.py",
+            args=args,
             timeout=60.0,
         )
 
     def get_chip_info_command(self, port: str, **kwargs) -> FlashCommand:
-        """Build esptool chip-id command."""
+        """Build esptool chip_id command."""
+        args: list[str] = []
+        if port:
+            args += ["--port", port]
+        args.append("chip_id")
         return FlashCommand(
-            tool="esptool",
-            args=["--port", port, "chip-id"],
+            tool="esptool.py",
+            args=args,
             timeout=30.0,
         )
 

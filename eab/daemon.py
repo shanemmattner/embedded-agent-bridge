@@ -296,13 +296,13 @@ class SerialDaemon:
                 import shutil
                 import subprocess
 
-                esptool = shutil.which("esptool") or shutil.which("esptool.py")
+                esptool = shutil.which("esptool.py") or shutil.which("esptool")
                 if esptool:
                     for dev in unique_candidates:
                         try:
                             self._logger.info(f"Probing candidate port with esptool: {dev}")
                             result = subprocess.run(
-                                [esptool, "--port", dev, "chip-id"],
+                                [esptool, "--port", dev, "chip_id"],
                                 capture_output=True,
                                 text=True,
                                 timeout=10,

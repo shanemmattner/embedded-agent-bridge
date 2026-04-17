@@ -174,11 +174,12 @@ class DeviceController:
                 self._serial.close()
 
             # Build esptool command
-            cmd = [
-                "esptool",
-                "--port", self._port_name,
+            cmd = ["esptool.py"]
+            if self._port_name:
+                cmd += ["--port", self._port_name]
+            cmd += [
                 "--baud", "460800",
-                "write-flash",
+                "write_flash",
                 address,
                 firmware_path,
             ]
@@ -214,10 +215,10 @@ class DeviceController:
                 self._on_flash_end(False)
             return "ERROR: Flash timeout"
         except FileNotFoundError:
-            self._log_error("esptool not found")
+            self._log_error("esptool.py not found")
             if self._on_flash_end:
                 self._on_flash_end(False)
-            return "ERROR: esptool not found. Install with: pip install esptool"
+            return "ERROR: esptool.py not found. Install with: pip install esptool"
         except Exception as e:
             self._log_error(f"Flash error: {e}")
             if self._on_flash_end:
@@ -233,11 +234,10 @@ class DeviceController:
             if was_open:
                 self._serial.close()
 
-            cmd = [
-                "esptool",
-                "--port", self._port_name,
-                "chip-id",
-            ]
+            cmd = ["esptool.py"]
+            if self._port_name:
+                cmd += ["--port", self._port_name]
+            cmd.append("chip_id")
 
             result = subprocess.run(
                 cmd,
@@ -269,11 +269,10 @@ class DeviceController:
             if was_open:
                 self._serial.close()
 
-            cmd = [
-                "esptool",
-                "--port", self._port_name,
-                "erase-flash",
-            ]
+            cmd = ["esptool.py"]
+            if self._port_name:
+                cmd += ["--port", self._port_name]
+            cmd.append("erase_flash")
 
             result = subprocess.run(
                 cmd,

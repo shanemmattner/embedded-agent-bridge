@@ -60,8 +60,8 @@ class TestESP32Profile:
         assert "download mode" in patterns
 
     def test_flash_tool_is_esptool(self, profile: ESP32Profile):
-        """Verify flash_tool property returns 'esptool' (not deprecated 'esptool.py')."""
-        assert profile.flash_tool == "esptool"
+        """Verify flash_tool property returns 'esptool.py' (ESP-IDF v5.4.1 ships esptool.py)."""
+        assert profile.flash_tool == "esptool.py"
 
 
 class TestESP32FlashCommands:
@@ -79,27 +79,29 @@ class TestESP32FlashCommands:
             address="0x10000",
             chip="esp32c6",
         )
-        assert cmd.tool == "esptool"
+        assert cmd.tool == "esptool.py"
 
-    def test_flash_command_uses_dash_arguments(self, profile: ESP32Profile):
-        """Verify all esptool arguments use dash form (not underscore)."""
+    def test_flash_command_uses_esptool_v411_subcommands(self, profile: ESP32Profile):
+        """Verify esptool v4.11 subcommand forms (underscore) and option forms (dash)."""
         cmd = profile.get_flash_command(
             firmware_path="/path/to/firmware.bin",
             port="/dev/ttyUSB0",
             address="0x10000",
             chip="esp32c6",
         )
-        
-        # Check for dash-form arguments
+
+        # Options use dash form
         assert "--flash-mode" in cmd.args
         assert "--flash-size" in cmd.args
-        assert "write-flash" in cmd.args
         assert "hard-reset" in cmd.args or "default-reset" in cmd.args
-        
-        # Check that deprecated forms are NOT present
+
+        # Subcommand uses underscore form (esptool v4.11)
+        assert "write_flash" in cmd.args
+        assert "write-flash" not in cmd.args
+
+        # Deprecated option forms must not be present
         assert "--flash_mode" not in cmd.args
         assert "--flash_size" not in cmd.args
-        assert "write_flash" not in cmd.args
         assert "hard_reset" not in cmd.args
         assert "default_reset" not in cmd.args
 
@@ -254,11 +256,11 @@ class TestESP32FlashCommands:
         # Just verify basic structure is intact
         assert "--chip" in cmd_none.args
         assert "--port" in cmd_none.args
-        assert "write-flash" in cmd_none.args
-        
+        assert "write_flash" in cmd_none.args
+
         assert "--chip" in cmd_empty.args
         assert "--port" in cmd_empty.args
-        assert "write-flash" in cmd_empty.args
+        assert "write_flash" in cmd_empty.args
 
     def test_flash_command_no_stub_with_extra_args(self, profile: ESP32Profile):
         """Verify both --no-stub and extra args can coexist."""
@@ -286,16 +288,16 @@ class TestESP32EraseCommands:
         return ESP32Profile(variant="esp32c6")
 
     def test_erase_command_tool_is_esptool(self, profile: ESP32Profile):
-        """Verify get_erase_command returns FlashCommand with tool='esptool'."""
+        """Verify get_erase_command returns FlashCommand with tool='esptool.py'."""
         cmd = profile.get_erase_command(port="/dev/ttyUSB0")
-        assert cmd.tool == "esptool"
+        assert cmd.tool == "esptool.py"
 
-    def test_erase_command_uses_erase_flash_dash_form(self, profile: ESP32Profile):
-        """Verify erase command uses 'erase-flash' (not deprecated 'erase_flash')."""
+    def test_erase_command_uses_erase_flash_underscore_form(self, profile: ESP32Profile):
+        """Verify erase command uses 'erase_flash' (esptool v4.11 subcommand form)."""
         cmd = profile.get_erase_command(port="/dev/ttyUSB0")
-        assert "erase-flash" in cmd.args
-        # Should NOT use deprecated form
-        assert "erase_flash" not in cmd.args
+        assert "erase_flash" in cmd.args
+        # Should NOT use dash form (rejected by esptool v4.11)
+        assert "erase-flash" not in cmd.args
 
     def test_erase_command_includes_chip(self, profile: ESP32Profile):
         """Verify --chip argument is included."""
@@ -323,16 +325,16 @@ class TestESP32ChipInfo:
         return ESP32Profile(variant="esp32c6")
 
     def test_chip_info_command_tool_is_esptool(self, profile: ESP32Profile):
-        """Verify get_chip_info_command returns FlashCommand with tool='esptool'."""
+        """Verify get_chip_info_command returns FlashCommand with tool='esptool.py'."""
         cmd = profile.get_chip_info_command(port="/dev/ttyUSB0")
-        assert cmd.tool == "esptool"
+        assert cmd.tool == "esptool.py"
 
-    def test_chip_info_command_uses_chip_id_dash_form(self, profile: ESP32Profile):
-        """Verify chip info command uses 'chip-id' (not deprecated 'chip_id')."""
+    def test_chip_info_command_uses_chip_id_underscore_form(self, profile: ESP32Profile):
+        """Verify chip info command uses 'chip_id' (esptool v4.11 subcommand form)."""
         cmd = profile.get_chip_info_command(port="/dev/ttyUSB0")
-        assert "chip-id" in cmd.args
-        # Should NOT use deprecated form
-        assert "chip_id" not in cmd.args
+        assert "chip_id" in cmd.args
+        # Should NOT use dash form (rejected by esptool v4.11)
+        assert "chip-id" not in cmd.args
 
     def test_chip_info_command_includes_port(self, profile: ESP32Profile):
         """Verify --port argument is included."""

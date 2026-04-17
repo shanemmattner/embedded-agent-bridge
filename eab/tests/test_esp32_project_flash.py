@@ -151,7 +151,7 @@ def test_cmd_flash_with_esp_idf_project_auto_detects_chip(tmp_path: Path, capsys
     call_args = mock_run.call_args[0][0]
     
     # Verify esptool command includes correct chip and all partitions
-    assert call_args[0] == "esptool"
+    assert call_args[0] == "esptool.py"
     assert "--chip" in call_args
     chip_idx = call_args.index("--chip")
     assert call_args[chip_idx + 1] == "esp32c6"
@@ -353,7 +353,7 @@ def test_cmd_flash_with_binary_file_and_chip_still_works(tmp_path: Path, capsys)
     call_args = mock_run.call_args[0][0]
     
     # Verify esptool command includes chip and firmware path
-    assert call_args[0] == "esptool"
+    assert call_args[0] == "esptool.py"
     assert "--chip" in call_args
     chip_idx = call_args.index("--chip")
     assert call_args[chip_idx + 1] == "esp32c6"
@@ -478,7 +478,7 @@ def test_cmd_flash_with_no_stub_flag(tmp_path: Path, capsys):
     call_args = mock_run.call_args[0][0]
     
     # Verify esptool command includes --no-stub flag
-    assert call_args[0] == "esptool"
+    assert call_args[0] == "esptool.py"
     assert "--no-stub" in call_args
     
     # Verify JSON output
@@ -580,7 +580,7 @@ def test_cmd_flash_with_extra_esptool_args(tmp_path: Path, capsys):
     call_args = mock_run.call_args[0][0]
     
     # Verify esptool command includes extra args
-    assert call_args[0] == "esptool"
+    assert call_args[0] == "esptool.py"
     assert "--no-compress" in call_args
     assert "--verify" in call_args
     
@@ -627,7 +627,7 @@ def test_cmd_flash_with_no_stub_and_extra_args_together(tmp_path: Path, capsys):
     call_args = mock_run.call_args[0][0]
     
     # Verify esptool command includes both --no-stub and extra args
-    assert call_args[0] == "esptool"
+    assert call_args[0] == "esptool.py"
     assert "--no-stub" in call_args
     assert "--verify" in call_args
     

@@ -1,11 +1,11 @@
 """
 Tests for device_control.py module.
 
-Tests that esptool commands use non-deprecated argument forms:
-- esptool (not esptool.py)
-- write-flash (not write_flash)
-- chip-id (not chip_id)
-- erase-flash (not erase_flash)
+Tests that esptool commands use esptool v4.11-compatible forms:
+- esptool.py (ESP-IDF v5.4.1 ships esptool.py, not bare 'esptool')
+- write_flash (underscore subcommand; 'write-flash' rejected by v4.11)
+- chip_id (underscore subcommand)
+- erase_flash (underscore subcommand)
 """
 
 from unittest.mock import Mock, patch
@@ -34,43 +34,42 @@ def test_reset_sequences_unchanged():
 
 
 def test_flash_uses_non_deprecated_esptool_command():
-    """Test that flash() uses 'esptool' and 'write-flash', not deprecated forms."""
+    """Test that flash() uses 'esptool.py' and 'write_flash' (esptool v4.11 forms)."""
     # Mock serial port
     mock_serial = Mock()
     mock_serial.is_open.return_value = False
     mock_serial._serial = Mock()
-    
+
     controller = DeviceController(
         serial_port=mock_serial,
         port_name="/dev/ttyUSB0",
         baud=115200
     )
-    
+
     with patch('subprocess.run') as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
-        
+
         result = controller.flash("/path/to/firmware.bin", "0x10000")
-        
+
         # Verify subprocess.run was called with correct command
         assert mock_run.called
         cmd = mock_run.call_args[0][0]
-        
-        # Check that we're using non-deprecated forms
-        assert "esptool" in cmd
-        assert "esptool.py" not in cmd
-        assert "write-flash" in cmd
-        assert "write_flash" not in cmd
-        
+
+        # Check that we're using esptool v4.11 forms
+        assert "esptool.py" in cmd
+        assert "write_flash" in cmd
+        assert "write-flash" not in cmd
+
         # Verify full command structure
-        assert cmd[0] == "esptool"
+        assert cmd[0] == "esptool.py"
         assert "--port" in cmd
         assert "/dev/ttyUSB0" in cmd
         assert "--baud" in cmd
         assert "460800" in cmd
-        assert "write-flash" in cmd
+        assert "write_flash" in cmd
         assert "0x10000" in cmd
         assert "/path/to/firmware.bin" in cmd
-        
+
         assert result == "OK: Flash complete"
 
 
@@ -84,85 +83,82 @@ def test_flash_file_not_found_error_message():
         port_name="/dev/ttyUSB0"
     )
     
-    with patch('subprocess.run', side_effect=FileNotFoundError("esptool not found")):
+    with patch('subprocess.run', side_effect=FileNotFoundError("esptool.py not found")):
         result = controller.flash("/path/to/firmware.bin")
-        
-        # Check error message uses "esptool" not "esptool.py"
-        assert "esptool not found" in result
-        assert "esptool.py" not in result
+
+        # Check error message references esptool.py (ESP-IDF v5.4.1 ships esptool.py)
+        assert "esptool.py not found" in result
         assert "pip install esptool" in result
 
 
 def test_get_chip_info_uses_non_deprecated_command():
-    """Test that get_chip_info() uses 'esptool' and 'chip-id', not deprecated forms."""
+    """Test that get_chip_info() uses 'esptool.py' and 'chip_id' (esptool v4.11 forms)."""
     mock_serial = Mock()
     mock_serial.is_open.return_value = False
-    
+
     controller = DeviceController(
         serial_port=mock_serial,
         port_name="/dev/ttyUSB0"
     )
-    
+
     with patch('subprocess.run') as mock_run:
         mock_run.return_value = Mock(
             returncode=0,
             stdout="Chip is ESP32-C6",
             stderr=""
         )
-        
+
         result = controller.get_chip_info()
-        
+
         # Verify subprocess.run was called with correct command
         assert mock_run.called
         cmd = mock_run.call_args[0][0]
-        
-        # Check that we're using non-deprecated forms
-        assert "esptool" in cmd
-        assert "esptool.py" not in cmd
-        assert "chip-id" in cmd
-        assert "chip_id" not in cmd
-        
+
+        # Check that we're using esptool v4.11 forms
+        assert "esptool.py" in cmd
+        assert "chip_id" in cmd
+        assert "chip-id" not in cmd
+
         # Verify full command structure
-        assert cmd[0] == "esptool"
+        assert cmd[0] == "esptool.py"
         assert "--port" in cmd
         assert "/dev/ttyUSB0" in cmd
-        assert "chip-id" in cmd
-        
+        assert "chip_id" in cmd
+
         assert "OK:" in result
         assert "ESP32-C6" in result
 
 
 def test_erase_flash_uses_non_deprecated_command():
-    """Test that erase_flash() uses 'esptool' and 'erase-flash', not deprecated forms."""
+    """Test that erase_flash() uses 'esptool.py' and 'erase_flash' (esptool v4.11 forms)."""
     mock_serial = Mock()
     mock_serial.is_open.return_value = False
-    
+
     controller = DeviceController(
         serial_port=mock_serial,
         port_name="/dev/ttyUSB0"
     )
-    
+
     with patch('subprocess.run') as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
-        
+
         result = controller.erase_flash()
-        
+
         # Verify subprocess.run was called with correct command
         assert mock_run.called
         cmd = mock_run.call_args[0][0]
-        
-        # Check that we're using non-deprecated forms
-        assert "esptool" in cmd
-        assert "esptool.py" not in cmd
-        assert "erase-flash" in cmd
-        assert "erase_flash" not in cmd
-        
+
+        # Check that we're using esptool v4.11 forms
+        assert "esptool.py" in cmd
+        assert "erase_flash" in cmd
+        assert "erase-flash" not in cmd
+
         # Verify full command structure
-        assert cmd[0] == "esptool"
+        assert cmd[0] == "esptool.py"
         assert "--port" in cmd
         assert "/dev/ttyUSB0" in cmd
-        assert "erase-flash" in cmd
-        
+        assert "erase_flash" in cmd
+
         assert result == "OK: Flash erased"
 
 

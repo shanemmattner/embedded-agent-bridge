@@ -328,6 +328,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     if args.cmd == "diagnose":
         return cli.cmd_diagnose(base_dir=base_dir, json_mode=args.json)
+    if args.cmd == "build":
+        from eab.cli.build_cmd import cmd_build
+
+        return cmd_build(
+            target=args.target,
+            idf_version=args.idf_version,
+            project_dir=args.project_dir,
+            no_pull=args.no_pull,
+            json_mode=args.json,
+        )
     if args.cmd == "flash":
         return cli.cmd_flash(
             firmware=args.firmware,

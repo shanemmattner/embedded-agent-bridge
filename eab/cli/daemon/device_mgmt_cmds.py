@@ -2,9 +2,32 @@
 
 from __future__ import annotations
 
+import os
+
 from eab.singleton import check_singleton
 from eab.device_registry import list_devices, register_device, unregister_device
 from eab.cli.helpers import _now_iso, _print
+
+
+def _device_status(d) -> str:
+    """Resolve a device's surfaced status.
+
+    When the daemon has written a ``port_flock.status`` sentinel into the
+    session directory (see ``daemon.py``), that takes precedence over
+    running/stopped — the daemon failed to acquire the advisory flock on
+    the device node, meaning something else (esptool, screen, pio, another
+    EAB) owns it. Reported as ``port-locked-by-other`` so agents can react.
+    """
+    try:
+        sentinel = os.path.join(d.base_dir, "port_flock.status")
+        if d.base_dir and os.path.isfile(sentinel):
+            with open(sentinel, "r") as fh:
+                value = fh.read().strip()
+            if value:
+                return value
+    except Exception:
+        pass
+    return "running" if d.is_alive else "stopped"
 
 
 def cmd_devices(*, json_mode: bool) -> int:
@@ -27,7 +50,7 @@ def cmd_devices(*, json_mode: bool) -> int:
                     "name": d.device_name,
                     "type": d.device_type,
                     "chip": d.chip,
-                    "status": "running" if d.is_alive else "stopped",
+                    "status": _device_status(d),
                     "pid": d.pid,
                     "port": d.port,
                     "base_dir": d.base_dir,
@@ -42,7 +65,7 @@ def cmd_devices(*, json_mode: bool) -> int:
             print("No devices registered. Use: eabctl device add <name> --type debug --chip <chip>")
         else:
             for d in devices:
-                status = "running" if d.is_alive else "stopped"
+                status = _device_status(d)
                 chip_str = f" ({d.chip})" if d.chip else ""
                 port_str = f" port={d.port}" if d.port else ""
                 pid_str = f" pid={d.pid}" if d.pid else ""

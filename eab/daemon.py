@@ -321,7 +321,10 @@ class SerialDaemon:
                 import re
 
                 def score(dev: str) -> tuple[int, str]:
-                    m = re.search(r"(\\d+)$", dev)
+                    # Fix #182: regex was double-escaped; restored standard
+                    # trailing-digit match so candidate ports tie-break by
+                    # numeric suffix (e.g. usbmodem14101 vs 14102).
+                    m = re.search(r"(\d+)$", dev)
                     return (int(m.group(1)) if m else -1, dev)
 
                 chosen = max(unique_candidates, key=score)
@@ -464,7 +467,40 @@ class SerialDaemon:
         if not self._reconnection.connect():
             self._logger.error("Failed to connect to serial port")
             self._port_lock.release()
-            self._emit_event("daemon_start_failed", {"reason": "connect_failed", "port": port_name}, level="error")
+
+            # If the serial open failed because another process holds an
+            # advisory flock on the device node, surface that specifically.
+            flock_status: Optional[str] = None
+            try:
+                from eab.implementations import get_last_flock_status
+                flock_status = get_last_flock_status()
+            except Exception:
+                flock_status = None
+
+            if flock_status == "port-locked-by-other":
+                self._logger.error(
+                    f"Port {port_name} is flock-held by another process "
+                    f"(esptool, screen, pio, or another EAB). Refusing to "
+                    f"start device thread. Status: port-locked-by-other"
+                )
+                try:
+                    self._fs.write_file(
+                        os.path.join(self._base_dir, "port_flock.status"),
+                        "port-locked-by-other\n",
+                    )
+                except Exception:
+                    pass
+                self._emit_event(
+                    "daemon_start_failed",
+                    {"reason": "port_flock_held", "port": port_name, "status": "port-locked-by-other"},
+                    level="error",
+                )
+            else:
+                self._emit_event(
+                    "daemon_start_failed",
+                    {"reason": "connect_failed", "port": port_name},
+                    level="error",
+                )
             return False
 
         # Generate session ID

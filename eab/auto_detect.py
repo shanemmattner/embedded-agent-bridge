@@ -10,11 +10,43 @@ Usage:
 """
 
 import argparse
+import glob
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+# Device-node glob patterns for systems without a functioning pyserial backend.
+# Ordered roughly by distinctiveness. macOS uses /dev/cu.*; Linux exposes
+# /dev/ttyUSB* (FTDI/CH340/CP210x) and /dev/ttyACM* (CDC-ACM such as
+# USB-JTAG/native-USB); some macOS native-USB ports appear as
+# /dev/tty.usbmodem*. Windows (COM*) is handled via pyserial only.
+_DEVICE_NODE_GLOBS = (
+    "/dev/ttyUSB*",      # Linux FTDI/CH340/CP210x
+    "/dev/ttyACM*",      # Linux CDC-ACM (native USB, J-Link VCP)
+    "/dev/tty.usbmodem*", # macOS native USB (tty form)
+    "/dev/tty.usbserial*",# macOS FTDI/CP210x (tty form)
+    "/dev/cu.usbmodem*",  # macOS native USB (cu form)
+    "/dev/cu.usbserial*", # macOS FTDI/CP210x (cu form)
+)
+
+
+def list_device_nodes() -> list[str]:
+    """Return candidate serial device-node paths via glob.
+
+    Linux-compatible fallback for environments without pyserial or when the
+    pyserial enumeration misses a just-appeared node. Does NOT read or open
+    the nodes — only lists paths.
+    """
+    found: list[str] = []
+    seen: set[str] = set()
+    for pattern in _DEVICE_NODE_GLOBS:
+        for path in glob.glob(pattern):
+            if path not in seen:
+                seen.add(path)
+                found.append(path)
+    return found
 
 KNOWN_BOARDS = {
     ("1fc9", "0143"): {"name": "FRDM-MCXN947", "chip": "mcxn947", "probe": "cmsis-dap"},
@@ -29,13 +61,25 @@ KNOWN_BOARDS = {
 
 
 def detect_boards_pyserial():
-    """Detect boards using pyserial."""
+    """Detect boards using pyserial.
+
+    Primary path: enumerate via ``serial.tools.list_ports.comports()`` and
+    resolve ``(vid, pid)`` against ``KNOWN_BOARDS``. The VID/PID match is
+    the source of truth for chip / probe identification.
+
+    Secondary path (Linux compat): if pyserial returns ports that lack VID/PID
+    (common on some Linux kernels and for virtual CDC-ACM nodes), we still
+    surface the raw device-node paths from ``list_device_nodes()`` as
+    ``unknown`` entries so callers that just need a port path to tail can
+    find something. Existing VID/PID-resolved entries are kept intact.
+    """
     try:
         import serial.tools.list_ports
     except ImportError:
         return None
 
     boards = []
+    claimed_ports: set[str] = set()
     for p in serial.tools.list_ports.comports():
         vid = f"{p.vid:04x}" if p.vid else None
         pid = f"{p.pid:04x}" if p.pid else None
@@ -46,6 +90,23 @@ def detect_boards_pyserial():
             info["pid"] = pid
             info["serial"] = p.serial_number or ""
             boards.append(info)
+            claimed_ports.add(p.device)
+
+    # Linux/macOS fallback: surface device-node globs that pyserial did not
+    # resolve to a known VID/PID. Lets agents see /dev/ttyUSB0, /dev/ttyACM1,
+    # /dev/tty.usbmodem* even when they're not in KNOWN_BOARDS yet.
+    for path in list_device_nodes():
+        if path in claimed_ports:
+            continue
+        boards.append({
+            "name": "Unknown USB serial",
+            "chip": "",
+            "probe": "",
+            "port": path,
+            "vid": "",
+            "pid": "",
+            "serial": "",
+        })
     return boards
 
 

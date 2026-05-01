@@ -160,6 +160,54 @@ def detect_boards():
     return detect_boards_ioreg()
 
 
+def _chip_matches(requested: str, board_chip: str) -> bool:
+    """Check whether a user-requested chip id matches a KNOWN_BOARDS chip family.
+
+    Users pass specific variants (e.g. ``esp32c6``, ``esp32s3``) while
+    KNOWN_BOARDS records a chip family (e.g. ``esp32``). Match if either value
+    is a prefix of the other (case-insensitive).
+    """
+    if not requested or not board_chip:
+        return False
+    r = requested.lower()
+    b = board_chip.lower()
+    return r == b or r.startswith(b) or b.startswith(r)
+
+
+def resolve_port_for_chip(chip: str, boards=None):
+    """Resolve a serial port for the requested chip via USB VID/PID lookup.
+
+    Args:
+        chip: Chip identifier (e.g. ``"esp32c6"``, ``"mcxn947"``).
+        boards: Optional pre-detected boards list (for tests). If None,
+            calls ``detect_boards()``.
+
+    Returns:
+        Tuple ``(port, error)`` where:
+          - ``(port_str, None)``: exactly one matching port found.
+          - ``(None, "no_match")``: zero ports match the requested chip.
+          - ``(None, "ambiguous:<port1>,<port2>,...")``: multiple ports match.
+
+    This avoids the alphabetical-glob trap in which, e.g., an NXP MCU-Link
+    node (``/dev/cu.usbmodemI2WZW...``) beats an ESP32 node
+    (``/dev/cu.usbmodem101``) simply because capital-I sorts before digit-1.
+    """
+    if boards is None:
+        boards = detect_boards()
+
+    matches = [
+        b for b in boards
+        if b.get("port") and _chip_matches(chip, b.get("chip", ""))
+    ]
+
+    if not matches:
+        return (None, "no_match")
+    if len(matches) > 1:
+        ports = ",".join(sorted(b["port"] for b in matches))
+        return (None, f"ambiguous:{ports}")
+    return (matches[0]["port"], None)
+
+
 def print_table(boards):
     """Pretty-print detected boards."""
     if not boards:

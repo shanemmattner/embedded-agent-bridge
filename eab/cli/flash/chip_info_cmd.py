@@ -6,6 +6,7 @@ import subprocess
 import time
 from typing import Optional
 
+from eab.auto_detect import resolve_port_for_chip
 from eab.chips import get_chip_profile
 from eab.cli.helpers import _now_iso, _print
 
@@ -35,6 +36,48 @@ def cmd_chip_info(
     except ValueError as e:
         _print({"error": str(e)}, json_mode=json_mode)
         return 2
+
+    # Bug 1 fix: when no --port is given, resolve via USB VID/PID rather than
+    # letting esptool's own auto-detect pick an alphabetically-first serial
+    # node (which can be a non-ESP device, e.g. an NXP MCU-Link probe).
+    if not port:
+        resolved, err = resolve_port_for_chip(chip)
+        if resolved:
+            port = resolved
+        elif err == "no_match":
+            _print(
+                {
+                    "error": (
+                        f"No USB device matching chip '{chip}' detected. "
+                        "Plug in the board or pass --port explicitly."
+                    ),
+                    "schema_version": 1,
+                    "timestamp": _now_iso(),
+                    "success": False,
+                    "chip": chip,
+                    "duration_ms": 0,
+                },
+                json_mode=json_mode,
+            )
+            return 1
+        elif err and err.startswith("ambiguous:"):
+            ports = err.split(":", 1)[1]
+            _print(
+                {
+                    "error": (
+                        f"Multiple USB devices match chip '{chip}' ({ports}). "
+                        "Pass --port explicitly to disambiguate."
+                    ),
+                    "schema_version": 1,
+                    "timestamp": _now_iso(),
+                    "success": False,
+                    "chip": chip,
+                    "candidates": ports.split(","),
+                    "duration_ms": 0,
+                },
+                json_mode=json_mode,
+            )
+            return 1
 
     info_cmd = profile.get_chip_info_command(port=port or "")
 
